@@ -3,20 +3,49 @@ const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
 const matter = require("gray-matter");
+const SETTINGS_FILENAME = "settings.json";
+function getSettingsPath() {
+  if (electron.app.isPackaged) {
+    return path.join(electron.app.getPath("userData"), SETTINGS_FILENAME);
+  }
+  return path.join(process.cwd(), SETTINGS_FILENAME);
+}
+function getDefaultDataDir() {
+  return process.cwd();
+}
+function loadSettings() {
+  const filepath = getSettingsPath();
+  const defaults = {
+    dataDirectory: getDefaultDataDir()
+  };
+  if (!fs.existsSync(filepath)) {
+    return defaults;
+  }
+  try {
+    const content = fs.readFileSync(filepath, "utf-8");
+    const parsed = JSON.parse(content);
+    return {
+      ...defaults,
+      ...parsed
+    };
+  } catch (err) {
+    console.error("Failed to load settings, using defaults:", err);
+    return defaults;
+  }
+}
+function saveSettings(settings) {
+  const filepath = getSettingsPath();
+  const dir = path.join(filepath, "..");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filepath, JSON.stringify(settings, null, 2), "utf-8");
+}
+function getDataDirectory() {
+  return loadSettings().dataDirectory;
+}
 function getDataDir() {
-  if (process.env.VITE_DEV_SERVER_URL) {
-    return path.join(__dirname, "..", "..");
-  }
-  const exeDir = path.dirname(electron.app.getPath("exe"));
-  if (fs.existsSync(path.join(exeDir, "archive"))) {
-    return exeDir;
-  }
-  const resourcesDir = process.resourcesPath || exeDir;
-  if (fs.existsSync(path.join(resourcesDir, "archive"))) {
-    return resourcesDir;
-  }
-  const userDataDir = electron.app.getPath("userData");
-  return userDataDir;
+  return getDataDirectory();
 }
 function getThreadsPath() {
   return path.join(getDataDir(), "threads.json");
@@ -202,6 +231,23 @@ function search(query, type) {
   return results;
 }
 function registerIpcHandlers() {
+  electron.ipcMain.handle("settings:load", async () => {
+    return loadSettings();
+  });
+  electron.ipcMain.handle("settings:save", async (_event, settings) => {
+    saveSettings(settings);
+  });
+  electron.ipcMain.handle("settings:pickDirectory", async () => {
+    const win = electron.BrowserWindow.getFocusedWindow();
+    if (!win) return null;
+    const result = await electron.dialog.showOpenDialog(win, {
+      properties: ["openDirectory"],
+      title: "Select Data Directory",
+      message: "Choose the folder containing your archive/ and threads.json"
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
   electron.ipcMain.handle("threads:load", async () => {
     return loadThreads();
   });

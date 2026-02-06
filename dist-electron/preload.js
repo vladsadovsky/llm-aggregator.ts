@@ -1,6 +1,10 @@
 "use strict";
 const electron = require("electron");
 const api = {
+  // Settings
+  settingsLoad: () => electron.ipcRenderer.invoke("settings:load"),
+  settingsSave: (settings) => electron.ipcRenderer.invoke("settings:save", settings),
+  settingsPickDirectory: () => electron.ipcRenderer.invoke("settings:pickDirectory"),
   // Threads
   threadsLoad: () => electron.ipcRenderer.invoke("threads:load"),
   threadsSave: (threads) => electron.ipcRenderer.invoke("threads:save", threads),

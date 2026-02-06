@@ -2,6 +2,9 @@
 
 A desktop application for organizing and searching your LLM conversation Q&A pairs. Built with **Vue 3**, **TypeScript**, **Electron**, and **PrimeVue**.
 
+## AI Generation usage
+Specifications for the application were prepared manually. Baseline version of the code designed by Claude Opus 4.6 to a large degree, collaborating on planning and design document to formalize requirements.  
+
 ## Features
 
 - **Three-column OneNote-style layout** — Threads | QA List | QA Content
