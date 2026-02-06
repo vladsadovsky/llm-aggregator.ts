@@ -1,0 +1,148 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useThreadStore } from '../stores/threadStore'
+import { useQAStore } from '../stores/qaStore'
+import { useToast } from 'primevue/usetoast'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+
+const emit = defineEmits<{
+  close: []
+}>()
+
+const threadStore = useThreadStore()
+const qaStore = useQAStore()
+const toast = useToast()
+
+const dataDirectory = ref('')
+
+onMounted(async () => {
+  const settings = await window.api.settingsLoad()
+  dataDirectory.value = settings.dataDirectory
+})
+
+async function pickDirectory() {
+  const dir = await window.api.settingsPickDirectory()
+  if (dir) {
+    dataDirectory.value = dir
+  }
+}
+
+async function save() {
+  await window.api.settingsSave({ dataDirectory: dataDirectory.value })
+  // Reload data from the new directory
+  await threadStore.loadThreads()
+  await qaStore.loadAllPairs()
+  toast.add({ severity: 'success', summary: 'Settings saved', detail: 'Data directory updated', life: 3000 })
+  emit('close')
+}
+</script>
+
+<template>
+  <div class="settings-overlay" @click.self="emit('close')">
+    <div class="settings-dialog">
+      <h3 class="dialog-title">
+        <i class="pi pi-cog" />
+        Settings
+      </h3>
+
+      <div class="field">
+        <label>Data Directory</label>
+        <p class="field-help">
+          The folder containing your <code>archive/</code> subfolder and <code>threads.json</code>.
+          Defaults to the current working directory.
+        </p>
+        <div class="dir-row">
+          <InputText
+            v-model="dataDirectory"
+            class="dir-input"
+            placeholder="/path/to/your/data"
+          />
+          <Button
+            icon="pi pi-folder-open"
+            outlined
+            @click="pickDirectory"
+            title="Browse..."
+          />
+        </div>
+      </div>
+
+      <div class="button-row">
+        <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
+        <Button label="Save" icon="pi pi-check" @click="save" />
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.settings-dialog {
+  background: var(--surface-card);
+  border-radius: 12px;
+  padding: 24px;
+  width: 560px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.field-help {
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  margin-bottom: 8px;
+}
+
+.field-help code {
+  background: var(--surface-200);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.dir-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dir-input {
+  flex: 1;
+}
+
+.button-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+</style>

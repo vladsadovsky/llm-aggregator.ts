@@ -1,0 +1,12 @@
+node_modules/
+#dist/
+#dist-electron/
+release/
+*.local
+.DS_Store
+
+# Runtime data files (user-specific)
+settings.json
+threads.json
+archive/
+.history/

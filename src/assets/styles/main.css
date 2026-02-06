@@ -1,0 +1,87 @@
+/* ─── CSS Variables ───────────────────────────────────── */
+:root {
+  --primary-color: #6366f1;
+  --primary-color-text: #ffffff;
+  --surface-ground: #f8fafc;
+  --surface-section: #ffffff;
+  --surface-card: #ffffff;
+  --surface-hover: #f1f5f9;
+  --surface-200: #e2e8f0;
+  --text-color: #1e293b;
+  --text-color-secondary: #64748b;
+  --border-color: #e2e8f0;
+  --highlight-bg: #eef2ff;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ─── Dark Mode ──────────────────────────────────────── */
+.dark-mode {
+  --surface-ground: #0f172a;
+  --surface-section: #1e293b;
+  --surface-card: #1e293b;
+  --surface-hover: #334155;
+  --surface-200: #334155;
+  --text-color: #f1f5f9;
+  --text-color-secondary: #94a3b8;
+  --border-color: #334155;
+  --highlight-bg: #312e81;
+}
+
+/* ─── Global Reset ───────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--text-color);
+  background: var(--surface-section);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+/* ─── Scrollbar Styling ──────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-200);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color-secondary);
+}
+
+/* ─── PrimeVue Overrides ─────────────────────────────── */
+.p-button.p-button-sm {
+  font-size: 12px;
+}
+
+.p-inputtext {
+  font-size: 13px;
+}
+
+.p-chip {
+  font-size: 11px;
+}
