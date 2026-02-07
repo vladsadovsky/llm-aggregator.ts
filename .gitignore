@@ -1,6 +1,6 @@
 node_modules/
 #dist/
-#dist-electron/
+dist-electron/
 release/
 *.local
 .DS_Store
@@ -9,4 +9,4 @@ release/
 settings.json
 threads.json
 archive/
-.history/
+.hist
