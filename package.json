@@ -4,7 +4,8 @@
   "description": "LLM Aggregator - Organize and search LLM conversation Q&A pairs",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config vite.config.ts",
+    "dev:server": "vite --config vite.config.server.ts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
     "electron:dev": "vite --config vite.config.ts",
     "electron:build": "npm run build && electron-builder",

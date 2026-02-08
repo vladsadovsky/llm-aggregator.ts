@@ -69,6 +69,9 @@ npm run typecheck
 npm test
 ```
 
+## Extensions for Visual Code
+
+In addition to standard TypeScript extensions you need to install official Vue VS Code extension to be able to set breakpoints in .vue files 
 
 ## Configuration
 
@@ -104,5 +107,8 @@ You can also change this from within the app via the **Settings** dialog (gear i
 * For now the project does not have any tests - you are welcome to add some.
 * The implementation is currently very primitive and in some respects is not user-friendly - you are welcom to create a PR to improve.
 
+### Who do I talk to? 
 
+* Repo owner or admin - eveselov@hotmail.com
+* Contributor - sadovskyvlad@gmail.com 
 

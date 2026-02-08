@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+  
+    {
+      "name": "Electron Main (Backend)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "runtimeArgs": ["--remote-debugging-port=9223", "."],
+      "env": {
+        "VITE_DEV_SERVER_URL": "http://localhost:5173/"
+      },
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**"],
+      "outFiles": ["${workspaceFolder}/dist-electron/**/*.js"]
+    },
+    {
+      "name": "Electron Renderer (Frontend)",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9223,
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "timeout": 30000
+    },
+    {
+      "name": "Eddge Frontend",
+      "request": "launch",
+      "type": "msedge",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true
+    },
+    {
+      "name": "Chrome Frontend",
+      "request": "launch",
+      "type": "chrome",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack Debugging : Electron + Frontend",
+      "configurations": ["Electron Main (Backend)", "Chrome Frontend"],
+      "preLaunchTask": "dev:server", 
+      "stopAll": true
+    },
+    {
+      "name": "Full Stack: Backend + Renderer",
+      "configurations": ["Electron Main (Backend)", "Electron Renderer (Frontend)"],
+      "preLaunchTask": "dev:server",
+      "stopAll": true
+    }
+  ]
+
+}

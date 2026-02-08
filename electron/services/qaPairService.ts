@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlink
 import { join, extname } from 'path'
 import matter from 'gray-matter'
 import { getDataDir } from './pathResolver'
+import { debugLog } from './logger'
 
 export interface QAPairData {
   id: string
@@ -76,9 +77,11 @@ function parseQAFile(filepath: string): QAPairData | null {
 
 export function listAllPairs(): Record<string, QAPairData> {
   const dir = getArchiveDir()
+  debugLog('qaPairService', 'listAllPairs from:', dir)
   const result: Record<string, QAPairData> = {}
 
   const files = readdirSync(dir).filter((f) => extname(f) === '.md')
+  debugLog('qaPairService', 'found', files.length, '.md files')
   for (const file of files) {
     const filepath = join(dir, file)
     const pair = parseQAFile(filepath)
@@ -86,6 +89,7 @@ export function listAllPairs(): Record<string, QAPairData> {
       result[pair.id] = pair
     }
   }
+  debugLog('qaPairService', 'loaded', Object.keys(result).length, 'pairs')
   return result
 }
 

@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"workbench.colorTheme": "Solarized Light",
+		"workbench.preferredDarkColorTheme": "Solarized Dark"
+		"workbench.colorCustomizations" : {
+			"terminal.foreground" : "#00FD61",
+			"terminal.background" : "#383737"
+	}
+	}
+}

@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
+import { debugLog, debugError } from './logger'
 
 export interface AppSettings {
   /** Absolute path to the data directory containing archive/ and threads.json */
@@ -24,11 +25,13 @@ function getDefaultDataDir(): string {
 
 export function loadSettings(): AppSettings {
   const filepath = getSettingsPath()
+  debugLog('settingsService', 'loadSettings from:', filepath)
   const defaults: AppSettings = {
     dataDirectory: getDefaultDataDir(),
   }
 
   if (!existsSync(filepath)) {
+    debugLog('settingsService', 'settings.json not found, using defaults:', defaults.dataDirectory)
     return defaults
   }
 
@@ -40,7 +43,7 @@ export function loadSettings(): AppSettings {
       ...parsed,
     }
   } catch (err) {
-    console.error('Failed to load settings, using defaults:', err)
+    debugError('settingsService', 'Failed to load settings, using defaults:', err)
     return defaults
   }
 }

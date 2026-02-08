@@ -1,3 +1,4 @@
+import { basename, resolve } from 'path'
 import { getDataDirectory } from './settingsService'
 
 /**
@@ -6,5 +7,12 @@ import { getDataDirectory } from './settingsService'
  * Defaults to the current working directory.
  */
 export function getDataDir(): string {
-  return getDataDirectory()
+  const configured = resolve(getDataDirectory())
+
+  // If the user selected the archive folder itself, use its parent as data dir.
+  if (basename(configured).toLowerCase() === 'archive') {
+    return resolve(configured, '..')
+  }
+
+  return configured
 }

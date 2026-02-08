@@ -16,7 +16,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-  })
+  }
+  )
 
   // In dev, load from Vite dev server
   if (process.env.VITE_DEV_SERVER_URL) {

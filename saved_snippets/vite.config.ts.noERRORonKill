@@ -1,0 +1,79 @@
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import electron from 'vite-plugin-electron'
+import renderer from 'vite-plugin-electron-renderer'
+import { resolve } from 'path'
+import { fileURLToPath } from 'url'
+import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const require = createRequire(import.meta.url)
+const electronPath = require('electron')
+let electronProcess: ReturnType<typeof spawn> | null = null
+
+function startElectron() {
+  if (electronProcess && !electronProcess.killed) {
+    try {
+      electronProcess.kill()
+    } catch {
+      // Ignore missing PID errors on Windows.
+    }
+  }
+
+  electronProcess = spawn(electronPath, ['.'], { stdio: 'inherit' })
+  electronProcess.once('exit', () => {
+    electronProcess = null
+  })
+}
+
+process.once('exit', () => {
+  if (electronProcess && !electronProcess.killed) {
+    try {
+      electronProcess.kill()
+    } catch {
+      // Ignore missing PID errors on Windows.
+    }
+  }
+})
+
+export default defineConfig({
+  plugins: [
+    vue(),
+    electron([
+      {
+        entry: 'electron/main.ts',
+        onstart() {
+          startElectron()
+        },
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['electron', 'fs', 'path', 'os'],
+            },
+          },
+        },
+      },
+      {
+        entry: 'electron/preload.ts',
+        onstart(args) {
+          args.reload()
+        },
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['electron'],
+            },
+          },
+        },
+      },
+    ]),
+    renderer(),
+  ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+})

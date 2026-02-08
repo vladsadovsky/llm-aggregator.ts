@@ -9,14 +9,32 @@ import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
+import { useUIStore } from './stores/uiStore'
+import { debugError } from './utils/logger'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
+const uiStore = useUIStore()
 const showSettings = ref(false)
 
 onMounted(async () => {
-  await threadStore.loadThreads()
-  await qaStore.loadAllPairs()
+  // Load threads and QA pairs in parallel; don't let one failure block the other
+  const [threadResult, qaResult] = await Promise.allSettled([
+    threadStore.loadThreads(),
+    qaStore.loadAllPairs(),
+  ])
+
+  if (threadResult.status === 'rejected') {
+    debugError('App', 'Failed to load threads:', threadResult.reason)
+  }
+  if (qaResult.status === 'rejected') {
+    debugError('App', 'Failed to load QA pairs:', qaResult.reason)
+  }
+
+  // If there are no threads, default to showing all QAs so the user sees their content
+  if (Object.keys(threadStore.threads).length === 0 && Object.keys(qaStore.pairs).length > 0) {
+    uiStore.showAllQAs = true
+  }
 })
 </script>
 

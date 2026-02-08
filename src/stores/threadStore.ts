@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import type { ThreadMap, ThreadData } from '../types/Thread'
+import { debugLog, debugError } from '../utils/logger'
 
 export const useThreadStore = defineStore('threads', () => {
   const threads = ref<ThreadMap>({})
@@ -22,7 +23,16 @@ export const useThreadStore = defineStore('threads', () => {
   }
 
   async function save() {
-    await window.api.threadsSave(threads.value)
+    // Strip Vue reactivity proxy before sending through Electron IPC
+    const plain = JSON.parse(JSON.stringify(toRaw(threads.value))) as ThreadMap
+    debugLog('threadStore', 'save called, keys:', Object.keys(plain))
+    try {
+      await window.api.threadsSave(plain)
+      debugLog('threadStore', 'save completed')
+    } catch (err) {
+      debugError('threadStore', 'save FAILED:', err)
+      throw err
+    }
   }
 
   async function createThread(name: string): Promise<string> {
