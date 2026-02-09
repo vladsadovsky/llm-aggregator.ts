@@ -47,6 +47,6 @@
     "vitest": "^2.0.0",
     "vue-tsc": "^2.0.0"
   },
-  "author": "Eugene Veselov, Vlad Sadovsky",
+  "author": "Vlad Sadovsky",
   "license": "MIT"
 }

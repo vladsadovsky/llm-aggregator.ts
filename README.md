@@ -34,7 +34,8 @@ Specifications for the application were prepared manually. Baseline version of t
 
 - **Node.js** 18+ (LTS recommended)
 - **npm** 9+
-
+- **Vue Visual code extensions for debugging .vue files **
+- **VueTools in system browser, used for debugging ** 
 ## Getting Started
 
 When running from the cloned repository follow the steps below. To build native application, currently enabled for Windows only, refer to BUILD.md. 
@@ -100,12 +101,5 @@ You can also change this from within the app via the **Settings** dialog (gear i
 | Markdown Rendering | markdown-it + highlight.js |
 | Frontmatter Parsing | gray-matter |
 | Native Packaging | electron-builder |
-
-
-### Contribution guidelines 
-
-* For now the project does not have any tests - you are welcome to add some.
-* The implementation is currently very primitive and in some respects is not user-friendly - you are welcom to create a PR to improve.
-
 
 

@@ -73,6 +73,8 @@ Installers are placed in the `release/` directory:
 
 ## Debugging 
 
+It is important to install Vue Visual Code extension (vue.solar) from the store in order to enable setting up breakpoints in source code and other Vue extended functions.
+
 Before starting source level debugging you are advised to run both typecheck and lint steps if you are modifying the codebase, by using following npm commands:
 
 ```
@@ -80,19 +82,29 @@ npm run typecheck
 npm run lint 
 ```
 
+Default ports are used: 5173 for Vite access and 9223 for Electron native process.
 
-Debugging of the front end only is much simpler to do when the browser launches with ```npm run dev``` and DevTools panel is used. It is recommended that in addition to Chrome Dev Tools Vue Dev Tools are also installed  https://devtools.vuejs.org/ 
+### Debugging front end only (no Electron)
+Debugging of the front end (UI components) without access to native Electron functionality is possible and sometimes preferable to do when the browser launches with ```npm run dev``` and DevTools panel is used. It is recommended that in addition to Chrome Dev Tools Vue Dev Tools are also installed  https://devtools.vuejs.org/. When debugging front end only Edge browser may also be used in the same way, but with the different launch configuration.
 
-When needed, Visual Code fully integrated  full stack debugging is enabled via the compound configuration caleld "Full Stack: Backend and Renderer". This compount combines two separateconfigurations , one for the launching Electron backend, called ""Electron Main (Backend)"and an attaching configuraiton, called "Electron Renderer (FrontEnd)". Chrome is used by default, msedge can be enabled by creating a new attaching configuraiton and a new compound, imitating the existing one.
+Launch configuraitons for front end only are 
 
-Note it is important to install Vue Visual Code extension (vue.solar) from the store in order to enable setting up breakpoints. 
+"Eddge Launch Frontend" 
+Chrome Launch Frontend",
+
+Both of them expect Vite server (Launched by ```npm run dev``` command) to be running and ports must be matched. Default port used is Vite default 5173 on localhost.  Command may be executed in VSCode built in terminal or in the outside terminal. 
+
+If you see a message that Vite server started on port 5174 or later, that means there is an orphaned running copy of the server or server from another app under development, that must be terminated. 
+
+
+### Debugging full stack (both front end and Electron backend)
+When needed, Visual Code fully integrated  full stack debugging is enabled via the compound configuration caleld "Full Stack: Backend and Renderer". This compount combines two separateconfigurations , one for the launching Electron backend, called ""Electron Main (Backend)"and an attaching configuraiton, called "Electron Renderer (FrontEnd)". Chomium embedded into Electron is utilized  by creating a new attaching configuraiton and a new compound. In this mode of debugging breakpoints can be set up both in front end code (Chromium) and Electron native backend code (node process), tho Vue Devtools won't be available in the front end. 
 
 Compound configuration will pre-launch start of the necessary vite web server, thus you need to make sure previous instance is stopped. Usually if the instance is stuck in VS Code Terminal, need to kill it. 
 
-Alternative method - launch back end by running npm run dev, that will auto launch first instance of the browser. Then you can attach to it by creating new attach configurations, modeled after launch configuraitons for Chrome and Edge, which won't work for debugging. 
+Name of the compound launch configuration you launch to start both Vite server and electron process, as well as Chromium browser instance is "Full Stack: Backend + Renderer"
 
-Note that default ports are used: 5173 for Vite access and 9223 for Electron native process.
-
+Note, the same as with front end debugging, make sure you don't have orphaned instances of Vite server and Electron processes. 
 
 ## Project Structure
 
