@@ -86,6 +86,22 @@ function onRenameKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') finishRename()
   if (e.key === 'Escape') editingThreadId.value = null
 }
+
+function onThreadListKeydown(e: KeyboardEvent) {
+  const ids = threadStore.sortedThreadIds
+  if (ids.length === 0) return
+  const currentIdx = threadStore.selectedThreadId ? ids.indexOf(threadStore.selectedThreadId) : -1
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    const next = currentIdx < ids.length - 1 ? currentIdx + 1 : 0
+    selectThread(ids[next])
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    const prev = currentIdx > 0 ? currentIdx - 1 : ids.length - 1
+    selectThread(ids[prev])
+  }
+}
 </script>
 
 <template>
@@ -104,7 +120,7 @@ function onRenameKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- Thread list -->
-    <div class="thread-list">
+    <div class="thread-list" tabindex="0" @keydown="onThreadListKeydown">
       <div
         v-for="tid in threadStore.sortedThreadIds"
         :key="tid"
@@ -210,6 +226,7 @@ function onRenameKeydown(e: KeyboardEvent) {
   flex: 1;
   overflow-y: auto;
   padding: 4px 0;
+  outline: none;
 }
 
 .thread-item {

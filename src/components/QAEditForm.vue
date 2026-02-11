@@ -6,6 +6,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
+import AutoComplete from 'primevue/autocomplete'
 
 const props = defineProps<{
   pair: QAPairData
@@ -29,9 +30,16 @@ const sourceOptions = [
 const title = ref(props.pair.title)
 const source = ref(props.pair.source)
 const url = ref(props.pair.url)
-const tags = ref(props.pair.tags.join(', '))
+const tags = ref([...props.pair.tags])
+const tagSuggestions = ref<string[]>([])
 const question = ref(props.pair.question)
 const answer = ref(props.pair.answer)
+
+function searchTags(event: { query: string }) {
+  const query = event.query.toLowerCase()
+  tagSuggestions.value = qaStore.allTags
+    .filter(t => t.includes(query) && !tags.value.includes(t))
+}
 
 async function save() {
   const data: QAUpdateData = {
@@ -39,8 +47,7 @@ async function save() {
     source: source.value,
     url: url.value.trim(),
     tags: tags.value
-      .split(',')
-      .map((t) => t.trim())
+      .map((t: string) => t.trim())
       .filter(Boolean),
     question: question.value,
     answer: answer.value,
@@ -79,8 +86,15 @@ async function save() {
     </div>
 
     <div class="field">
-      <label>Tags (comma-separated)</label>
-      <InputText v-model="tags" class="w-full" />
+      <label>Tags</label>
+      <AutoComplete
+        v-model="tags"
+        :suggestions="tagSuggestions"
+        @complete="searchTags"
+        multiple
+        placeholder="Type to add tags..."
+        class="w-full"
+      />
     </div>
 
     <div class="field">

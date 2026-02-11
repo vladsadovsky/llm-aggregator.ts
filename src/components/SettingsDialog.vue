@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
+import { useUIStore } from '../stores/uiStore'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
 
 const emit = defineEmits<{
   close: []
@@ -12,6 +14,7 @@ const emit = defineEmits<{
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
+const uiStore = useUIStore()
 const toast = useToast()
 
 const dataDirectory = ref('')
@@ -64,6 +67,33 @@ async function save() {
             @click="pickDirectory"
             title="Browse..."
           />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Appearance</label>
+        <div class="checkbox-field">
+          <Checkbox 
+            v-model="uiStore.darkMode" 
+            inputId="darkMode" 
+            binary 
+            @change="uiStore.toggleDarkMode()"
+          />
+          <label for="darkMode" class="checkbox-label">Dark mode</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>QA Editor</label>
+        <div class="checkbox-field">
+          <Checkbox 
+            v-model="uiStore.rememberLastMetadata" 
+            inputId="rememberMetadata" 
+            binary 
+          />
+          <label for="rememberMetadata" class="checkbox-label">
+            Remember last-used source, tags, and URL
+          </label>
         </div>
       </div>
 
@@ -135,6 +165,20 @@ async function save() {
 
 .dir-input {
   flex: 1;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.checkbox-label {
+  font-size: 13px;
+  color: var(--text-color);
+  cursor: pointer;
+  margin: 0;
 }
 
 .button-row {

@@ -7,7 +7,9 @@
     "dev": "vite --config vite.config.ts",
     "dev:server": "vite --config vite.config.server.ts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
+    "build:icons": "echo 'Generate icons from build/llmicon.svg using electron-icon-builder or online tools. See build/README.md'",
     "electron:dev": "vite --config vite.config.ts",
+    "electron:prod": "set NODE_ENV=production&& npm run build && electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:win": "npm run build && electron-builder --win",
@@ -23,6 +25,7 @@
     "gray-matter": "^4.0.3",
     "highlight.js": "^11.9.0",
     "js-yaml": "^4.1.0",
+    "lucide-vue-next": "^0.563.0",
     "markdown-it": "^14.0.0",
     "pinia": "^2.1.0",
     "primeicons": "^7.0.0",
@@ -47,6 +50,6 @@
     "vitest": "^2.0.0",
     "vue-tsc": "^2.0.0"
   },
-  "author": "Vlad Sadovsky",
+  "author": "Eugene Veselov, Vlad Sadovsky",
   "license": "MIT"
 }

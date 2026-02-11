@@ -8,12 +8,14 @@ files:
   - dist-electron/**/*
   - "!node_modules/**/*"
 mac:
+  icon: build/llmicon.icns
   category: public.app-category.productivity
   target:
     - dmg
     - zip
   artifactName: "${productName}-${version}-mac.${ext}"
 win:
+  icon: build/llmicon.ico
   target:
     - nsis
     - portable
@@ -22,6 +24,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 linux:
+  icon: build/llmicon.png
   target:
     - AppImage
     - deb

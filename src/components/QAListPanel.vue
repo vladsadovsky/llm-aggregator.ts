@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -16,6 +16,19 @@ const toast = useToast()
 
 const showEditor = ref(false)
 const searchResults = ref<string[] | null>(null)
+
+// Watch store trigger for opening QA editor (from global keyboard shortcut)
+watch(() => uiStore.showQAEditor, (val) => {
+  if (val) {
+    const canAdd = !!threadStore.selectedThreadId || uiStore.showAllQAs
+    if (canAdd) {
+      showEditor.value = true
+    }
+    uiStore.showQAEditor = false
+  }
+})
+const isSearching = ref(false)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // Items displayed in the list
 const displayedItems = computed(() => {
@@ -49,7 +62,13 @@ const displayedItems = computed(() => {
   if (!threadStore.selectedThreadId) return []
   const thread = threadStore.threads[threadStore.selectedThreadId]
   if (!thread) return []
-  return thread.items.filter((id) => id in qaStore.pairs)
+  let items = thread.items.filter((id) => id in qaStore.pairs)
+
+  // Apply search filter in thread mode too
+  if (searchResults.value !== null) {
+    items = items.filter((id) => searchResults.value!.includes(id))
+  }
+  return items
 })
 
 const panelTitle = computed(() => {
@@ -60,22 +79,54 @@ const panelTitle = computed(() => {
 })
 
 function selectPair(id: string) {
+  if (uiStore.isEditing) return  // Don't switch items while editing
   qaStore.selectPair(id)
-  uiStore.isEditing = false
 }
 
 async function doSearch() {
   if (!uiStore.searchQuery.trim()) {
     searchResults.value = null
+    isSearching.value = false
     return
   }
-  searchResults.value = await qaStore.searchPairs(uiStore.searchQuery, uiStore.searchType)
+  isSearching.value = true
+  try {
+    searchResults.value = await qaStore.searchPairs(uiStore.searchQuery, uiStore.searchType)
+  } finally {
+    isSearching.value = false
+  }
 }
 
 function clearSearch() {
   uiStore.searchQuery = ''
   searchResults.value = null
+  isSearching.value = false
 }
+
+// Real-time search with debounce
+watch(() => uiStore.searchQuery, (newQuery) => {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+  
+  if (!newQuery.trim()) {
+    searchResults.value = null
+    isSearching.value = false
+    return
+  }
+
+  isSearching.value = true
+  searchDebounceTimer = setTimeout(async () => {
+    await doSearch()
+  }, 400)
+})
+
+// Also watch search type to re-search when it changes
+watch(() => uiStore.searchType, () => {
+  if (uiStore.searchQuery.trim()) {
+    doSearch()
+  }
+})
 
 async function onQACreated(pairId: string) {
   showEditor.value = false
@@ -91,6 +142,22 @@ function getQuestionSnippet(id: string): string {
   if (!pair) return ''
   return pair.question.length > 80 ? pair.question.substring(0, 80) + '...' : pair.question
 }
+
+function onQAListKeydown(e: KeyboardEvent) {
+  const items = displayedItems.value
+  if (items.length === 0) return
+  const currentIdx = qaStore.selectedPairId ? items.indexOf(qaStore.selectedPairId) : -1
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    const next = currentIdx < items.length - 1 ? currentIdx + 1 : 0
+    selectPair(items[next])
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    const prev = currentIdx > 0 ? currentIdx - 1 : items.length - 1
+    selectPair(items[prev])
+  }
+}
 </script>
 
 <template>
@@ -101,17 +168,18 @@ function getQuestionSnippet(id: string): string {
       <span class="item-count">{{ displayedItems.length }}</span>
     </div>
 
-    <!-- Search bar (shown in All QAs mode) -->
-    <div v-if="uiStore.showAllQAs" class="search-bar">
+    <!-- Search bar -->
+    <div class="search-bar">
       <div class="search-row">
         <InputText
           v-model="uiStore.searchQuery"
-          placeholder="Search..."
+          placeholder="Search as you type..."
           size="small"
           class="search-input"
-          @keydown.enter="doSearch"
         />
+        <i v-if="isSearching" class="pi pi-spin pi-spinner search-spinner" />
         <Button
+          v-else
           icon="pi pi-search"
           size="small"
           text
@@ -125,6 +193,7 @@ function getQuestionSnippet(id: string): string {
           text
           rounded
           @click="clearSearch"
+          title="Clear search"
         />
       </div>
       <div class="search-options">
@@ -154,7 +223,7 @@ function getQuestionSnippet(id: string): string {
     </div>
 
     <!-- QA list -->
-    <div class="qa-list">
+    <div class="qa-list" tabindex="0" @keydown="onQAListKeydown">
       <div
         v-for="id in displayedItems"
         :key="id"
@@ -260,6 +329,11 @@ function getQuestionSnippet(id: string): string {
   flex: 1;
 }
 
+.search-spinner {
+  color: var(--primary-color);
+  font-size: 14px;
+}
+
 .search-options {
   display: flex;
   gap: 4px;
@@ -276,6 +350,7 @@ function getQuestionSnippet(id: string): string {
   flex: 1;
   overflow-y: auto;
   padding: 4px 0;
+  outline: none;
 }
 
 .qa-item {

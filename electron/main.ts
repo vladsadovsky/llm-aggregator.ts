@@ -11,6 +11,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'LLM Aggregator',
+    icon: join(__dirname, '../build/llmicon.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,

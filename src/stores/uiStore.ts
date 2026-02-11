@@ -7,7 +7,14 @@ export const useUIStore = defineStore('ui', () => {
   const sortBy = ref<'date' | 'title'>('date')
   const isEditing = ref(false)
   const showAllQAs = ref(false)
+  const showQAEditor = ref(false)
   const darkMode = ref(false)
+
+  // Last-used metadata for pre-filling QA forms
+  const lastUsedSource = ref('')
+  const lastUsedTags = ref<string[]>([])
+  const lastUsedUrl = ref('')
+  const rememberLastMetadata = ref(true)
 
   function toggleDarkMode() {
     darkMode.value = !darkMode.value
@@ -18,13 +25,36 @@ export const useUIStore = defineStore('ui', () => {
     }
   }
 
+  function setLastUsedMetadata(source: string, tags: string[], url: string) {
+    if (rememberLastMetadata.value) {
+      lastUsedSource.value = source
+      lastUsedTags.value = tags
+      lastUsedUrl.value = url
+    }
+  }
+
+  function getLastUsedMetadata() {
+    return {
+      source: lastUsedSource.value,
+      tags: lastUsedTags.value,
+      url: lastUsedUrl.value
+    }
+  }
+
   return {
     searchQuery,
     searchType,
     sortBy,
     isEditing,
     showAllQAs,
+    showQAEditor,
     darkMode,
     toggleDarkMode,
+    lastUsedSource,
+    lastUsedTags,
+    lastUsedUrl,
+    rememberLastMetadata,
+    setLastUsedMetadata,
+    getLastUsedMetadata,
   }
 })

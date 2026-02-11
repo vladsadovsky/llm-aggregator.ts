@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Button from 'primevue/button'
@@ -16,6 +16,7 @@ const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
 const showSettings = ref(false)
+const isLoading = ref(true)
 
 onMounted(async () => {
   // Load threads and QA pairs in parallel; don't let one failure block the other
@@ -35,25 +36,94 @@ onMounted(async () => {
   if (Object.keys(threadStore.threads).length === 0 && Object.keys(qaStore.pairs).length > 0) {
     uiStore.showAllQAs = true
   }
+
+  isLoading.value = false
+
+  // Add global keyboard event listener
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+})
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  // Ignore if user is typing in an input
+  const target = event.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    // Allow Escape to work even in inputs
+    if (event.key === 'Escape') {
+      target.blur()
+      if (showSettings.value) {
+        showSettings.value = false
+      }
+    }
+    return
+  }
+
+  // Ctrl/Cmd + F: Focus search
+  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+    event.preventDefault()
+    const searchInput = document.querySelector('.search-input input') as HTMLInputElement
+    searchInput?.focus()
+  }
+
+  // Alt + N: New QA (Ctrl+N and Ctrl+Shift+N are reserved by Electron/Chromium)
+  if (event.altKey && event.key === 'n') {
+    event.preventDefault()
+    uiStore.showQAEditor = true
+  }
+
+  // Ctrl/Cmd + , : Open settings
+  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+    event.preventDefault()
+    showSettings.value = true
+  }
+
+  // Escape: Close dialogs
+  if (event.key === 'Escape') {
+    if (showSettings.value) {
+      showSettings.value = false
+    }
+  }
+}
 </script>
 
 <template>
   <Toast position="bottom-right" />
   <ConfirmDialog />
   <SettingsDialog v-if="showSettings" @close="showSettings = false" />
-  <div class="app-container">
+  
+  <!-- Loading screen -->
+  <div v-if="isLoading" class="loading-screen">
+    <div class="loading-content">
+      <i class="pi pi-spin pi-spinner" style="font-size: 2rem; color: var(--primary-color)"></i>
+      <p>Loading LLM Aggregator...</p>
+    </div>
+  </div>
+
+  <div v-else class="app-container">
     <div class="app-sidebar">
       <div class="app-toolbar">
         <span class="app-brand">LLM Aggregator</span>
-        <Button
-          icon="pi pi-cog"
-          text
-          rounded
-          size="small"
-          title="Settings"
-          @click="showSettings = true"
-        />
+        <div class="toolbar-buttons">
+          <Button
+            :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
+            text
+            rounded
+            size="small"
+            :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
+            @click="uiStore.toggleDarkMode()"
+          />
+          <Button
+            icon="pi pi-cog"
+            text
+            rounded
+            size="small"
+            title="Settings (Ctrl+,)"
+            @click="showSettings = true"
+          />
+        </div>
       </div>
       <ThreadsPanel />
     </div>
@@ -63,6 +133,27 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background: var(--surface-ground);
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.loading-content p {
+  font-size: 14px;
+  color: var(--text-color-secondary);
+}
+
 .app-container {
   display: flex;
   height: 100vh;
@@ -91,5 +182,10 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-color-secondary);
   letter-spacing: 0.02em;
+}
+
+.toolbar-buttons {
+  display: flex;
+  gap: 4px;
 }
 </style>
