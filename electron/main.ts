@@ -11,7 +11,8 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'LLM Aggregator',
-    icon: join(__dirname, '../build/llmicon.png'),
+    // Path should point to your .icns file
+    icon: join(__dirname, '../public/icons/llm-aggregator.icns'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -33,6 +34,8 @@ function createWindow() {
     mainWindow = null
   })
 }
+
+app.setName('LLM Aggregator');
 
 app.whenReady().then(() => {
   registerIpcHandlers()

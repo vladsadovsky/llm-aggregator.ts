@@ -7,7 +7,7 @@
     "dev": "vite --config vite.config.ts",
     "dev:server": "vite --config vite.config.server.ts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
-    "build:icons": "echo 'Generate icons from build/llmicon.svg using electron-icon-builder or online tools. See build/README.md'",
+    "build:icons": "echo 'Generate icons from build/llm-aggregator.svg using electron-icon-builder or online tools. Output to public/icons. See build/README.md'",
     "electron:dev": "vite --config vite.config.ts",
     "electron:prod": "set NODE_ENV=production&& npm run build && electron .",
     "electron:build": "npm run build && electron-builder",
@@ -49,6 +49,13 @@
     "vite-plugin-electron-renderer": "^0.14.0",
     "vitest": "^2.0.0",
     "vue-tsc": "^2.0.0"
+  },
+  "build": {
+    "appId": "com.llm-aggregator.app",
+    "mac": {
+      "icon": "public/icons/llm-aggregator.icns",
+      "target": ["dmg", "zip"]
+    }
   },
   "author": "Vlad Sadovsky",
   "license": "MIT"

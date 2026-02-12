@@ -56,7 +56,7 @@ npm run electron:build:linux
 
 ### Build output
 
-Installers are placed in the `release/` directory:
+Installers are placed in the `dist/` directory:
 
 | Platform | Formats | File |
 |----------|---------|------|

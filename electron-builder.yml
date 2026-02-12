@@ -2,31 +2,31 @@ appId: com.llm-aggregator.app
 productName: LLM Aggregator
 directories:
   buildResources: build
-  output: release
+  output: dist
 files:
   - dist/**/*
   - dist-electron/**/*
   - "!node_modules/**/*"
 mac:
-  icon: build/llmicon.icns
+  icon: public/icons/llm-aggregator.icns
   category: public.app-category.productivity
   target:
     - dmg
     - zip
   artifactName: "${productName}-${version}-mac.${ext}"
 win:
-  icon: build/llmicon.ico
+  icon: public/icons/llm-aggregator.ico
   target:
     - nsis
     - portable
   artifactName: "${productName}-${version}-win.${ext}"
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
 linux:
-  icon: build/llmicon.png
+  icon: public/icons/llm-aggregator.png
   target:
     - AppImage
     - deb
   category: Utility
   artifactName: "${productName}-${version}-linux.${ext}"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

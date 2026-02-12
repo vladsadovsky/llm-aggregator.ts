@@ -30,6 +30,45 @@ Specifications for the application were prepared manually. Baseline version of t
 - **Cross-platform** — builds native installers for macOS, Windows, and Linux
 
 
+## User Interface
+
+### Keyboard Shortcuts
+
+| Shortcut | Action | Context |
+|----------|--------|---------|
+| **Ctrl+F** (Cmd+F on Mac) | Focus search box | Global — works from any panel |
+| **Alt+N** | Create new QA pair | Global — opens the QA editor dialog |
+| **Ctrl+,** (Cmd+, on Mac) | Open settings | Global — access app configuration |
+| **Escape** | Close dialog / cancel | Global — closes any open modal |
+| **Ctrl+Enter** (Cmd+Enter on Mac) | Submit form | QA Editor — saves the current QA pair |
+| **Arrow Up / Down** | Navigate list items | Thread list or QA list — when the list is focused |
+
+### Search
+
+- **Always visible** — the search bar is shown in both thread mode and "All QAs" mode
+- **Real-time filtering** — results update as you type with a 400ms debounce
+- **Search types** — switch between full-text and tag-based search
+- **Sort options** — sort results by date or title
+
+### Smart Tag Suggestions
+
+- Typing in the tag field shows **suggestions from existing tags** across all QA pairs
+- Suggestions are sorted by frequency (most-used tags appear first)
+- Duplicate tags are automatically excluded from suggestions
+- New tags can still be entered freely
+
+### QA Editor Enhancements
+
+- **Auto-title generation** — title is automatically generated from the first 70 characters of the question text
+- **Pre-fill metadata** — source, tags, and URL are remembered from your last QA entry (configurable in Settings)
+- **URL validation** — invalid URLs are flagged with an error message before saving
+- **Auto-focus** — the Question field receives focus automatically when the editor opens
+
+### Dark Mode
+
+- Toggle dark mode from the **moon/sun icon** in the toolbar or from **Settings**
+
+
 ## Prerequisites
 
 - **Node.js** 18+ (LTS recommended)
@@ -102,4 +141,14 @@ You can also change this from within the app via the **Settings** dialog (gear i
 | Frontmatter Parsing | gray-matter |
 | Native Packaging | electron-builder |
 
+
+### Contribution guidelines 
+
+* For now the project does not have any tests - you are welcome to add some.
+* The implementation is currently very primitive and in some respects is not user-friendly - you are welcom to create a PR to improve.
+
+### Who do I talk to? 
+
+* Repo owner or admin - eveselov@hotmail.com
+* Contributor - sadovskyvlad@gmail.com 
 
