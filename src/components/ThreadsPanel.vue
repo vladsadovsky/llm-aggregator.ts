@@ -198,12 +198,11 @@ function onThreadListKeydown(e: KeyboardEvent) {
 
 <style scoped>
 .threads-panel {
-  width: 220px;
-  min-width: 180px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-color);
   background: var(--surface-ground);
+  height: 100%;
   flex: 1;
   overflow: hidden;
 }

@@ -164,7 +164,19 @@ function onQAListKeydown(e: KeyboardEvent) {
   <div class="qa-list-panel">
     <!-- Header -->
     <div class="panel-header">
-      <span class="panel-title">{{ panelTitle }}</span>
+      <div class="header-left">
+        <Button
+          v-if="!uiStore.isSidebarVisible"
+          icon="pi pi-bars"
+          text
+          rounded
+          size="small"
+          title="Show sidebar"
+          class="sidebar-toggle-btn"
+          @click="uiStore.isSidebarVisible = true"
+        />
+        <span class="panel-title">{{ panelTitle }}</span>
+      </div>
       <span class="item-count">{{ displayedItems.length }}</span>
     </div>
 
@@ -283,8 +295,6 @@ function onQAListKeydown(e: KeyboardEvent) {
 
 <style scoped>
 .qa-list-panel {
-  width: 300px;
-  min-width: 240px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-color);
@@ -296,8 +306,20 @@ function onQAListKeydown(e: KeyboardEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 12px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border-color);
+  min-height: 37px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-toggle-btn {
+  margin-left: -6px;
+  color: var(--primary-color) !important;
 }
 
 .panel-title {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import Toast from 'primevue/toast'
-import ConfirmDialog from 'primevue/confirmdialog'
 import Button from 'primevue/button'
+import Splitter from 'primevue/splitter'
+import SplitterPanel from 'primevue/splitterpanel'
 import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
@@ -103,32 +104,56 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   </div>
 
   <div v-else class="app-container">
-    <div class="app-sidebar">
-      <div class="app-toolbar">
-        <span class="app-brand">LLM Aggregator</span>
-        <div class="toolbar-buttons">
-          <Button
-            :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
-            text
-            rounded
-            size="small"
-            :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
-            @click="uiStore.toggleDarkMode()"
-          />
-          <Button
-            icon="pi pi-cog"
-            text
-            rounded
-            size="small"
-            title="Settings (Ctrl+,)"
-            @click="showSettings = true"
-          />
+    <Splitter class="w-full h-full border-none">
+      <SplitterPanel v-if="uiStore.isSidebarVisible" :size="uiStore.sidebarWidth" :minSize="10" class="app-sidebar">
+        <div class="app-toolbar">
+          <span class="app-brand">LLM Aggregator</span>
+          <div class="toolbar-buttons">
+            <Button
+              icon="pi pi-angle-left"
+              text
+              rounded
+              size="small"
+              title="Hide sidebar"
+              @click="uiStore.isSidebarVisible = false"
+            />
+          </div>
         </div>
-      </div>
-      <ThreadsPanel />
-    </div>
-    <QAListPanel />
-    <QAContentPanel />
+        <ThreadsPanel />
+      </SplitterPanel>
+      
+      <SplitterPanel :size="100 - (uiStore.isSidebarVisible ? uiStore.sidebarWidth : 0)">
+        <Splitter class="w-full h-full border-none">
+          <SplitterPanel :size="uiStore.isSidebarVisible ? 30 : 25" :minSize="15">
+            <QAListPanel />
+          </SplitterPanel>
+          <SplitterPanel :size="uiStore.isSidebarVisible ? 70 : 75" :minSize="30">
+            <div class="content-header-toolbar">
+               <div class="spacer"></div>
+               <div class="toolbar-buttons px-2 py-1">
+                  <Button
+                    :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
+                    text
+                    rounded
+                    size="small"
+                    :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
+                    @click="uiStore.toggleDarkMode()"
+                  />
+                  <Button
+                    icon="pi pi-cog"
+                    text
+                    rounded
+                    size="small"
+                    title="Settings (Ctrl+,)"
+                    @click="showSettings = true"
+                  />
+               </div>
+            </div>
+            <QAContentPanel />
+          </SplitterPanel>
+        </Splitter>
+      </SplitterPanel>
+    </Splitter>
   </div>
 </template>
 
@@ -187,5 +212,19 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 .toolbar-buttons {
   display: flex;
   gap: 4px;
+}
+
+:deep(.p-splitter) {
+  background: transparent;
+  color: inherit;
+}
+
+:deep(.p-splitter-gutter) {
+  background: var(--border-color);
+  transition: background 0.2s;
+}
+
+:deep(.p-splitter-gutter:hover) {
+  background: var(--primary-color);
 }
 </style>

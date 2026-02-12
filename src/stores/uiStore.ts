@@ -9,6 +9,11 @@ export const useUIStore = defineStore('ui', () => {
   const showAllQAs = ref(false)
   const showQAEditor = ref(false)
   const darkMode = ref(false)
+  const isSidebarVisible = ref(true)
+
+  // Pane sizes (percentages)
+  const sidebarWidth = ref(15)
+  const listWidth = ref(25)
 
   // Last-used metadata for pre-filling QA forms
   const lastUsedSource = ref('')
@@ -50,6 +55,9 @@ export const useUIStore = defineStore('ui', () => {
     showQAEditor,
     darkMode,
     toggleDarkMode,
+    isSidebarVisible,
+    sidebarWidth,
+    listWidth,
     lastUsedSource,
     lastUsedTags,
     lastUsedUrl,

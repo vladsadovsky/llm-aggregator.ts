@@ -85,3 +85,37 @@ body {
 .p-chip {
   font-size: 11px;
 }
+/* ─── Layout Utilities ────────────────────────────────── */
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.border-none { border: none !important; }
+.relative { position: relative; }
+.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+
+.content-header-toolbar {
+  display: flex;
+  align-items: center;
+  background: var(--surface-section);
+  border-bottom: 1px solid var(--border-color);
+  height: 37px; /* Match sidebar toolbar height */
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ─── Splitter Customization ─────────────────────────── */
+.p-splitter-gutter {
+  width: 4px !important;
+  background: var(--border-color) !important;
+  transition: background 0.2s;
+}
+
+.p-splitter-gutter:hover {
+  background: var(--primary-color) !important;
+}
+
+.p-splitter-gutter-handle {
+  display: none !important;
+}

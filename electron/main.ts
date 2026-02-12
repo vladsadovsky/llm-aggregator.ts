@@ -11,8 +11,9 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'LLM Aggregator',
-    // Path should point to your .icns file
-    icon: join(__dirname, '../public/icons/llm-aggregator.icns'),
+    icon: join(__dirname, process.platform === 'darwin'
+      ? '../public/icons/llm-aggregator.icns'
+      : '../public/icons/llm-aggregator.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
