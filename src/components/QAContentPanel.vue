@@ -27,10 +27,12 @@ function startEdit() {
 
 function cancelEdit() {
   uiStore.isEditing = false
+  window.dispatchEvent(new Event('llm:focus-qa-list'))
 }
 
 async function onSaved() {
   uiStore.isEditing = false
+  window.dispatchEvent(new Event('llm:focus-qa-list'))
   toast.add({ severity: 'success', summary: 'QA saved', life: 2000 })
 }
 
@@ -86,14 +88,32 @@ function onDeleteSelectedQARequest() {
   confirmDelete()
 }
 
+function duplicateSelectedQA() {
+  if (!pair.value || uiStore.isEditing) return
+
+  uiStore.openQAEditorWithDraft(
+    {
+      title: `${pair.value.title} (copy)`,
+      source: pair.value.source,
+      url: pair.value.url,
+      tags: [...pair.value.tags],
+      question: pair.value.question,
+      answer: pair.value.answer,
+    },
+    threadStore.selectedThreadId || null
+  )
+}
+
 onMounted(() => {
   window.addEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
   window.addEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
+  window.addEventListener('llm:duplicate-selected-qa', duplicateSelectedQA)
 })
 
 onUnmounted(() => {
   window.removeEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
   window.removeEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
+  window.removeEventListener('llm:duplicate-selected-qa', duplicateSelectedQA)
 })
 </script>
 
@@ -127,6 +147,13 @@ onUnmounted(() => {
             outlined
             severity="danger"
             @click="confirmDelete"
+          />
+          <Button
+            icon="pi pi-copy"
+            label="Duplicate"
+            size="small"
+            outlined
+            @click="duplicateSelectedQA"
           />
           <Button
             v-if="showMoveButtons"

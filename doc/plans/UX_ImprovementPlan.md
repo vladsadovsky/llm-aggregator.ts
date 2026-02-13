@@ -1,6 +1,7 @@
 # LLM Aggregator - UX Improvement Plan
 
 **Analysis Date:** February 9, 2026  
+**Re-assessment Date:** February 13, 2026  
 **Total Issues Identified:** 67  
 **Categories:** 11 major areas
 
@@ -8,13 +9,15 @@
 
 ## Executive Summary
 
-This document outlines comprehensive usability improvements for the LLM Aggregator application based on analysis of all Vue components and stores. The most critical gaps are:
+This document outlines comprehensive usability improvements for the LLM Aggregator application based on analysis of all Vue components and stores.
 
-1. **Complete absence of keyboard navigation** - no arrow keys, no shortcuts
-2. **No auto-population features** - repeated data entry for similar QAs
-3. **Missing auto-title generation** - defaults to "Untitled" requiring manual input
-4. **Accessibility issues** - missing ARIA labels, not screen reader friendly
-5. **Limited search capabilities** - only in "All QAs" mode, no real-time search
+**Status note (February 13, 2026):** Phase 1 items (auto-title, metadata pre-fill, core shortcuts, real-time search, URL validation, loading state) are implemented. Remaining highest-value gaps are:
+
+1. **Thread assignment in all-QA create flow** - newly created QAs can remain unfiled
+2. **Data-entry acceleration for repeated creates/edits** - missing duplicate/create-next workflows
+3. **Accessibility coverage** - ARIA semantics and focus management remain partial
+4. **Advanced search/filter depth** - source/date/url filters and highlights still missing
+5. **Undo/history and bulk actions** - still unimplemented
 
 ---
 
@@ -102,71 +105,111 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-## 2. AUTO-POPULATION ISSUES
+## 2. AUTO-POPULATION & ASSISTED ENTRY
 
-### 2.1 No Field Pre-filling from Last Entry ❌
-**Location:** `src/components/QAEditor.vue` (lines 20-25)  
-**Current State:** All fields start empty when creating new QA.  
-**Problem:** Users often create multiple QAs from the same source/model, requiring repeated data entry.  
-**Recommendation:**
-- Store last used values in `uiStore` or localStorage
-- Pre-fill `source`, `tags`, and optionally `url` from last QA
-- Add checkbox "Remember last source/tags"
-- Exclude `title`, `question`, `answer` from pre-fill
+### 2.1 Last-Used Metadata Pre-fill (Re-assessed) ✅ Partial
+**Location:** `src/components/QAEditor.vue`, `src/stores/uiStore.ts`, `src/components/SettingsDialog.vue`  
+**Current State:** Implemented. New QA pre-fills `source`, `tags`, and `url` from last create action; user can toggle "Remember last-used metadata" in Settings.  
+**Remaining Gap:** Values are currently store-memory only (reset on app restart).  
+**Recommendation (next increment):**
+- Persist `lastUsedSource`, `lastUsedTags`, `lastUsedUrl`, and `rememberLastMetadata` to app settings/localStorage
+- Add one-click "Clear remembered metadata" action in Settings
 
-**Implementation Sketch:**
-```typescript
-// In src/stores/uiStore.ts
-const lastUsedSource = ref('')
-const lastUsedTags = ref<string[]>([])
-const lastUsedUrl = ref('')
-const rememberLastMetadata = ref(true)
-
-function setLastUsedMetadata(source: string, tags: string[], url: string) {
-  if (rememberLastMetadata.value) {
-    lastUsedSource.value = source
-    lastUsedTags.value = tags
-    lastUsedUrl.value = url
-  }
-}
-
-function getLastUsedMetadata() {
-  return {
-    source: lastUsedSource.value,
-    tags: lastUsedTags.value,
-    url: lastUsedUrl.value
-  }
-}
-```
-
-**Difficulty:** ⭐ Easy
+**Feasibility:** High  
+**Difficulty:** ⭐ Easy  
+**Impact on Data Entry:** Medium
 
 ---
 
-### 2.2 No Thread Selection Memory ⚠️
-**Location:** `src/components/QAEditor.vue` (lines 38-44)  
-**Current State:** When creating QA in "All QAs" mode, no thread is auto-selected.  
-**Problem:** User must manually assign QA to thread after creation.  
+### 2.2 Thread Assignment During Create Flow (Re-assessed) ⚠️
+**Location:** `src/components/QAEditor.vue`, `src/components/QAListPanel.vue`  
+**Current State:** If user creates QA from a selected thread, it is added to that thread on create. In "All QAs" mode, new QA remains unassigned (not added to any thread).  
+**Problem:** In all-QA workflow, users must do extra navigation/actions to file the QA into a thread.  
 **Recommendation:**
-- Show optional thread selector dropdown in QAEditor
-- Pre-select current thread if one is active
-- Add "Add to thread" section with dropdown or recent threads list
+- Add optional "Add to thread" selector inside QAEditor
+- Default to:
+  - selected thread when one is active
+  - last-used thread when in all-QA mode
+- Add quick options: "None", "Recent threads", "Create new thread and add"
 
-**Difficulty:** ⭐⭐ Medium
+**Feasibility:** High  
+**Difficulty:** ⭐⭐ Medium  
+**Impact on Data Entry:** High
 
 ---
 
-### 2.3 No Smart Tag Suggestions ❌
-**Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue` (lines 26-27, 33)  
-**Current State:** Users type tags manually with comma separation.  
-**Problem:** No autocomplete from existing tags; typos create duplicate tags.  
-**Recommendation:**
-- Extract all unique tags from existing QAs
-- Implement tag autocomplete with `AutoComplete` component from PrimeVue
-- Show popular tags as chips/suggestions
-- Add tag management interface in settings
+### 2.3 Smart Tag Suggestions (Re-assessed) ✅ Partial
+**Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`, `src/stores/qaStore.ts`  
+**Current State:** Implemented with PrimeVue `AutoComplete` + multi-select suggestions from existing tags (`qaStore.allTags` frequency-sorted).  
+**Remaining Gaps:**
+- No explicit delimiter workflow (comma/enter behavior can feel inconsistent)
+- No "recent tags" quick-pick row
+- No tag normalization guidance (case/plural variants still possible)
 
-**Difficulty:** ⭐⭐ Medium
+**Recommendation (next increment):**
+- Commit tag chip on comma/Enter/Tab consistently
+- Add recent/popular tag chips below input for single-click insertion
+- Normalize and display canonical tag casing (e.g., preserve first-seen case)
+
+**Feasibility:** Medium-High  
+**Difficulty:** ⭐⭐ Medium  
+**Impact on Data Entry:** Medium-High
+
+---
+
+### 2.4 Section 2 Feasibility Snapshot (February 13, 2026)
+| Item | Status | Feasibility | Difficulty | Suggested Priority |
+|------|--------|-------------|------------|--------------------|
+| 2.1 Persist pre-fill across restarts | Not started | High | ⭐ Easy | P1 |
+| 2.2 Add thread selector in create form | Not started | High | ⭐⭐ Medium | P1 |
+| 2.3 Improve tag commit/quick-pick behavior | Not started | Medium-High | ⭐⭐ Medium | P2 |
+| 2.1 Clear remembered metadata action | Not started | High | ⭐ Easy | P2 |
+
+---
+
+### 2.5 Additional Faster Data Entry Improvements (All Forms & Flows)
+Analysis covered: `QAEditor`, `QAEditForm`, `QAListPanel`, `ThreadsPanel`, `SettingsDialog`, `QAContentPanel`, and app-level shortcuts in `App.vue`.
+
+1. **Create + continue workflow (high ROI)**
+- Add "Create & Add Another" button in `QAEditor`
+- Keep metadata/thread selection, clear question/answer/title, keep focus in question field
+- Shortcut: `Ctrl/Cmd+Shift+Enter`
+- **Difficulty:** ⭐⭐ Medium
+
+2. **Duplicate current QA into pre-filled create form**
+- Add action from `QAContentPanel` and shortcut (`D`) to open `QAEditor` pre-populated from selected QA
+- Speeds up variants/edits of similar prompts
+- **Difficulty:** ⭐⭐ Medium
+
+3. **Consistent validation parity between create and edit**
+- `QAEditForm` currently lacks URL validation parity with `QAEditor`
+- Add same inline URL validation + disabled save on invalid URL
+- **Difficulty:** ⭐ Easy
+
+4. **Thread quick-create inside QAEditor**
+- If desired thread does not exist, let user type and create thread inline without leaving form
+- **Difficulty:** ⭐⭐ Medium
+
+5. **Source quick-select shortcuts**
+- In `QAEditor`/`QAEditForm`, map `Alt+1..5` to source options (Claude, ChatGPT, Gemini, Copilot, DeepSeek)
+- **Difficulty:** ⭐ Easy
+
+6. **Focus restoration after create/save**
+- After create/save/cancel, restore focus to the selected QA list item (or to search if list is filtered)
+- Reduces mouse repositioning cost
+- **Difficulty:** ⭐⭐ Medium
+
+7. **Settings dialog keyboard ergonomics**
+- Add `Ctrl/Cmd+Enter` to save and `Escape` to close in `SettingsDialog`
+- **Difficulty:** ⭐ Easy
+
+8. **Quick metadata cloning in edit form**
+- Add one-click actions: "Copy tags from last-used", "Use current URL as source URL template"
+- **Difficulty:** ⭐⭐ Medium
+
+9. **Paste parser for structured imports (optional advanced)**
+- Detect pasted "Q:/A:" blocks in `QAEditor` and auto-split question/answer
+- **Difficulty:** ⭐⭐⭐ Hard
 
 ---
 
@@ -951,7 +994,7 @@ watch(question, (newQuestion) => {
 ## NOTES
 
 - **Total identified issues:** 67 improvements
-- **Critical gaps:** Keyboard navigation, auto-population, accessibility
+- **Critical gaps:** thread assignment flow, advanced data-entry acceleration, accessibility
 - **Quick wins available:** 15-20 easy fixes (1 week of work)
 - **Biggest ROI:** Auto-title + keyboard shortcuts + real-time search
 - **Architecture debt:** Undo/redo, mobile responsive, bulk operations
@@ -960,9 +1003,9 @@ watch(question, (newQuestion) => {
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** February 9, 2026  
-**Status:** Ready for implementation
+**Document Version:** 1.1  
+**Last Updated:** February 13, 2026  
+**Status:** In progress (Phase 1 complete, Phase 2 planning/refinement)
 
 
 ## Progress

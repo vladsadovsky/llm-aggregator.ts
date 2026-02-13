@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -16,6 +16,7 @@ const toast = useToast()
 
 const showEditor = ref(false)
 const searchResults = ref<string[] | null>(null)
+const qaListRef = ref<HTMLElement | null>(null)
 
 // Watch store trigger for opening QA editor (from global keyboard shortcut)
 watch(() => uiStore.showQAEditor, (val) => {
@@ -128,14 +129,46 @@ watch(() => uiStore.searchType, () => {
   }
 })
 
-async function onQACreated(pairId: string) {
-  showEditor.value = false
-  if (threadStore.selectedThreadId) {
-    await threadStore.addToThread(threadStore.selectedThreadId, pairId)
+function focusQAList() {
+  void nextTick(() => {
+    qaListRef.value?.focus()
+  })
+}
+
+function onFocusQAListRequest() {
+  focusQAList()
+}
+
+async function onQACreated(pairId: string, targetThreadId: string | null, continueAdding: boolean) {
+  showEditor.value = continueAdding
+
+  const threadIdForAdd = targetThreadId || threadStore.selectedThreadId
+  if (threadIdForAdd) {
+    await threadStore.addToThread(threadIdForAdd, pairId)
+    uiStore.setLastUsedThreadId(threadIdForAdd)
   }
+
   qaStore.selectPair(pairId)
+  if (!continueAdding) {
+    uiStore.clearQAEditorDraft()
+    focusQAList()
+  }
   toast.add({ severity: 'success', summary: 'QA created', life: 2000 })
 }
+
+function onQACancel() {
+  showEditor.value = false
+  uiStore.clearQAEditorDraft()
+  focusQAList()
+}
+
+onMounted(() => {
+  window.addEventListener('llm:focus-qa-list', onFocusQAListRequest)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('llm:focus-qa-list', onFocusQAListRequest)
+})
 
 function getQuestionSnippet(id: string): string {
   const pair = qaStore.pairs[id]
@@ -235,7 +268,7 @@ function onQAListKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- QA list -->
-    <div class="qa-list" tabindex="0" @keydown="onQAListKeydown">
+    <div ref="qaListRef" class="qa-list" tabindex="0" @keydown="onQAListKeydown">
       <div
         v-for="id in displayedItems"
         :key="id"
@@ -275,8 +308,10 @@ function onQAListKeydown(e: KeyboardEvent) {
     <!-- QA Editor dialog -->
     <QAEditor
       v-if="showEditor"
+      :initial-data="uiStore.qaEditorDraft"
+      :initial-target-thread-id="uiStore.qaEditorTargetThreadId"
       @created="onQACreated"
-      @cancel="showEditor = false"
+      @cancel="onQACancel"
     />
 
     <!-- Bottom: Add QA (OneNote "Add page" style) -->

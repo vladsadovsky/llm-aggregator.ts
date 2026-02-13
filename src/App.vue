@@ -5,6 +5,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
+import ConfirmDialog from 'primevue/confirmdialog'
 import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
@@ -32,6 +33,7 @@ const filteredCommands = computed(() => {
     { label: 'Create New QA', shortcut: `${modKeyLabel}+N`, action: openQAEditor },
     { label: 'Edit Selected QA', shortcut: 'E', action: requestEditSelectedQA },
     { label: 'Delete Selected QA', shortcut: 'Delete', action: requestDeleteSelectedQA },
+    { label: 'Duplicate Selected QA', shortcut: 'D', action: requestDuplicateSelectedQA },
     { label: 'Open Settings', shortcut: `${modKeyLabel}+,`, action: openSettings },
     { label: 'Show Shortcuts', shortcut: '?', action: openShortcutsHelp },
   ]
@@ -89,6 +91,7 @@ function focusSearch() {
 }
 
 function openQAEditor() {
+  uiStore.clearQAEditorDraft()
   uiStore.showQAEditor = true
 }
 
@@ -135,6 +138,10 @@ function requestEditSelectedQA() {
 
 function requestDeleteSelectedQA() {
   window.dispatchEvent(new Event('llm:delete-selected-qa'))
+}
+
+function requestDuplicateSelectedQA() {
+  window.dispatchEvent(new Event('llm:duplicate-selected-qa'))
 }
 
 async function moveSelectedQA(direction: -1 | 1) {
@@ -235,6 +242,14 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
+  // D: Duplicate selected QA into create form
+  if (!isMod && !event.altKey && !event.shiftKey && key === 'd') {
+    if (!qaStore.selectedPairId || uiStore.isEditing) return
+    event.preventDefault()
+    requestDuplicateSelectedQA()
+    return
+  }
+
   // Ctrl/Cmd + K: Open command palette
   if (isMod && key === 'k') {
     event.preventDefault()
@@ -299,6 +314,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           <tr><td>Alt+Up / Alt+Down</td><td>Move selected QA in thread</td></tr>
           <tr><td>E</td><td>Edit selected QA</td></tr>
           <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
+          <tr><td>D</td><td>Duplicate selected QA into new form</td></tr>
           <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
           <tr><td>?</td><td>Show this help</td></tr>
           <tr><td>{{ modKeyLabel }}+Enter</td><td>Submit QA form</td></tr>

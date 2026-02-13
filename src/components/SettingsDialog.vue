@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -18,6 +18,10 @@ const uiStore = useUIStore()
 const toast = useToast()
 
 const dataDirectory = ref('')
+const rememberLastMetadataModel = computed({
+  get: () => uiStore.rememberLastMetadata,
+  set: (value: boolean) => uiStore.setRememberLastMetadata(Boolean(value)),
+})
 
 onMounted(async () => {
   const settings = await window.api.settingsLoad()
@@ -39,11 +43,28 @@ async function save() {
   toast.add({ severity: 'success', summary: 'Settings saved', detail: 'Data directory updated', life: 3000 })
   emit('close')
 }
+
+function clearRememberedMetadata() {
+  uiStore.clearLastUsedMetadata()
+  toast.add({ severity: 'info', summary: 'Remembered metadata cleared', life: 2000 })
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    void save()
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+  }
+}
 </script>
 
 <template>
   <div class="settings-overlay" @click.self="emit('close')">
-    <div class="settings-dialog">
+    <div class="settings-dialog" @keydown="handleKeydown">
       <h3 class="dialog-title">
         <i class="pi pi-cog" />
         Settings
@@ -87,13 +108,22 @@ async function save() {
         <label>QA Editor</label>
         <div class="checkbox-field">
           <Checkbox 
-            v-model="uiStore.rememberLastMetadata" 
+            v-model="rememberLastMetadataModel" 
             inputId="rememberMetadata" 
             binary 
           />
           <label for="rememberMetadata" class="checkbox-label">
             Remember last-used source, tags, and URL
           </label>
+        </div>
+        <div class="metadata-actions">
+          <Button
+            label="Clear Remembered Metadata"
+            severity="secondary"
+            outlined
+            size="small"
+            @click="clearRememberedMetadata"
+          />
         </div>
       </div>
 
@@ -179,6 +209,10 @@ async function save() {
   color: var(--text-color);
   cursor: pointer;
   margin: 0;
+}
+
+.metadata-actions {
+  margin-top: 8px;
 }
 
 .button-row {
