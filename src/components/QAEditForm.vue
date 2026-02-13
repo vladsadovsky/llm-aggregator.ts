@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useQAStore } from '../stores/qaStore'
 import type { QAPairData, QAUpdateData } from '../types/QAPair'
 import Button from 'primevue/button'
@@ -34,6 +34,21 @@ const tags = ref([...props.pair.tags])
 const tagSuggestions = ref<string[]>([])
 const question = ref(props.pair.question)
 const answer = ref(props.pair.answer)
+const tagsAutoCompleteRef = ref<InstanceType<typeof AutoComplete> | null>(null)
+const urlError = ref('')
+
+watch(url, (newUrl) => {
+  if (!newUrl.trim()) {
+    urlError.value = ''
+    return
+  }
+  try {
+    new URL(newUrl)
+    urlError.value = ''
+  } catch {
+    urlError.value = 'Invalid URL format'
+  }
+})
 
 function searchTags(event: { query: string }) {
   const query = event.query.toLowerCase()
@@ -41,7 +56,40 @@ function searchTags(event: { query: string }) {
     .filter(t => t.includes(query) && !tags.value.includes(t))
 }
 
+function commitPendingTags() {
+  const autoCompleteRoot = (tagsAutoCompleteRef.value as any)?.$el as HTMLElement | undefined
+  if (!autoCompleteRoot) return
+
+  const input = autoCompleteRoot.querySelector('input') as HTMLInputElement | null
+  const raw = input?.value?.trim() || ''
+  if (!raw) return
+
+  const pendingTags = raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+
+  if (pendingTags.length === 0) return
+
+  const existing = new Set(tags.value.map((t) => t.toLowerCase()))
+  for (const tag of pendingTags) {
+    const normalized = tag.toLowerCase()
+    if (!existing.has(normalized)) {
+      tags.value.push(tag)
+      existing.add(normalized)
+    }
+  }
+
+  if (input) {
+    input.value = ''
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+}
+
 async function save() {
+  commitPendingTags()
+  if (urlError.value) return
+
   const data: QAUpdateData = {
     title: title.value.trim() || 'Untitled',
     source: source.value,
@@ -58,6 +106,15 @@ async function save() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  if (event.altKey && !event.ctrlKey && !event.metaKey) {
+    const hotkeyIndex = Number(event.key)
+    if (hotkeyIndex >= 1 && hotkeyIndex <= sourceOptions.length) {
+      event.preventDefault()
+      source.value = sourceOptions[hotkeyIndex - 1].value
+      return
+    }
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault()
     void save()
@@ -110,13 +167,15 @@ onUnmounted(() => {
       </div>
       <div class="field flex-1">
         <label>URL</label>
-        <InputText v-model="url" class="w-full" />
+        <InputText v-model="url" class="w-full" :class="{ 'p-invalid': urlError }" />
+        <small v-if="urlError" class="field-error">{{ urlError }}</small>
       </div>
     </div>
 
     <div class="field">
       <label>Tags</label>
       <AutoComplete
+        ref="tagsAutoCompleteRef"
         v-model="tags"
         :suggestions="tagSuggestions"
         @complete="searchTags"
@@ -140,7 +199,7 @@ onUnmounted(() => {
       <small class="shortcut-hint">Ctrl/Cmd+S to save, Esc to cancel</small>
       <div class="button-group">
         <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
-        <Button label="Save" icon="pi pi-check" @click="save" />
+        <Button label="Save" icon="pi pi-check" @click="save" :disabled="!!urlError" />
       </div>
     </div>
   </div>
@@ -167,6 +226,13 @@ onUnmounted(() => {
   font-weight: 500;
   color: var(--text-color-secondary);
   margin-bottom: 4px;
+}
+
+.field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--red-500);
 }
 
 .field-row {

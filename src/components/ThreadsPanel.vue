@@ -21,6 +21,7 @@ const editingName = ref('')
 
 function selectThread(tid: string) {
   threadStore.selectThread(tid)
+  uiStore.setLastUsedThreadId(tid)
   uiStore.showAllQAs = false
   // Auto-select the first QA in the thread
   const thread = threadStore.threads[tid]
