@@ -51,23 +51,23 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ### 1.3 Missing Global Keyboard Shortcuts ❌
 **Location:** `src/App.vue`  
-**Current State:** No global keyboard shortcuts defined.  
-**Problem:** Users cannot quickly access common actions without mouse.  
+**Current State:** Core global shortcuts are implemented, but coverage and platform docs need continuous updates.  
+**Problem:** Users may miss discoverability or hit platform-specific gaps if docs lag code.  
 
 **Recommended Shortcuts:**
 
 | Shortcut | Action | Priority |
 |----------|--------|----------|
-| `Ctrl+F` or `/` | Focus search bar | 🔴 Critical |
-| `Ctrl+N` | New QA pair | 🔴 Critical |
-| `Ctrl+S` | Save (in edit mode) | 🔴 Critical |
+| `Ctrl/Cmd+F` or `/` | Focus search bar | 🔴 Critical |
+| `Ctrl/Cmd+N` | New QA pair | 🔴 Critical |
+| `Ctrl/Cmd+S` | Save (in edit mode) | 🔴 Critical |
 | `Escape` | Close dialogs/cancel actions | 🔴 Critical |
-| `Ctrl+,` | Open settings | 🟡 High |
+| `Ctrl/Cmd+,` | Open settings | 🟡 High |
 | `Delete` | Delete selected item (with confirmation) | 🟡 High |
-| `F2` | Rename selected thread | 🟡 High |
+| `F2` (often `Fn+F2` on Mac keyboards) | Rename selected thread | 🟡 High |
 | `E` | Edit selected QA | 🟡 Medium |
 | `Alt+Up/Down` | Move QA in thread | 🟡 Medium |
-| `Ctrl+K` | Command palette | 🟢 Nice to have |
+| `Ctrl/Cmd+K` | Command palette | 🟢 Nice to have |
 | `?` | Show keyboard shortcuts help | 🟢 Nice to have |
 
 **Difficulty:** ⭐⭐ Medium
@@ -842,18 +842,18 @@ watch(question, (newQuestion) => {
 
 | Shortcut | Action | Where to Add | Priority |
 |----------|--------|--------------|----------|
-| `Ctrl+F` or `/` | Focus search | `src/App.vue` | 🔴 Critical |
-| `Ctrl+N` | New QA | `src/App.vue` | 🔴 Critical |
-| `Ctrl+S` | Save | `src/components/QAEditor.vue` | 🔴 Critical |
+| `Ctrl/Cmd+F` or `/` | Focus search | `src/App.vue` | 🔴 Critical |
+| `Ctrl/Cmd+N` | New QA | `src/App.vue` | 🔴 Critical |
+| `Ctrl/Cmd+S` | Save | `src/components/QAEditForm.vue` | 🔴 Critical |
 | `Escape` | Close dialog | `src/App.vue` | 🔴 Critical |
-| `Ctrl+Enter` | Submit form | `src/components/QAEditor.vue` | 🟡 High |
+| `Ctrl/Cmd+Enter` | Submit form | `src/components/QAEditor.vue` | 🟡 High |
 | `Up/Down` | Navigate list | `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue` | 🟡 High |
 | `Enter` | Select/Open item | `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue` | 🟡 High |
 | `Delete` | Delete selected | `src/App.vue` | 🟡 High |
 | `E` | Edit selected | `src/App.vue` | 🟡 Medium |
-| `F2` | Rename thread | `src/components/ThreadsPanel.vue` | 🟡 Medium |
+| `F2` (often `Fn+F2` on Mac keyboards) | Rename thread | `src/components/ThreadsPanel.vue` | 🟡 Medium |
 | `Alt+Up/Down` | Move QA | `src/components/QAContentPanel.vue` | 🟡 Medium |
-| `Ctrl+K` | Command palette | `src/App.vue` | 🟢 Nice to have |
+| `Ctrl/Cmd+K` | Command palette | `src/App.vue` | 🟢 Nice to have |
 | `?` | Show help | `src/App.vue` | 🟢 Nice to have |
 | `Ctrl+Z/Y` | Undo/Redo | `src/App.vue` | 🔵 Future |
 
@@ -981,11 +981,18 @@ QAEditor.vue pre-fills these fields automatically
 New rememberLastMetadata toggle in Settings
 3. Global Keyboard Shortcuts ✅
 App.vue now handles:
-Ctrl+F: Focus search (in All QAs mode)
-Ctrl+N: Create new QA
-Ctrl+,: Open settings
-Escape: Close dialogs
-Ctrl+Enter: Submit forms (in QAEditor)
+Ctrl/Cmd+F or /: Focus search
+Ctrl/Cmd+N: Create new QA
+Ctrl/Cmd+S: Save current edit form
+Ctrl/Cmd+,: Open settings
+Escape: Close dialogs / cancel current edit
+F2 (Fn+F2 on some Macs): Rename selected thread
+Alt+Up/Down: Move selected QA in thread
+E: Edit selected QA
+Delete (Backspace on many Macs): Delete selected QA
+Ctrl/Cmd+K: Open command palette
+?: Show keyboard shortcuts help
+Ctrl/Cmd+Enter: Submit forms (in QAEditor)
 4. Real-time Search ✅
 QAListPanel.vue debounces search with 400ms delay
 Updates as you type with loading spinner

@@ -36,11 +36,18 @@ Specifications for the application were prepared manually. Baseline version of t
 
 | Shortcut | Action | Context |
 |----------|--------|---------|
-| **Ctrl+F** (Cmd+F on Mac) | Focus search box | Global — works from any panel |
-| **Alt+N** | Create new QA pair | Global — opens the QA editor dialog |
-| **Ctrl+,** (Cmd+, on Mac) | Open settings | Global — access app configuration |
+| **Ctrl/Cmd+F** or **/** | Focus search box | Global — works from any panel |
+| **Ctrl/Cmd+N** | Create new QA pair | Global — opens the QA editor dialog |
+| **Ctrl/Cmd+S** | Save current edit | Edit mode — saves the current QA |
+| **Ctrl/Cmd+,** | Open settings | Global — access app configuration |
 | **Escape** | Close dialog / cancel | Global — closes any open modal |
-| **Ctrl+Enter** (Cmd+Enter on Mac) | Submit form | QA Editor — saves the current QA pair |
+| **F2** (often **Fn+F2** on Mac keyboards) | Rename selected thread | Global |
+| **Alt+Up / Alt+Down** | Move selected QA up/down in thread | Global — thread mode |
+| **E** | Edit selected QA | Global |
+| **Delete** (often **Backspace** on Mac keyboards) | Delete selected QA (with confirmation) | Global |
+| **Ctrl/Cmd+K** | Open command palette | Global |
+| **?** | Show keyboard shortcuts help | Global |
+| **Ctrl/Cmd+Enter** | Submit form | QA Editor — saves the current QA pair |
 | **Arrow Up / Down** | Navigate list items | Thread list or QA list — when the list is focused |
 
 ### Search
@@ -151,4 +158,3 @@ You can also change this from within the app via the **Settings** dialog (gear i
 
 * Repo owner or admin - eveselov@hotmail.com
 * Contributor - sadovskyvlad@gmail.com 
-

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -102,6 +102,19 @@ function onThreadListKeydown(e: KeyboardEvent) {
     selectThread(ids[prev])
   }
 }
+
+function onRenameSelectedThreadRequest() {
+  if (!threadStore.selectedThreadId) return
+  startRename(threadStore.selectedThreadId)
+}
+
+onMounted(() => {
+  window.addEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+})
 </script>
 
 <template>

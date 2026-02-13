@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useQAStore } from '../stores/qaStore'
 import type { QAPairData, QAUpdateData } from '../types/QAPair'
 import Button from 'primevue/button'
@@ -56,10 +56,39 @@ async function save() {
   await qaStore.updatePair(props.pair.id, data)
   emit('saved')
 }
+
+function handleKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void save()
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('cancel')
+  }
+}
+
+function onGlobalSaveRequest() {
+  void save()
+}
+
+function onGlobalCancelRequest() {
+  emit('cancel')
+}
+
+onMounted(() => {
+  window.addEventListener('llm:save-current-edit', onGlobalSaveRequest)
+  window.addEventListener('llm:cancel-current-edit', onGlobalCancelRequest)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('llm:save-current-edit', onGlobalSaveRequest)
+  window.removeEventListener('llm:cancel-current-edit', onGlobalCancelRequest)
+})
 </script>
 
 <template>
-  <div class="edit-form">
+  <div class="edit-form" @keydown="handleKeydown">
     <h3 class="form-title">Edit QA</h3>
 
     <div class="field">
@@ -108,8 +137,11 @@ async function save() {
     </div>
 
     <div class="button-row">
-      <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
-      <Button label="Save" icon="pi pi-check" @click="save" />
+      <small class="shortcut-hint">Ctrl/Cmd+S to save, Esc to cancel</small>
+      <div class="button-group">
+        <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
+        <Button label="Save" icon="pi pi-check" @click="save" />
+      </div>
     </div>
   </div>
 </template>
@@ -152,10 +184,21 @@ async function save() {
 
 .button-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--border-color);
+}
+
+.shortcut-hint {
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
 }
 </style>

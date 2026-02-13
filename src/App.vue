@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import Toast from 'primevue/toast'
 import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import ThreadsPanel from './components/ThreadsPanel.vue'
@@ -17,7 +18,32 @@ const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
 const showSettings = ref(false)
+const showCommandPalette = ref(false)
+const showShortcutsHelp = ref(false)
+const commandQuery = ref('')
 const isLoading = ref(true)
+
+const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
+
+const filteredCommands = computed(() => {
+  const query = commandQuery.value.trim().toLowerCase()
+  const commands = [
+    { label: 'Focus Search', shortcut: `${modKeyLabel}+F`, action: focusSearch },
+    { label: 'Create New QA', shortcut: `${modKeyLabel}+N`, action: openQAEditor },
+    { label: 'Edit Selected QA', shortcut: 'E', action: requestEditSelectedQA },
+    { label: 'Delete Selected QA', shortcut: 'Delete', action: requestDeleteSelectedQA },
+    { label: 'Open Settings', shortcut: `${modKeyLabel}+,`, action: openSettings },
+    { label: 'Show Shortcuts', shortcut: '?', action: openShortcutsHelp },
+  ]
+
+  if (!query) return commands
+  return commands.filter((command) => {
+    return (
+      command.label.toLowerCase().includes(query) ||
+      command.shortcut.toLowerCase().includes(query)
+    )
+  })
+})
 
 onMounted(async () => {
   // Load threads and QA pairs in parallel; don't let one failure block the other
@@ -48,44 +74,178 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
 
+function isInputTarget(target: HTMLElement): boolean {
+  return (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable
+  )
+}
+
+function focusSearch() {
+  const searchInput = document.querySelector('.search-input input') as HTMLInputElement | null
+  searchInput?.focus()
+  searchInput?.select()
+}
+
+function openQAEditor() {
+  uiStore.showQAEditor = true
+}
+
+function openSettings() {
+  showSettings.value = true
+}
+
+function openShortcutsHelp() {
+  showShortcutsHelp.value = true
+}
+
+function openCommandPalette() {
+  showCommandPalette.value = true
+  commandQuery.value = ''
+  void nextTick(() => {
+    const input = document.querySelector('.command-palette input') as HTMLInputElement | null
+    input?.focus()
+  })
+}
+
+function closeOverlays() {
+  if (showCommandPalette.value) {
+    showCommandPalette.value = false
+  } else if (showShortcutsHelp.value) {
+    showShortcutsHelp.value = false
+  } else if (showSettings.value) {
+    showSettings.value = false
+  } else {
+    window.dispatchEvent(new Event('llm:cancel-current-edit'))
+  }
+}
+
+function requestSaveCurrentEdit() {
+  window.dispatchEvent(new Event('llm:save-current-edit'))
+}
+
+function requestRenameSelectedThread() {
+  window.dispatchEvent(new Event('llm:rename-selected-thread'))
+}
+
+function requestEditSelectedQA() {
+  window.dispatchEvent(new Event('llm:edit-selected-qa'))
+}
+
+function requestDeleteSelectedQA() {
+  window.dispatchEvent(new Event('llm:delete-selected-qa'))
+}
+
+async function moveSelectedQA(direction: -1 | 1) {
+  if (!threadStore.selectedThreadId || !qaStore.selectedPairId || uiStore.showAllQAs || uiStore.isEditing) {
+    return
+  }
+  await threadStore.moveInThread(threadStore.selectedThreadId, qaStore.selectedPairId, direction)
+}
+
+function runCommand(action: () => void) {
+  showCommandPalette.value = false
+  action()
+}
+
 function handleGlobalKeydown(event: KeyboardEvent) {
-  // Ignore if user is typing in an input
+  const key = event.key.toLowerCase()
+  const isMod = event.ctrlKey || event.metaKey
   const target = event.target as HTMLElement
-  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-    // Allow Escape to work even in inputs
-    if (event.key === 'Escape') {
-      target.blur()
-      if (showSettings.value) {
-        showSettings.value = false
-      }
-    }
+
+  if (isMod && key === 's') {
+    event.preventDefault()
+    requestSaveCurrentEdit()
     return
   }
 
-  // Ctrl/Cmd + F: Focus search
-  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+  if (event.key === 'Escape') {
     event.preventDefault()
-    const searchInput = document.querySelector('.search-input input') as HTMLInputElement
-    searchInput?.focus()
+    if (isInputTarget(target)) {
+      target.blur()
+    }
+    closeOverlays()
+    return
   }
 
-  // Alt + N: New QA (Ctrl+N and Ctrl+Shift+N are reserved by Electron/Chromium)
-  if (event.altKey && event.key === 'n') {
+  if (isInputTarget(target)) return
+
+  // Ctrl/Cmd + F and /: Focus search
+  if ((isMod && key === 'f') || (!event.shiftKey && !isMod && !event.altKey && event.key === '/')) {
     event.preventDefault()
-    uiStore.showQAEditor = true
+    focusSearch()
+    return
+  }
+
+  // Ctrl/Cmd + N: New QA
+  if (isMod && key === 'n') {
+    event.preventDefault()
+    openQAEditor()
+    return
+  }
+
+  // Legacy fallback for older docs/behavior
+  if (event.altKey && key === 'n') {
+    event.preventDefault()
+    openQAEditor()
+    return
   }
 
   // Ctrl/Cmd + , : Open settings
-  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+  if (isMod && event.key === ',') {
     event.preventDefault()
-    showSettings.value = true
+    openSettings()
+    return
   }
 
-  // Escape: Close dialogs
-  if (event.key === 'Escape') {
-    if (showSettings.value) {
-      showSettings.value = false
-    }
+  // Alt + Up/Down: Move selected QA in current thread
+  if (event.altKey && !isMod && !event.shiftKey && event.key === 'ArrowUp') {
+    event.preventDefault()
+    void moveSelectedQA(-1)
+    return
+  }
+
+  if (event.altKey && !isMod && !event.shiftKey && event.key === 'ArrowDown') {
+    event.preventDefault()
+    void moveSelectedQA(1)
+    return
+  }
+
+  // F2: Rename selected thread
+  if (event.key === 'F2') {
+    event.preventDefault()
+    requestRenameSelectedThread()
+    return
+  }
+
+  // E: Edit selected QA
+  if (!isMod && !event.altKey && !event.shiftKey && key === 'e') {
+    if (!qaStore.selectedPairId || uiStore.isEditing) return
+    event.preventDefault()
+    requestEditSelectedQA()
+    return
+  }
+
+  // Delete/Backspace: Delete selected QA
+  if ((event.key === 'Delete' || event.key === 'Backspace') && !isMod && !event.altKey && !event.shiftKey) {
+    if (!qaStore.selectedPairId || uiStore.isEditing) return
+    event.preventDefault()
+    requestDeleteSelectedQA()
+    return
+  }
+
+  // Ctrl/Cmd + K: Open command palette
+  if (isMod && key === 'k') {
+    event.preventDefault()
+    openCommandPalette()
+    return
+  }
+
+  // ?: Show keyboard shortcuts
+  if (event.key === '?') {
+    event.preventDefault()
+    openShortcutsHelp()
   }
 }
 </script>
@@ -94,6 +254,58 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <Toast position="bottom-right" />
   <ConfirmDialog />
   <SettingsDialog v-if="showSettings" @close="showSettings = false" />
+  <div
+    v-if="showCommandPalette"
+    class="overlay"
+    @click.self="showCommandPalette = false"
+  >
+    <div class="command-palette">
+      <InputText
+        v-model="commandQuery"
+        placeholder="Type a command..."
+        class="w-full"
+      />
+      <div class="command-list">
+        <button
+          v-for="command in filteredCommands"
+          :key="command.label"
+          class="command-item"
+          @click="runCommand(command.action)"
+        >
+          <span>{{ command.label }}</span>
+          <kbd>{{ command.shortcut }}</kbd>
+        </button>
+        <p v-if="filteredCommands.length === 0" class="command-empty">
+          No commands match.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div
+    v-if="showShortcutsHelp"
+    class="overlay"
+    @click.self="showShortcutsHelp = false"
+  >
+    <div class="shortcuts-dialog">
+      <h3>Keyboard Shortcuts</h3>
+      <table>
+        <tbody>
+          <tr><td>{{ modKeyLabel }}+F or /</td><td>Focus search</td></tr>
+          <tr><td>{{ modKeyLabel }}+N</td><td>Create new QA</td></tr>
+          <tr><td>{{ modKeyLabel }}+S</td><td>Save while editing</td></tr>
+          <tr><td>{{ modKeyLabel }}+,</td><td>Open settings</td></tr>
+          <tr><td>Escape</td><td>Close dialog / cancel current action</td></tr>
+          <tr><td>F2 (Fn+F2 on some Macs)</td><td>Rename selected thread</td></tr>
+          <tr><td>Alt+Up / Alt+Down</td><td>Move selected QA in thread</td></tr>
+          <tr><td>E</td><td>Edit selected QA</td></tr>
+          <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
+          <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
+          <tr><td>?</td><td>Show this help</td></tr>
+          <tr><td>{{ modKeyLabel }}+Enter</td><td>Submit QA form</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   
   <!-- Loading screen -->
   <div v-if="isLoading" class="loading-screen">
@@ -144,7 +356,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
                     text
                     rounded
                     size="small"
-                    title="Settings (Ctrl+,)"
+                    :title="`Settings (${modKeyLabel}+,)`"
                     @click="showSettings = true"
                   />
                </div>
@@ -212,6 +424,94 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 .toolbar-buttons {
   display: flex;
   gap: 4px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.command-palette {
+  width: 560px;
+  max-width: 90vw;
+  background: var(--surface-card);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  padding: 12px;
+}
+
+.command-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.command-item {
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-color);
+}
+
+.command-item:hover {
+  background: var(--surface-hover);
+}
+
+.command-item kbd {
+  font-size: 11px;
+  color: var(--text-color-secondary);
+  background: var(--surface-200);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.command-empty {
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  margin: 8px;
+}
+
+.shortcuts-dialog {
+  width: 620px;
+  max-width: 92vw;
+  background: var(--surface-card);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  padding: 18px;
+}
+
+.shortcuts-dialog h3 {
+  margin: 0 0 12px;
+}
+
+.shortcuts-dialog table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcuts-dialog td {
+  border-top: 1px solid var(--border-color);
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.shortcuts-dialog td:first-child {
+  width: 45%;
+  color: var(--text-color-secondary);
 }
 
 :deep(.p-splitter) {

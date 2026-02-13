@@ -52,6 +52,14 @@
   },
   "build": {
     "appId": "com.llm-aggregator.app",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
     "mac": {
       "icon": "public/icons/llm-aggregator.icns",
       "target": ["dmg", "zip"]

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useQAStore } from '../stores/qaStore'
 import { useThreadStore } from '../stores/threadStore'
 import { useUIStore } from '../stores/uiStore'
@@ -74,6 +74,26 @@ async function moveDown() {
 
 const showMoveButtons = computed(() => {
   return threadStore.selectedThreadId && !uiStore.showAllQAs
+})
+
+function onEditSelectedQARequest() {
+  if (!pair.value || uiStore.isEditing) return
+  startEdit()
+}
+
+function onDeleteSelectedQARequest() {
+  if (!pair.value || uiStore.isEditing) return
+  confirmDelete()
+}
+
+onMounted(() => {
+  window.addEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
+  window.addEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
+  window.removeEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
 })
 </script>
 

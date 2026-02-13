@@ -209,7 +209,7 @@ function handleKeydown(event: KeyboardEvent) {
       </div>
 
       <div class="button-row">
-        <small class="shortcut-hint">Ctrl+Enter to save, Esc to cancel</small>
+        <small class="shortcut-hint">Ctrl/Cmd+Enter to save, Esc to cancel</small>
         <div class="button-group">
           <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
           <Button 
