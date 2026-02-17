@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "conversation-history": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\<user>\\OneDrive\\Documents\\LLMAggregator\\claude-conversation-mcp\\index.js"
+      ]
+    }
+  },
+  "preferences": {
+    "sidebarMode": "chat",
+    "coworkScheduledTasksEnabled": false
+  }
+}

@@ -116,6 +116,15 @@ npm run typecheck
 npm test
 ```
 
+### Integration with Claude Desktop as an MCP server
+If you want to access saved conversations inside Claude chatbot you need to set up an MCP server, exporting the conversations and point Claude to it.
+
+In directory build/claude there are necessary files, which need to be modified to point to the directory
+used as a saved threads repository (index.js) and Claude config file need to be pointed to the location of MCP server as well
+
+The process will be automated in the future
+
+
 ## Extensions for Visual Code
 
 In addition to standard TypeScript extensions you need to install official Vue VS Code extension to be able to set breakpoints in .vue files 
