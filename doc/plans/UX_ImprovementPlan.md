@@ -9,6 +9,7 @@
 
 ## Executive Summary
 
+<<<<<<< Updated upstream
 This document outlines comprehensive usability improvements for the LLM Aggregator application based on analysis of all Vue components and stores.
 
 **Status note (February 13, 2026):** Phase 1 items (auto-title, metadata pre-fill, core shortcuts, real-time search, URL validation, loading state) are implemented. Remaining highest-value gaps are:
@@ -18,17 +19,30 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 3. **Accessibility coverage** - ARIA semantics and focus management remain partial
 4. **Advanced search/filter depth** - source/date/url filters and highlights still missing
 5. **Undo/history and bulk actions** - still unimplemented
+=======
+This document outlines comprehensive usability improvements for the LLM Aggregator application. Since the initial analysis in February 2026, several critical gaps have been addressed, including global keyboard shortcuts, real-time search, and auto-population features.
+
+Remaining major gaps are:
+
+1. **Accessibility refinement** - missing ARIA labels in some components
+2. **Bulk operations** - no multi-select for QAs or threads
+3. **Advanced search** - missing multi-criteria filters
+4. **Data portability** - no export/import functionality
+5. **Mobile responsiveness** - fixed-width panels and lack of touch support
+>>>>>>> Stashed changes
 
 ---
 
 ## 1. KEYBOARD NAVIGATION ISSUES
 
-### 1.1 No Arrow Key Navigation for Threads ❌
+### 1.1 Arrow Key Navigation for Threads ✅ DONE
+
 **Location:** `src/components/ThreadsPanel.vue`  
 **Current State:** Threads can only be selected via mouse clicks. No keyboard shortcuts exist.  
 **Problem:** Users cannot use arrow keys to navigate between threads, requiring frequent mouse usage.  
 **Recommendation:**
-- Add `@keydown` handler to thread items
+
+- Add @keydown handler to thread items
 - Implement Up/Down arrow keys to navigate threads
 - Add Enter key to select thread
 - Add `tabindex` attributes for accessibility
@@ -38,11 +52,13 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 1.2 No Arrow Key Navigation for QA Pairs ❌
+### 1.2 Arrow Key Navigation for QA Pairs ✅ DONE
+
 **Location:** `src/components/QAListPanel.vue`  
 **Current State:** QA items lack keyboard navigation between items.  
 **Problem:** Users must click each QA pair individually; no keyboard shortcuts for quick browsing.  
 **Recommendation:**
+
 - Add Up/Down arrow key navigation in QA list
 - Add `j/k` keys for vim-style navigation (optional)
 - Implement `Ctrl+E` to open editor
@@ -52,36 +68,39 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 1.3 Missing Global Keyboard Shortcuts ❌
+### 1.3 Global Keyboard Shortcuts ✅ DONE
+
 **Location:** `src/App.vue`  
 **Current State:** Core global shortcuts are implemented, but coverage and platform docs need continuous updates.  
-**Problem:** Users may miss discoverability or hit platform-specific gaps if docs lag code.  
+**Problem:** Users may miss discoverability or hit platform-specific gaps if docs lag code.
 
 **Recommended Shortcuts:**
 
-| Shortcut | Action | Priority |
-|----------|--------|----------|
-| `Ctrl/Cmd+F` or `/` | Focus search bar | 🔴 Critical |
-| `Ctrl/Cmd+N` | New QA pair | 🔴 Critical |
-| `Ctrl/Cmd+S` | Save (in edit mode) | 🔴 Critical |
-| `Escape` | Close dialogs/cancel actions | 🔴 Critical |
-| `Ctrl/Cmd+,` | Open settings | 🟡 High |
-| `Delete` | Delete selected item (with confirmation) | 🟡 High |
-| `F2` (often `Fn+F2` on Mac keyboards) | Rename selected thread | 🟡 High |
-| `E` | Edit selected QA | 🟡 Medium |
-| `Alt+Up/Down` | Move QA in thread | 🟡 Medium |
-| `Ctrl/Cmd+K` | Command palette | 🟢 Nice to have |
-| `?` | Show keyboard shortcuts help | 🟢 Nice to have |
+| Shortcut                              | Action                                   | Priority        |
+| ------------------------------------- | ---------------------------------------- | --------------- |
+| `Ctrl/Cmd+F` or `/`                   | Focus search bar                         | 🔴 Critical     |
+| `Ctrl/Cmd+N`                          | New QA pair                              | 🔴 Critical     |
+| `Ctrl/Cmd+S`                          | Save (in edit mode)                      | 🔴 Critical     |
+| `Escape`                              | Close dialogs/cancel actions             | 🔴 Critical     |
+| `Ctrl/Cmd+,`                          | Open settings                            | 🟡 High         |
+| `Delete`                              | Delete selected item (with confirmation) | 🟡 High         |
+| `F2` (often `Fn+F2` on Mac keyboards) | Rename selected thread                   | 🟡 High         |
+| `E`                                   | Edit selected QA                         | 🟡 Medium       |
+| `Alt+Up/Down`                         | Move QA in thread                        | 🟡 Medium       |
+| `Ctrl/Cmd+K`                          | Command palette                          | 🟢 Nice to have |
+| `?`                                   | Show keyboard shortcuts help             | 🟢 Nice to have |
 
 **Difficulty:** ⭐⭐ Medium
 
 ---
 
 ### 1.4 Tab Order Issues in Forms ⚠️
+
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`  
 **Current State:** Tab order follows DOM order, but no skip links or focus management.  
 **Problem:** After creating/editing QA, focus is not returned to logical location.  
 **Recommendation:**
+
 - Return focus to newly created QA item after creation
 - Trap focus within modal dialogs
 - Add `autofocus` directive to first input in forms (already exists in some places)
@@ -91,11 +110,13 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 1.5 No Keyboard Access to Action Buttons ❌
+### 1.5 Keyboard Access to Action Buttons ✅ DONE
+
 **Location:** `src/components/QAContentPanel.vue`  
 **Current State:** Edit/Delete/Move buttons require mouse clicks.  
 **Problem:** Power users cannot quickly perform actions on selected QA.  
 **Recommendation:**
+
 - `E`: Edit selected QA
 - `Delete`: Delete selected QA
 - `Alt+Up/Down`: Move QA in thread
@@ -107,6 +128,7 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ## 2. AUTO-POPULATION & ASSISTED ENTRY
 
+<<<<<<< Updated upstream
 ### 2.1 Last-Used Metadata Pre-fill (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/stores/uiStore.ts`, `src/components/SettingsDialog.vue`  
 **Current State:** Implemented. New QA pre-fills `source`, `tags`, and `url` from last create action; user can toggle "Remember last-used metadata" in Settings.  
@@ -131,6 +153,60 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
   - selected thread when one is active
   - last-used thread when in all-QA mode
 - Add quick options: "None", "Recent threads", "Create new thread and add"
+=======
+### 2.1 Field Pre-filling from Last Entry ✅ DONE
+
+**Location:** `src/components/QAEditor.vue` (lines 20-25)  
+**Current State:** All fields start empty when creating new QA.  
+**Problem:** Users often create multiple QAs from the same source/model, requiring repeated data entry.  
+**Recommendation:**
+
+- Store last used values in `uiStore` or localStorage
+- Pre-fill `source`, `tags`, and optionally `url` from last QA
+- Add checkbox "Remember last source/tags"
+- Exclude `title`, `question`, `answer` from pre-fill
+
+**Implementation Sketch:**
+
+```typescript
+// In src/stores/uiStore.ts
+const lastUsedSource = ref("");
+const lastUsedTags = ref<string[]>([]);
+const lastUsedUrl = ref("");
+const rememberLastMetadata = ref(true);
+
+function setLastUsedMetadata(source: string, tags: string[], url: string) {
+  if (rememberLastMetadata.value) {
+    lastUsedSource.value = source;
+    lastUsedTags.value = tags;
+    lastUsedUrl.value = url;
+  }
+}
+
+function getLastUsedMetadata() {
+  return {
+    source: lastUsedSource.value,
+    tags: lastUsedTags.value,
+    url: lastUsedUrl.value,
+  };
+}
+```
+
+**Difficulty:** ⭐ Easy
+
+---
+
+### 2.2 No Thread Selection Memory ⚠️
+
+**Location:** `src/components/QAEditor.vue` (lines 38-44)  
+**Current State:** When creating QA in "All QAs" mode, no thread is auto-selected.  
+**Problem:** User must manually assign QA to thread after creation.  
+**Recommendation:**
+
+- Show optional thread selector dropdown in QAEditor
+- Pre-select current thread if one is active
+- Add "Add to thread" section with dropdown or recent threads list
+>>>>>>> Stashed changes
 
 **Feasibility:** High  
 **Difficulty:** ⭐⭐ Medium  
@@ -138,6 +214,7 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
+<<<<<<< Updated upstream
 ### 2.3 Smart Tag Suggestions (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`, `src/stores/qaStore.ts`  
 **Current State:** Implemented with PrimeVue `AutoComplete` + multi-select suggestions from existing tags (`qaStore.allTags` frequency-sorted).  
@@ -145,6 +222,19 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 - No explicit delimiter workflow (comma/enter behavior can feel inconsistent)
 - No "recent tags" quick-pick row
 - No tag normalization guidance (case/plural variants still possible)
+=======
+### 2.3 Smart Tag Suggestions ✅ DONE
+
+**Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue` (lines 26-27, 33)  
+**Current State:** Users type tags manually with comma separation.  
+**Problem:** No autocomplete from existing tags; typos create duplicate tags.  
+**Recommendation:**
+
+- Extract all unique tags from existing QAs
+- Implement tag autocomplete with `AutoComplete` component from PrimeVue
+- Show popular tags as chips/suggestions
+- Add tag management interface in settings
+>>>>>>> Stashed changes
 
 **Recommendation (next increment):**
 - Commit tag chip on comma/Enter/Tab consistently
@@ -215,34 +305,35 @@ Analysis covered: `QAEditor`, `QAEditForm`, `QAListPanel`, `ThreadsPanel`, `Sett
 
 ## 3. TITLE AUTO-GENERATION
 
-### 3.1 No Auto-title Generation Logic ❌
+### 3.1 Auto-title Generation Logic ✅ DONE
+
 **Location:** `src/components/QAEditor.vue` (lines 39-40)  
 **Current State:** Defaults to "Untitled" if empty; no smart generation.  
 **Problem:** Users must manually title every QA, which is tedious.  
 **Recommendation:**
+
 - Auto-generate title from first 50-80 chars of question
 - Strip markdown formatting and trim whitespace
 - Update title field reactively as user types question
 - Add "Use generated title" checkbox or button
 
 **Implementation Sketch:**
+
 ```typescript
 const autoTitle = computed(() => {
-  if (!question.value.trim()) return ''
+  if (!question.value.trim()) return "";
   const clean = question.value
-    .replace(/[#*_~`]/g, '') // Remove markdown
-    .replace(/\n/g, ' ') // Replace newlines with spaces
-    .trim()
-  return clean.length > 70 
-    ? clean.substring(0, 70) + '...' 
-    : clean
-})
+    .replace(/[#*_~`]/g, "") // Remove markdown
+    .replace(/\n/g, " ") // Replace newlines with spaces
+    .trim();
+  return clean.length > 70 ? clean.substring(0, 70) + "..." : clean;
+});
 
 // Watch question and update title if it's empty or matches previous auto-title
 watch(question, (newQuestion) => {
   if (!title.value || title.value === previousAutoTitle.value) {
-    title.value = autoTitle.value
-    previousAutoTitle.value = autoTitle.value
+    title.value = autoTitle.value;
+    previousAutoTitle.value = autoTitle.value;
   }
 })
 ```
@@ -253,10 +344,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 3.2 No Title Uniqueness Check ⚠️
+
 **Location:** `src/components/QAEditor.vue`, `src/stores/qaStore.ts`  
 **Current State:** Multiple QAs can have identical titles.  
 **Problem:** Confusing in list view; hard to distinguish items.  
 **Recommendation:**
+
 - Check for duplicate titles and append suffix (e.g., "Title (2)")
 - Show warning indicator if title already exists
 - Add validation message below title field
@@ -268,10 +361,12 @@ watch(question, (newQuestion) => {
 ## 4. SEARCH & FILTER FUNCTIONALITY
 
 ### 4.1 Limited Search Capabilities ⚠️
+
 **Location:** `src/components/QAListPanel.vue` (lines 81-94)  
 **Current State:** Only available in "All QAs" mode; limited to full-text and tags.  
 **Problem:** Cannot search within specific thread; no advanced filters.  
 **Recommendation:**
+
 - Enable search within selected thread
 - Add filters: by source (Claude, ChatGPT, etc.), by date range, by URL presence
 - Implement multi-criteria search (tags AND full-text)
@@ -281,11 +376,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 4.2 No Real-time Search ❌
+### 4.2 Real-time Search ✅ DONE
+
 **Location:** `src/components/QAListPanel.vue` (lines 62-68)  
 **Current State:** Requires pressing Enter or clicking search button.  
 **Problem:** Slower workflow; no instant feedback.  
 **Recommendation:**
+
 - Debounce search input (300-500ms delay)
 - Show results as user types
 - Add loading indicator during search
@@ -297,10 +394,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 4.3 No Search Result Highlighting ⚠️
+
 **Location:** `src/components/QAListPanel.vue`  
 **Current State:** Search results shown but no indication of where matches occur.  
 **Problem:** Users can't quickly see why item matched query.  
 **Recommendation:**
+
 - Highlight search terms in QA title and snippet
 - Show matched tags with different styling
 - Display match location (question vs. answer)
@@ -310,10 +409,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 4.4 No Advanced Sorting Options ⚠️
+
 **Location:** `src/components/QAListPanel.vue` (lines 19-37)  
 **Current State:** Only date or title sorting.  
 **Problem:** Cannot sort by source, tags, or relevance.  
 **Recommendation:**
+
 - Add sort by: source, tag count, question length, last modified
 - Add ascending/descending toggle
 - Remember sort preference per context (thread vs all QAs)
@@ -325,10 +426,12 @@ watch(question, (newQuestion) => {
 ## 5. BULK OPERATIONS
 
 ### 5.1 No Multi-select Capability ❌
+
 **Location:** `src/components/QAListPanel.vue`, `src/components/ThreadsPanel.vue`  
 **Current State:** Can only work with one item at a time.  
 **Problem:** Cannot move/delete/tag multiple QAs simultaneously.  
 **Recommendation:**
+
 - Add checkbox selection mode (toggle with toolbar button)
 - Implement `Ctrl+Click` for multi-select
 - `Shift+Click` for range selection
@@ -340,10 +443,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 5.2 No Export/Import Functionality ❌
+
 **Location:** None - missing entirely  
 **Current State:** No way to export QAs or threads.  
 **Problem:** Cannot backup, share, or migrate data easily.  
 **Recommendation:**
+
 - Export selected QAs as JSON/Markdown/CSV
 - Export entire thread as single document
 - Import QAs from external files
@@ -356,10 +461,12 @@ watch(question, (newQuestion) => {
 ## 6. UNDO/REDO FUNCTIONALITY
 
 ### 6.1 No Undo/Redo System ❌
+
 **Location:** All stores (`src/stores/threadStore.ts`, `src/stores/qaStore.ts`)  
 **Current State:** Destructive actions are permanent.  
 **Problem:** Accidental deletions or edits cannot be reversed.  
 **Recommendation:**
+
 - Implement command pattern for reversible actions
 - Add undo/redo stack to stores
 - `Ctrl+Z` / `Ctrl+Y` keyboard shortcuts
@@ -371,10 +478,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 6.2 No Edit History ❌
+
 **Location:** `src/stores/qaStore.ts`, QA data structure  
 **Current State:** No version history for QA pairs.  
 **Problem:** Cannot see what changed or restore previous versions.  
 **Recommendation:**
+
 - Store edit timestamps and version numbers
 - Keep revision history (at least 5 previous versions)
 - Add "View history" button in QAContentPanel
@@ -387,10 +496,12 @@ watch(question, (newQuestion) => {
 ## 7. ACCESSIBILITY (ARIA & SCREEN READERS)
 
 ### 7.1 Missing ARIA Labels ❌
+
 **Location:** All components  
 **Current State:** Very few `aria-label` or `role` attributes.  
 **Problem:** Screen reader users cannot effectively navigate app.  
 **Recommendation:**
+
 - Add `aria-label` to all icon-only buttons
 - Add `role="list"` and `role="listitem"` to thread/QA lists
 - Add `aria-current="page"` to selected items
@@ -398,6 +509,7 @@ watch(question, (newQuestion) => {
 - Add `aria-describedby` to form fields with helper text
 
 **Files to update:**
+
 - `src/components/ThreadsPanel.vue`
 - `src/components/QAListPanel.vue`
 - `src/components/QAContentPanel.vue`
@@ -409,10 +521,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 7.2 No Skip Navigation Links ❌
+
 **Location:** `src/App.vue`  
 **Current State:** No skip links for keyboard users.  
 **Problem:** Keyboard users must tab through all UI to reach content.  
 **Recommendation:**
+
 - Add hidden skip links at top: "Skip to threads", "Skip to content", "Skip to search"
 - Show on focus with CSS
 
@@ -421,10 +535,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 7.3 Missing Focus Indicators ⚠️
+
 **Location:** Custom button styles in all components  
 **Current State:** Default focus styles may be overridden or unclear.  
 **Problem:** Keyboard users cannot see which element has focus.  
 **Recommendation:**
+
 - Ensure visible focus outline on all interactive elements
 - Use `:focus-visible` for modern browsers
 - Add higher contrast focus indicator (3:1 ratio)
@@ -434,10 +550,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 7.4 No Screen Reader Announcements ❌
+
 **Location:** All components with dynamic content  
 **Current State:** Screen readers not notified of state changes.  
 **Problem:** Blind users miss important updates (e.g., "Thread created", "Search complete").  
 **Recommendation:**
+
 - Add `role="status"` live region for announcements
 - Use PrimeVue Toast's `aria-live` properly
 - Announce list changes ("Showing 5 of 20 results")
@@ -450,10 +568,12 @@ watch(question, (newQuestion) => {
 ## 8. MOBILE RESPONSIVENESS
 
 ### 8.1 Fixed Width Panels ⚠️
+
 **Location:** `src/components/ThreadsPanel.vue` (line 165), `src/components/QAListPanel.vue` (line 197)  
 **Current State:** Hard-coded widths (220px, 300px).  
 **Problem:** Not usable on small screens or tablets.  
 **Recommendation:**
+
 - Implement responsive breakpoints with media queries
 - Convert to mobile layout: collapsible sidebar, stack panels
 - Add hamburger menu for mobile navigation
@@ -464,10 +584,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 8.2 No Touch Gestures ❌
+
 **Location:** All interactive components  
 **Current State:** Mouse-only interactions.  
 **Problem:** Touch device users have poor experience.  
 **Recommendation:**
+
 - Swipe left/right to navigate between panels
 - Swipe on item for quick actions (delete, edit)
 - Pull-to-refresh in lists
@@ -478,10 +600,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 8.3 Small Touch Targets ⚠️
+
 **Location:** Action buttons throughout  
 **Current State:** Button `size="small"` may be too small for touch.  
 **Problem:** Difficult to tap accurately on mobile devices.  
 **Recommendation:**
+
 - Minimum 44x44px touch targets for mobile
 - Increase padding/spacing in mobile view
 - Larger icon buttons in mobile mode
@@ -493,10 +617,12 @@ watch(question, (newQuestion) => {
 ## 9. ERROR HANDLING & USER FEEDBACK
 
 ### 9.1 Silent Failures ⚠️
+
 **Location:** `src/App.vue` (lines 19-32), all store operations  
 **Current State:** Errors logged to console with `debugError` but user may not see feedback.  
 **Problem:** Users don't know when operations fail.  
 **Recommendation:**
+
 - Show toast notifications for all critical errors
 - Add error boundary components
 - Provide recovery actions in error messages ("Retry", "Report bug")
@@ -506,11 +632,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 9.2 No Loading States ❌
+### 9.2 Loading States ✅ DONE
+
 **Location:** All async operations (load, search, save)  
 **Current State:** No visual indication during async operations.  
 **Problem:** Users don't know if app is working or frozen.  
 **Recommendation:**
+
 - Add spinner/skeleton loaders during data fetch
 - Show progress bar for long operations (export, bulk delete)
 - Disable buttons during async operations
@@ -522,10 +650,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 9.3 Confirmation for Destructive Actions ✅
+
 **Location:** `src/components/ThreadsPanel.vue` (lines 55-66), `src/components/QAContentPanel.vue` (lines 36-50)  
 **Current State:** Confirmation dialogs exist and work well.  
 **Problem:** Minor - could show more context.  
 **Recommendation:**
+
 - Show impact in confirmation ("This will delete 5 QAs")
 - Add "Don't ask again" checkbox option with localStorage
 - Use color-coded confirmations (red for danger)
@@ -536,10 +666,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 9.4 No Network/IPC Error Recovery ⚠️
+
 **Location:** All store IPC calls  
 **Current State:** Errors caught but no retry logic.  
 **Problem:** Transient failures require app restart.  
 **Recommendation:**
+
 - Implement automatic retry with exponential backoff
 - Queue failed operations for retry
 - Show "offline" indicator if IPC fails repeatedly
@@ -552,10 +684,12 @@ watch(question, (newQuestion) => {
 ## 10. EMPTY STATES
 
 ### 10.1 Weak Empty States ⚠️
+
 **Location:** `src/components/ThreadsPanel.vue` (lines 141-146), `src/components/QAListPanel.vue` (lines 121-135)  
 **Current State:** Basic icons and text only.  
 **Problem:** Not actionable or helpful for new users.  
 **Recommendation:**
+
 - Add call-to-action buttons in empty states
 - Show onboarding tips for first-time users
 - Add illustration or better visuals
@@ -566,10 +700,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 10.2 No Onboarding Experience ❌
+
 **Location:** `src/App.vue`  
 **Current State:** App starts empty with no guidance.  
 **Problem:** New users don't understand workflow.  
 **Recommendation:**
+
 - Detect first launch and show welcome modal
 - Provide interactive tutorial (highlight features)
 - Add "Help" or "?" button with documentation
@@ -582,10 +718,12 @@ watch(question, (newQuestion) => {
 ## 11. ADDITIONAL USABILITY ISSUES
 
 ### 11.1 No Drag-and-Drop Reordering ❌
+
 **Location:** `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue`  
 **Current State:** Manual move up/down buttons only for QAs in threads.  
 **Problem:** Tedious to reorder many items; no drag-and-drop for threads.  
 **Recommendation:**
+
 - Implement drag-and-drop for threads and QAs
 - Use PrimeVue's `OrderList` or implement custom draggable
 - Show visual feedback during drag (ghost image)
@@ -596,10 +734,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 11.2 No Recent/Favorites Feature ❌
+
 **Location:** Missing entirely  
 **Current State:** No quick access to frequently used items.  
 **Problem:** Users must navigate to find commonly accessed QAs.  
 **Recommendation:**
+
 - Add "Favorites" or "Starred" system for QAs
 - Show "Recent" list in dropdown or panel
 - Track access frequency for smart suggestions
@@ -610,10 +750,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 11.3 No Markdown Preview in Editor ❌
+
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`  
 **Current State:** Plain textarea for question/answer input.  
 **Problem:** Users can't see how markdown will render until after saving.  
 **Recommendation:**
+
 - Add split-pane editor with live preview
 - Use markdown toolbar with common formatting buttons
 - Show preview on hover or toggle mode
@@ -623,11 +765,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 11.4 Dark Mode Not Accessible ⚠️
+### 11.4 Dark Mode Toggle ✅ DONE
+
 **Location:** `src/stores/uiStore.ts` (lines 9-10)  
 **Current State:** Dark mode toggle exists in store but not connected to UI.  
 **Problem:** Feature implemented but not accessible to users.  
 **Recommendation:**
+
 - Add dark mode toggle button in app toolbar or settings
 - Persist preference to localStorage
 - Add system theme detection on startup
@@ -638,11 +782,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 11.5 No URL Validation ❌
+### 11.5 URL Validation ✅ DONE
+
 **Location:** `src/components/QAEditor.vue` (line 24), `src/components/QAEditForm.vue` (line 29)  
 **Current State:** URL field accepts any string.  
 **Problem:** Invalid URLs stored, links may not work.  
 **Recommendation:**
+
 - Add URL format validation (regex or URL constructor)
 - Show validation error below field
 - Add "Open URL" button to test link
@@ -652,11 +798,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 11.6 No Keyboard Shortcut Help ❌
+### 11.6 Keyboard Shortcut Help ✅ DONE
+
 **Location:** Missing entirely  
 **Current State:** No documentation of keyboard shortcuts.  
 **Problem:** Users unaware of keyboard navigation features (once implemented).  
 **Recommendation:**
+
 - Add "?" key to show keyboard shortcut modal
 - Create cheat sheet overlay with all shortcuts
 - Add shortcuts tooltip to relevant UI elements
@@ -667,13 +815,15 @@ watch(question, (newQuestion) => {
 ---
 
 ### 11.7 Missing Context Menus ❌
+
 **Location:** All list items  
 **Current State:** Actions only via hover buttons or action bar.  
 **Problem:** Right-click context menu is expected pattern.  
 **Recommendation:**
+
 - Add right-click context menu to threads and QAs
 - Include actions: Edit, Delete, Move, Copy, Duplicate
-- Use PrimeVue `ContextMenu` component
+- Use PrimeVue ContextMenu component
 - Add "Open in new window" for QA (if multi-window support added)
 
 **Difficulty:** ⭐⭐ Medium
@@ -681,10 +831,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 11.8 No Duplicate/Copy Functionality ❌
+
 **Location:** Missing entirely  
 **Current State:** Cannot duplicate existing QA.  
 **Problem:** Must manually recreate similar QAs.  
 **Recommendation:**
+
 - Add "Duplicate" button in QAContentPanel action bar
 - Create copy with "(Copy)" suffix in title
 - Copy all metadata and content
@@ -695,10 +847,12 @@ watch(question, (newQuestion) => {
 ---
 
 ### 11.9 No Breadcrumb Navigation ⚠️
+
 **Location:** `src/App.vue`  
 **Current State:** Current location shown in panel titles only.  
 **Problem:** In deep thread, users lose context of location.  
 **Recommendation:**
+
 - Add breadcrumb bar: "Threads > Thread Name > QA Title"
 - Make breadcrumb segments clickable for quick navigation
 - Show breadcrumb in main content area header
@@ -707,11 +861,13 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 11.10 No Global Quick Search ⚠️
+### 11.10 No Global Quick Search ✅ DONE
+
 **Location:** Search only in `src/components/QAListPanel.vue`  
 **Current State:** Search bar only visible in "All QAs" mode.  
 **Problem:** Must switch modes to search.  
 **Recommendation:**
+
 - Add global search bar in top app toolbar
 - Make it accessible from any view
 - Show results in modal or slide-out panel
@@ -723,287 +879,90 @@ watch(question, (newQuestion) => {
 
 ## IMPLEMENTATION PRIORITY MATRIX
 
-### 🔴 PHASE 1: Quick Wins (1-2 days each)
+### ✅ COMPLETED
 
-**Goal:** Maximum impact with minimal effort
-
-1. **Auto-title generation from question** (3.1)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: Eliminates repetitive task for every QA
-   - Difficulty: ⭐ Easy
-
-2. **Pre-fill last-used source/tags** (2.1)
-   - Location: `src/stores/uiStore.ts`, `src/components/QAEditor.vue`
-   - Impact: Reduces data entry for batch QA creation
-   - Difficulty: ⭐ Easy
-
-3. **Global keyboard shortcuts** (1.3)
-   - Location: `src/App.vue`
-   - Impact: Power users can navigate without mouse
-   - Difficulty: ⭐⭐ Medium
-   - Shortcuts: Ctrl+F, Ctrl+N, Ctrl+S, Escape
-
-4. **Real-time search** (4.2)
-   - Location: `src/components/QAListPanel.vue`
-   - Impact: Instant feedback while searching
-   - Difficulty: ⭐ Easy
-
-5. **Loading states** (9.2)
-   - Location: All async operations
-   - Impact: User knows app is working
-   - Difficulty: ⭐ Easy
-
-6. **Dark mode UI toggle** (11.4)
-   - Location: `src/App.vue`, `src/components/SettingsDialog.vue`
-   - Impact: Feature exists but hidden
-   - Difficulty: ⭐ Easy
-
-7. **URL validation** (11.5)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: Prevents invalid URLs
-   - Difficulty: ⭐ Easy
-
-8. **Form submit shortcuts** (1.4)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: Faster form completion (Ctrl+Enter)
-   - Difficulty: ⭐ Easy
-
-**Estimated Total: 1-2 weeks**
+- 1.1, 1.2, 1.3 Arrow key navigation & Global shortcuts
+- 1.4, 1.5 Keyboard access to action buttons & forms
+- 2.1 Field pre-filling
+- 2.3 Tag autocomplete
+- 3.1 Auto-title generation
+- 4.2 Real-time search
+- 9.2 Loading states
+- 11.4 Dark mode toggle
+- 11.5 URL validation
+- 11.6 Shortcut help
+- 11.10 Global Search
 
 ---
 
-### 🟡 PHASE 2: Core UX Improvements (3-5 days each)
+### 🔴 PHASE 1: Core UX Refinement (Near-term)
 
-**Goal:** Address major usability gaps
+**Goal:** Address high-value usability gaps
 
-1. **Arrow key navigation** (1.1, 1.2)
-   - Location: `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue`
-   - Impact: Keyboard-first navigation
-   - Difficulty: ⭐⭐ Medium
-
-2. **Tag autocomplete** (2.3)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: Prevents typos and duplicate tags
-   - Difficulty: ⭐⭐ Medium
-
-3. **ARIA labels and accessibility** (7.1, 7.2, 7.3, 7.4)
-   - Location: All components
-   - Impact: Makes app accessible to screen readers
-   - Difficulty: ⭐ Easy (but many files)
-
-4. **Search result highlighting** (4.3)
-   - Location: `src/components/QAListPanel.vue`
-   - Impact: Shows why items matched
-   - Difficulty: ⭐⭐ Medium
-
+1. **Accessibility & ARIA labels** (7.1, 7.2, 7.3, 7.4)
+   - Impact: Essential for screen reader support
+2. **Search result highlighting** (4.3)
+   - Impact: Shows why items matched the search
+3. **Context menus** (11.7)
+   - Impact: Familiar right-click workflow
+4. **Duplicate QA functionality** (11.8)
+   - Impact: Create new QAs from templates
 5. **Markdown preview in editor** (11.3)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: WYSIWYG experience
-   - Difficulty: ⭐⭐ Medium
-
-6. **Context menus** (11.7)
-   - Location: `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue`
-   - Impact: Right-click actions
-   - Difficulty: ⭐⭐ Medium
-
-7. **Duplicate QA functionality** (11.8)
-   - Location: `src/components/QAContentPanel.vue`
-   - Impact: Template-based QA creation
-   - Difficulty: ⭐ Easy
-
-**Estimated Total: 3-4 weeks**
+   - Impact: WYSIWYG experience while editing
+6. **Recent/Favorites feature** (11.2)
+   - Impact: Quick access to frequent QAs
 
 ---
 
-### 🟢 PHASE 3: Advanced Features (1-2 weeks each)
+### 🟡 PHASE 2: Advanced Features (Mid-term)
 
-**Goal:** Power user features and polish
+**Goal:** Power user capabilities
 
 1. **Bulk operations** (5.1)
-   - Location: `src/components/QAListPanel.vue`, `src/components/ThreadsPanel.vue`
-   - Impact: Manage multiple items at once
-   - Difficulty: ⭐⭐⭐ Hard
-
-2. **Export/import** (5.2)
-   - Location: New components, stores
+   - Impact: Manage multiple QAs/threads
+2. **Export/Import functionality** (5.2)
    - Impact: Backup and share data
    - Difficulty: ⭐⭐ Medium
 
 3. **Advanced search filters** (4.1)
-   - Location: `src/components/QAListPanel.vue`, `src/stores/qaStore.ts`
-   - Impact: Find QAs by multiple criteria
-   - Difficulty: ⭐⭐⭐ Hard
-
-4. **Recent/Favorites** (11.2)
-   - Location: New components, `src/stores/qaStore.ts`
-   - Impact: Quick access to frequent items
-   - Difficulty: ⭐⭐ Medium
-
-5. **Thread selector in editor** (2.2)
-   - Location: `src/components/QAEditor.vue`
-   - Impact: Assign thread during creation
-   - Difficulty: ⭐⭐ Medium
-
-6. **Keyboard shortcut help** (11.6)
-   - Location: New component, `src/App.vue`
-   - Impact: Discoverability of shortcuts
-   - Difficulty: ⭐ Easy
-
-**Estimated Total: 2-3 months**
-
----
-
-### 🔵 PHASE 4: Major Refactoring (months)
-
-**Goal:** Architectural improvements
-
-1. **Undo/redo system** (6.1, 6.2)
-   - Location: All stores
+   - Impact: Filter by source, dateRange, etc.
+4. **Undo/Redo system** (6.1, 6.2)
    - Impact: Reversible actions
-   - Difficulty: ⭐⭐⭐ Hard
-
-2. **Mobile responsive** (8.1, 8.2, 8.3)
-   - Location: All components
-   - Impact: Usable on tablets and phones
-   - Difficulty: ⭐⭐⭐ Hard
-
-3. **Drag & drop reordering** (11.1)
-   - Location: `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue`
-   - Impact: Intuitive reordering
-   - Difficulty: ⭐⭐⭐ Hard
-
-4. **Onboarding experience** (10.2)
-   - Location: New components
-   - Impact: First-time user guidance
-   - Difficulty: ⭐⭐ Medium
-
-**Estimated Total: 3-6 months**
+5. **Thread selector in editor** (2.2)
+   - Impact: Assign thread during creation from "All QAs" mode
+6. **Breadcrumb navigation** (11.9)
+   - Impact: Better context in deep threads
 
 ---
 
-## QUICK REFERENCE: KEYBOARD SHORTCUTS TO IMPLEMENT
+### 🔵 PHASE 3: Mobile & Polish (Long-term)
 
-| Shortcut | Action | Where to Add | Priority |
-|----------|--------|--------------|----------|
-| `Ctrl/Cmd+F` or `/` | Focus search | `src/App.vue` | 🔴 Critical |
-| `Ctrl/Cmd+N` | New QA | `src/App.vue` | 🔴 Critical |
-| `Ctrl/Cmd+S` | Save | `src/components/QAEditForm.vue` | 🔴 Critical |
-| `Escape` | Close dialog | `src/App.vue` | 🔴 Critical |
-| `Ctrl/Cmd+Enter` | Submit form | `src/components/QAEditor.vue` | 🟡 High |
-| `Up/Down` | Navigate list | `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue` | 🟡 High |
-| `Enter` | Select/Open item | `src/components/ThreadsPanel.vue`, `src/components/QAListPanel.vue` | 🟡 High |
-| `Delete` | Delete selected | `src/App.vue` | 🟡 High |
-| `E` | Edit selected | `src/App.vue` | 🟡 Medium |
-| `F2` (often `Fn+F2` on Mac keyboards) | Rename thread | `src/components/ThreadsPanel.vue` | 🟡 Medium |
-| `Alt+Up/Down` | Move QA | `src/components/QAContentPanel.vue` | 🟡 Medium |
-| `Ctrl/Cmd+K` | Command palette | `src/App.vue` | 🟢 Nice to have |
-| `?` | Show help | `src/App.vue` | 🟢 Nice to have |
-| `Ctrl+Z/Y` | Undo/Redo | `src/App.vue` | 🔵 Future |
-
----
-
-## FILES TO MODIFY (By Priority)
-
-### High-Priority Files (Phase 1):
-1. `src/components/QAEditor.vue` - Auto-title, pre-fill, validation
-2. `src/stores/uiStore.ts` - Last-used metadata storage
-3. `src/App.vue` - Global keyboard shortcuts
-4. `src/components/QAListPanel.vue` - Real-time search, loading states
-5. `src/components/SettingsDialog.vue` - Dark mode toggle
-
-### Medium-Priority Files (Phase 2):
-1. `src/components/ThreadsPanel.vue` - Arrow keys, ARIA labels, context menu
-2. `src/components/QAContentPanel.vue` - Keyboard actions, duplicate button
-3. `src/components/QAEditForm.vue` - Tag autocomplete, markdown preview
-4. All components - ARIA labels
-
-### Lower-Priority Files (Phase 3+):
-1. `src/stores/qaStore.ts` - Bulk operations, advanced search, favorites
-2. `src/stores/threadStore.ts` - Bulk operations, drag & drop
-3. New components for export/import, onboarding, help
-
----
-
-## TESTING CHECKLIST
-
-### Keyboard Navigation:
-- [ ] Can navigate threads with arrow keys
-- [ ] Can navigate QA list with arrow keys
-- [ ] All global shortcuts work (Ctrl+F, Ctrl+N, etc.)
-- [ ] Tab order makes sense in forms
-- [ ] Focus visible on all interactive elements
-- [ ] Can complete entire workflow without mouse
-
-### Accessibility:
-- [ ] Screen reader announces all actions
-- [ ] All buttons have aria-labels
-- [ ] Lists have proper roles
-- [ ] Live regions announce changes
-- [ ] Color contrast meets WCAG AA (4.5:1)
-- [ ] Skip links work
-
-### Search & Filters:
-- [ ] Real-time search shows results as typing
-- [ ] Search works in both "All QAs" and thread modes
-- [ ] Results highlight matched terms
-- [ ] Filters combine correctly (AND logic)
-- [ ] Sort options work correctly
-
-### Forms & Input:
-- [ ] Auto-title generates from question
-- [ ] Last-used values pre-fill
-- [ ] Tag autocomplete suggests existing tags
-- [ ] URL validation prevents invalid URLs
-- [ ] Ctrl+Enter submits forms
-- [ ] Required field validation
-
-### Error Handling:
-- [ ] Loading spinners show during async ops
-- [ ] Error toasts appear for failures
-- [ ] Confirmation dialogs for destructive actions
-- [ ] Retry buttons work after errors
-- [ ] Form validation messages clear
-
-### Mobile (Phase 4):
-- [ ] Panels collapse on small screens
-- [ ] Touch targets are 44x44px minimum
-- [ ] Swipe gestures work
-- [ ] No horizontal scrolling
-- [ ] Text readable without zoom
-
----
-
-## METRICS TO TRACK
-
-**Before/After Improvements:**
-
-1. **Time to create QA** - Should decrease with auto-title and pre-fill
-2. **Mouse clicks per action** - Should decrease with keyboard shortcuts
-3. **Search time** - Should decrease with real-time search
-4. **Error recovery time** - Should decrease with better error messages
-5. **First-time user success** - Should increase with onboarding
-6. **Accessibility score** - Should reach 100 with ARIA labels
-
-**Tools:**
-- Lighthouse (Chrome DevTools) - Accessibility score
-- axe DevTools - Detailed accessibility audit
-- User testing sessions - Qualitative feedback
+1. **Mobile responsiveness** (8.1, 8.2, 8.3)
+2. **Drag & drop reordering** (11.1)
+3. **Onboarding experience** (10.2)
+4. **Touch gestures** (8.2)
 
 ---
 
 ## NOTES
 
 - **Total identified issues:** 67 improvements
+<<<<<<< Updated upstream
 - **Critical gaps:** thread assignment flow, advanced data-entry acceleration, accessibility
 - **Quick wins available:** 15-20 easy fixes (1 week of work)
 - **Biggest ROI:** Auto-title + keyboard shortcuts + real-time search
 - **Architecture debt:** Undo/redo, mobile responsive, bulk operations
+=======
+- **Critical gaps resolved:** Keyboard basic navigation, auto-population, real-time search.
+- **Next focus:** Accessibility, Bulk operations, and Search highlighting.
+>>>>>>> Stashed changes
 
-**Maintainer:** Implementation should follow phases to avoid scope creep. Start with Phase 1 quick wins, gather feedback, then proceed to Phase 2.
+**Maintainer:** This doc should be updated as Phase 1 items are completed.
 
 ---
 
 **Document Version:** 1.1  
+<<<<<<< Updated upstream
 **Last Updated:** February 13, 2026  
 **Status:** In progress (Phase 1 complete, Phase 2 planning/refinement)
 
@@ -1059,3 +1018,7 @@ Shortcut hint shown in button row
 Bonus:
 Added electron:prod script to package.json for non-packaged production testing
 All Phase 1 changes are complete and ready to test! Run npm run dev to see the improvements in action.
+=======
+**Last Updated:** February 20, 2026 (Cleaned up)  
+**Status:** Implementation ongoing
+>>>>>>> Stashed changes

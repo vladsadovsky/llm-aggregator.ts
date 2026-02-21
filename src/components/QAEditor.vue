@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useQAStore } from '../stores/qaStore'
 import { useThreadStore } from '../stores/threadStore'
 import { useUIStore } from '../stores/uiStore'
@@ -9,6 +9,9 @@ import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import AutoComplete from 'primevue/autocomplete'
+import FocusTrap from 'primevue/focustrap'
+
+const vFocustrap = FocusTrap
 
 const props = defineProps<{
   initialData?: Partial<QACreateData> | null
@@ -99,7 +102,7 @@ watch(targetThreadId, (newValue) => {
 })
 
 // Validate URL
-watch(url, (newUrl) => {
+watch(url, (newUrl: string) => {
   if (!newUrl.trim()) {
     urlError.value = ''
     return
@@ -115,7 +118,7 @@ watch(url, (newUrl) => {
 function searchTags(event: { query: string }) {
   const query = event.query.toLowerCase()
   tagSuggestions.value = qaStore.allTags
-    .filter(t => t.includes(query) && !tags.value.includes(t))
+    .filter((t: string) => t.includes(query) && !tags.value.includes(t))
 }
 
 function commitPendingTags() {
@@ -270,7 +273,6 @@ onMounted(async () => {
     tags.value = [...lastUsed.tags]
     url.value = lastUsed.url
   }
-
   if (props.initialTargetThreadId && threadStore.threads[props.initialTargetThreadId]) {
     targetThreadId.value = props.initialTargetThreadId
   } else if (threadStore.selectedThreadId && threadStore.threads[threadStore.selectedThreadId]) {
@@ -295,7 +297,7 @@ async function create(continueAdding = false) {
   if (urlError.value) return
 
   const tagArray = tags.value
-    .map((t) => t.trim())
+    .map((t: string) => t.trim())
     .filter(Boolean)
 
   const data: QACreateData = {
@@ -450,7 +452,7 @@ function handleKeydown(event: KeyboardEvent) {
 
 <template>
   <div class="qa-editor-overlay" @click.self="emit('cancel')">
-    <div class="qa-editor" @keydown="handleKeydown">
+    <div class="qa-editor" v-focustrap @keydown="handleKeydown">
       <h3 class="editor-title">New QA</h3>
 
       <div class="field">
@@ -459,6 +461,7 @@ function handleKeydown(event: KeyboardEvent) {
           v-model="title" 
           placeholder="Auto-generated from question..." 
           class="w-full" 
+          autofocus
         />
         <small v-if="autoTitle && !title" class="field-hint">
           Will use: "{{ autoTitle }}"

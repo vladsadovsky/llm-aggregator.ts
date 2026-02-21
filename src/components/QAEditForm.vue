@@ -37,7 +37,7 @@ const answer = ref(props.pair.answer)
 const tagsAutoCompleteRef = ref<InstanceType<typeof AutoComplete> | null>(null)
 const urlError = ref('')
 
-watch(url, (newUrl) => {
+watch(url, (newUrl: string) => {
   if (!newUrl.trim()) {
     urlError.value = ''
     return
@@ -48,7 +48,7 @@ watch(url, (newUrl) => {
   } catch {
     urlError.value = 'Invalid URL format'
   }
-})
+}, { immediate: true })
 
 function searchTags(event: { query: string }) {
   const query = event.query.toLowerCase()
@@ -115,7 +115,7 @@ function handleKeydown(event: KeyboardEvent) {
     }
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 's' || event.key === 'Enter')) {
     event.preventDefault()
     void save()
   }
@@ -150,7 +150,7 @@ onUnmounted(() => {
 
     <div class="field">
       <label>Title</label>
-      <InputText v-model="title" class="w-full" />
+      <InputText v-model="title" class="w-full" autofocus />
     </div>
 
     <div class="field-row">
@@ -167,7 +167,11 @@ onUnmounted(() => {
       </div>
       <div class="field flex-1">
         <label>URL</label>
-        <InputText v-model="url" class="w-full" :class="{ 'p-invalid': urlError }" />
+        <InputText 
+          v-model="url" 
+          class="w-full" 
+          :class="{ 'p-invalid': urlError }"
+        />
         <small v-if="urlError" class="field-error">{{ urlError }}</small>
       </div>
     </div>
@@ -196,7 +200,7 @@ onUnmounted(() => {
     </div>
 
     <div class="button-row">
-      <small class="shortcut-hint">Ctrl/Cmd+S to save, Esc to cancel</small>
+      <small class="shortcut-hint">Ctrl/Cmd+S or Enter to save, Esc to cancel</small>
       <div class="button-group">
         <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
         <Button label="Save" icon="pi pi-check" @click="save" :disabled="!!urlError" />
@@ -238,6 +242,13 @@ onUnmounted(() => {
 .field-row {
   display: flex;
   gap: 12px;
+}
+
+.field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--red-500);
 }
 
 .flex-1 {
