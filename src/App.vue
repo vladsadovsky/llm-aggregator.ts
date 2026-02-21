@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, onErrorCaptured } from 'vue'
+import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Splitter from 'primevue/splitter'
@@ -18,6 +20,7 @@ import { debugError } from './utils/logger'
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
+const toast = useToast()
 const showSettings = ref(false)
 const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
@@ -56,9 +59,13 @@ onMounted(async () => {
 
   if (threadResult.status === 'rejected') {
     debugError('App', 'Failed to load threads:', threadResult.reason)
+    const reason = threadResult.reason instanceof Error ? threadResult.reason.message : String(threadResult.reason)
+    toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load threads: ' + reason, life: 5000 })
   }
   if (qaResult.status === 'rejected') {
     debugError('App', 'Failed to load QA pairs:', qaResult.reason)
+    const reason = qaResult.reason instanceof Error ? qaResult.reason.message : String(qaResult.reason)
+    toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load QA pairs: ' + reason, life: 5000 })
   }
 
   // If there are no threads, default to showing all QAs so the user sees their content
@@ -70,6 +77,12 @@ onMounted(async () => {
 
   // Add global keyboard event listener
   window.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onErrorCaptured((err: any) => {
+  debugError('App', 'Unhandled error:', err)
+  toast?.add({ severity: 'error', summary: 'Error', detail: err instanceof Error ? err.message : String(err), life: 5000 })
+  return false
 })
 
 onUnmounted(() => {
@@ -357,7 +370,20 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           </SplitterPanel>
           <SplitterPanel :size="uiStore.isSidebarVisible ? 70 : 75" :minSize="30">
             <div class="content-header-toolbar">
-               <div class="spacer"></div>
+               <div class="spacer breadcrumb">
+                 <template v-if="uiStore.showAllQAs">
+                   <span class="bc-item" @click="uiStore.showAllQAs = true">All QAs</span>
+                 </template>
+                 <template v-else-if="threadStore.selectedThread">
+                   <span class="bc-item" @click="uiStore.showAllQAs = false">Threads</span>
+                   <i class="pi pi-angle-right bc-separator"></i>
+                   <span class="bc-item bc-active">{{ threadStore.selectedThread.name }}</span>
+                 </template>
+                 <template v-if="qaStore.selectedPair()">
+                   <i class="pi pi-angle-right bc-separator"></i>
+                   <span class="bc-item bc-active qa-title" :title="qaStore.selectedPair()!.title">{{ qaStore.selectedPair()!.title }}</span>
+                 </template>
+               </div>
                <div class="toolbar-buttons px-2 py-1">
                   <Button
                     :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
@@ -542,5 +568,47 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 :deep(.p-splitter-gutter:hover) {
   background: var(--primary-color);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  flex: 1;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+.bc-item {
+  cursor: pointer;
+  transition: color 0.15s ease;
+  white-space: nowrap;
+}
+
+.bc-item:hover {
+  color: var(--primary-color);
+}
+
+.bc-active {
+  color: var(--text-color);
+  font-weight: 500;
+  cursor: default;
+}
+
+.bc-active:hover {
+  color: var(--text-color);
+}
+
+.bc-separator {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.qa-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 </style>

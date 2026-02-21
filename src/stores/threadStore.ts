@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ThreadMap, ThreadData } from '../types/Thread'
 import { debugLog, debugError } from '../utils/logger'
+import { withRetry } from '../utils/retry'
 
 export const useThreadStore = defineStore('threads', () => {
   const threads = ref<ThreadMap>({})
@@ -19,7 +20,7 @@ export const useThreadStore = defineStore('threads', () => {
   })
 
   async function loadThreads() {
-    threads.value = await window.api.threadsLoad()
+    threads.value = await withRetry(() => window.api.threadsLoad())
   }
 
   async function save() {
@@ -27,7 +28,7 @@ export const useThreadStore = defineStore('threads', () => {
     const plain = JSON.parse(JSON.stringify(toRaw(threads.value))) as ThreadMap
     debugLog('threadStore', 'save called, keys:', Object.keys(plain))
     try {
-      await window.api.threadsSave(plain)
+      await withRetry(() => window.api.threadsSave(plain))
       debugLog('threadStore', 'save completed')
     } catch (err) {
       debugError('threadStore', 'save FAILED:', err)
