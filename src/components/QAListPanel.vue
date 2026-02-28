@@ -221,6 +221,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           placeholder="Search as you type..."
           size="small"
           class="search-input"
+          data-testid="search-input"
         />
         <i v-if="isSearching" class="pi pi-spin pi-spinner search-spinner" />
         <Button
@@ -268,12 +269,13 @@ function onQAListKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- QA list -->
-    <div ref="qaListRef" class="qa-list" tabindex="0" @keydown="onQAListKeydown">
+    <div ref="qaListRef" class="qa-list" data-testid="qa-list" tabindex="0" @keydown="onQAListKeydown">
       <div
         v-for="id in displayedItems"
         :key="id"
         class="qa-item"
         :class="{ active: qaStore.selectedPairId === id }"
+        :data-testid="`qa-item-${id}`"
         @click="selectPair(id)"
       >
         <div class="qa-item-title">
@@ -318,6 +320,7 @@ function onQAListKeydown(e: KeyboardEvent) {
     <div class="panel-footer">
       <button
         class="add-button"
+        data-testid="add-qa-button"
         :disabled="!threadStore.selectedThreadId && !uiStore.showAllQAs"
         @click="showEditor = true"
       >

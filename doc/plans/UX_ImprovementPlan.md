@@ -9,7 +9,6 @@
 
 ## Executive Summary
 
-<<<<<<< Updated upstream
 This document outlines comprehensive usability improvements for the LLM Aggregator application based on analysis of all Vue components and stores.
 
 **Status note (February 13, 2026):** Phase 1 items (auto-title, metadata pre-fill, core shortcuts, real-time search, URL validation, loading state) are implemented. Remaining highest-value gaps are:
@@ -19,17 +18,6 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 3. **Accessibility coverage** - ARIA semantics and focus management remain partial
 4. **Advanced search/filter depth** - source/date/url filters and highlights still missing
 5. **Undo/history and bulk actions** - still unimplemented
-=======
-This document outlines comprehensive usability improvements for the LLM Aggregator application. Since the initial analysis in February 2026, several critical gaps have been addressed, including global keyboard shortcuts, real-time search, and auto-population features.
-
-Remaining major gaps are:
-
-1. **Accessibility refinement** - missing ARIA labels in some components
-2. **Bulk operations** - no multi-select for QAs or threads
-3. **Advanced search** - missing multi-criteria filters
-4. **Data portability** - no export/import functionality
-5. **Mobile responsiveness** - fixed-width panels and lack of touch support
->>>>>>> Stashed changes
 
 ---
 
@@ -128,7 +116,6 @@ Remaining major gaps are:
 
 ## 2. AUTO-POPULATION & ASSISTED ENTRY
 
-<<<<<<< Updated upstream
 ### 2.1 Last-Used Metadata Pre-fill (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/stores/uiStore.ts`, `src/components/SettingsDialog.vue`  
 **Current State:** Implemented. New QA pre-fills `source`, `tags`, and `url` from last create action; user can toggle "Remember last-used metadata" in Settings.  
@@ -153,60 +140,6 @@ Remaining major gaps are:
   - selected thread when one is active
   - last-used thread when in all-QA mode
 - Add quick options: "None", "Recent threads", "Create new thread and add"
-=======
-### 2.1 Field Pre-filling from Last Entry ✅ DONE
-
-**Location:** `src/components/QAEditor.vue` (lines 20-25)  
-**Current State:** All fields start empty when creating new QA.  
-**Problem:** Users often create multiple QAs from the same source/model, requiring repeated data entry.  
-**Recommendation:**
-
-- Store last used values in `uiStore` or localStorage
-- Pre-fill `source`, `tags`, and optionally `url` from last QA
-- Add checkbox "Remember last source/tags"
-- Exclude `title`, `question`, `answer` from pre-fill
-
-**Implementation Sketch:**
-
-```typescript
-// In src/stores/uiStore.ts
-const lastUsedSource = ref("");
-const lastUsedTags = ref<string[]>([]);
-const lastUsedUrl = ref("");
-const rememberLastMetadata = ref(true);
-
-function setLastUsedMetadata(source: string, tags: string[], url: string) {
-  if (rememberLastMetadata.value) {
-    lastUsedSource.value = source;
-    lastUsedTags.value = tags;
-    lastUsedUrl.value = url;
-  }
-}
-
-function getLastUsedMetadata() {
-  return {
-    source: lastUsedSource.value,
-    tags: lastUsedTags.value,
-    url: lastUsedUrl.value,
-  };
-}
-```
-
-**Difficulty:** ⭐ Easy
-
----
-
-### 2.2 No Thread Selection Memory ⚠️
-
-**Location:** `src/components/QAEditor.vue` (lines 38-44)  
-**Current State:** When creating QA in "All QAs" mode, no thread is auto-selected.  
-**Problem:** User must manually assign QA to thread after creation.  
-**Recommendation:**
-
-- Show optional thread selector dropdown in QAEditor
-- Pre-select current thread if one is active
-- Add "Add to thread" section with dropdown or recent threads list
->>>>>>> Stashed changes
 
 **Feasibility:** High  
 **Difficulty:** ⭐⭐ Medium  
@@ -214,7 +147,6 @@ function getLastUsedMetadata() {
 
 ---
 
-<<<<<<< Updated upstream
 ### 2.3 Smart Tag Suggestions (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`, `src/stores/qaStore.ts`  
 **Current State:** Implemented with PrimeVue `AutoComplete` + multi-select suggestions from existing tags (`qaStore.allTags` frequency-sorted).  
@@ -222,19 +154,6 @@ function getLastUsedMetadata() {
 - No explicit delimiter workflow (comma/enter behavior can feel inconsistent)
 - No "recent tags" quick-pick row
 - No tag normalization guidance (case/plural variants still possible)
-=======
-### 2.3 Smart Tag Suggestions ✅ DONE
-
-**Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue` (lines 26-27, 33)  
-**Current State:** Users type tags manually with comma separation.  
-**Problem:** No autocomplete from existing tags; typos create duplicate tags.  
-**Recommendation:**
-
-- Extract all unique tags from existing QAs
-- Implement tag autocomplete with `AutoComplete` component from PrimeVue
-- Show popular tags as chips/suggestions
-- Add tag management interface in settings
->>>>>>> Stashed changes
 
 **Recommendation (next increment):**
 - Commit tag chip on comma/Enter/Tab consistently
@@ -947,22 +866,16 @@ watch(question, (newQuestion) => {
 ## NOTES
 
 - **Total identified issues:** 67 improvements
-<<<<<<< Updated upstream
 - **Critical gaps:** thread assignment flow, advanced data-entry acceleration, accessibility
 - **Quick wins available:** 15-20 easy fixes (1 week of work)
 - **Biggest ROI:** Auto-title + keyboard shortcuts + real-time search
 - **Architecture debt:** Undo/redo, mobile responsive, bulk operations
-=======
-- **Critical gaps resolved:** Keyboard basic navigation, auto-population, real-time search.
-- **Next focus:** Accessibility, Bulk operations, and Search highlighting.
->>>>>>> Stashed changes
 
 **Maintainer:** This doc should be updated as Phase 1 items are completed.
 
 ---
 
 **Document Version:** 1.1  
-<<<<<<< Updated upstream
 **Last Updated:** February 13, 2026  
 **Status:** In progress (Phase 1 complete, Phase 2 planning/refinement)
 
@@ -1018,7 +931,3 @@ Shortcut hint shown in button row
 Bonus:
 Added electron:prod script to package.json for non-packaged production testing
 All Phase 1 changes are complete and ready to test! Run npm run dev to see the improvements in action.
-=======
-**Last Updated:** February 20, 2026 (Cleaned up)  
-**Status:** Implementation ongoing
->>>>>>> Stashed changes

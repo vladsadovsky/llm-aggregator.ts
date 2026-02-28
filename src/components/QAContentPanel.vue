@@ -138,6 +138,7 @@ onUnmounted(() => {
             label="Edit"
             size="small"
             outlined
+            data-testid="edit-qa-button"
             @click="startEdit"
           />
           <Button
@@ -146,6 +147,7 @@ onUnmounted(() => {
             size="small"
             outlined
             severity="danger"
+            data-testid="delete-qa-button"
             @click="confirmDelete"
           />
           <Button

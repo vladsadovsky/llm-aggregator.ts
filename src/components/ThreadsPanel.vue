@@ -134,12 +134,13 @@ onUnmounted(() => {
     </div>
 
     <!-- Thread list -->
-    <div class="thread-list" tabindex="0" @keydown="onThreadListKeydown">
+    <div class="thread-list" data-testid="thread-list" tabindex="0" @keydown="onThreadListKeydown">
       <div
         v-for="tid in threadStore.sortedThreadIds"
         :key="tid"
         class="thread-item"
         :class="{ active: threadStore.selectedThreadId === tid }"
+        :data-testid="`thread-item-${tid}`"
         @click="selectThread(tid)"
       >
         <!-- Normal display -->
@@ -202,7 +203,7 @@ onUnmounted(() => {
           @keydown="onNewThreadKeydown"
         />
       </div>
-      <button class="add-button" @click="showNewThreadInput = !showNewThreadInput">
+      <button class="add-button" data-testid="add-thread-button" @click="showNewThreadInput = !showNewThreadInput">
         <i class="pi pi-plus" />
         <span>Add thread</span>
       </button>
