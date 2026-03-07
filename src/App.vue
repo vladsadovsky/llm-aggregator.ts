@@ -2,7 +2,6 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, onErrorCaptured } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
-import ConfirmDialog from 'primevue/confirmdialog'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Splitter from 'primevue/splitter'
