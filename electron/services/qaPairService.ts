@@ -110,7 +110,7 @@ export function getPair(id: string): QAPairData | null {
 export function createPair(data: QACreateData): QAPairData {
   const dir = getArchiveDir()
   const now = new Date()
-  const id = formatTimestamp(now)
+  const id = generateUniqueId(dir, now)
 
   // Generate filename matching Python format
   const firstWords = data.question
@@ -198,5 +198,21 @@ function formatTimestamp(date: Date): string {
   const d = String(date.getDate()).padStart(2, '0')
   const h = String(date.getHours()).padStart(2, '0')
   const min = String(date.getMinutes()).padStart(2, '0')
-  return `${y}${m}${d}_${h}${min}`
+  const sec = String(date.getSeconds()).padStart(2, '0')
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  return `${y}${m}${d}_${h}${min}${sec}_${ms}`
+}
+
+function generateUniqueId(dir: string, base: Date): string {
+  let candidateDate = new Date(base.getTime())
+  for (let i = 0; i < 1000; i += 1) {
+    const candidate = formatTimestamp(candidateDate)
+    const exists = readdirSync(dir).some((file) => file.startsWith(`${candidate}_`) && extname(file) === '.md')
+    if (!exists) {
+      return candidate
+    }
+    candidateDate = new Date(candidateDate.getTime() + 1)
+  }
+  // Last-resort fallback. This should be practically unreachable.
+  return `${formatTimestamp(new Date())}_${Math.random().toString(36).slice(2, 8)}`
 }

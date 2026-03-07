@@ -666,6 +666,12 @@ function handleKeydown(event: KeyboardEvent) {
   align-items: center;
   gap: 8px;
   margin-top: 16px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding-top: 10px;
+  background: var(--surface-card);
+  border-top: 1px solid var(--surface-border);
 }
 
 .button-group {
