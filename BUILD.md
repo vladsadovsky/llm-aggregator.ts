@@ -142,7 +142,7 @@ Note, the same as with front end debugging, make sure you don't have orphaned in
 │   └── assets/styles/
 │       └── main.css
 ├── package.json
-├── vite.config.ts
+├── vite.config.mts
 ├── tsconfig.json
 ├── electron-builder.yml       # Native packaging config
 └── index.html
