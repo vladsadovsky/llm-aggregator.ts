@@ -1,18 +1,44 @@
 import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import os from 'os';
 import path from 'path';
 
 export const test = base.extend<{
     electronApp: ElectronApplication;
     window: Page;
+    dataDir: string;
 }>({
-    electronApp: async ({ }, use) => {
+    dataDir: async ({}, use) => {
+        const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'llm-aggregator-e2e-'));
+        const dataDir = path.join(tempRoot, 'data');
+        mkdirSync(dataDir, { recursive: true });
+
+        const appDataRoot = path.join(tempRoot, 'appdata');
+        const settingsPayload = JSON.stringify({ dataDirectory: dataDir }, null, 2);
+        for (const appName of ['LLM Aggregator', 'llm-aggregator', 'Electron']) {
+            const userDataDir = path.join(appDataRoot, appName);
+            mkdirSync(userDataDir, { recursive: true });
+            writeFileSync(path.join(userDataDir, 'settings.json'), settingsPayload, 'utf-8');
+        }
+
+        await use(dataDir);
+
+        rmSync(tempRoot, { recursive: true, force: true });
+    },
+    electronApp: async ({ dataDir }, use) => {
         // Launch Electron application using the resolved executable path and absolute path to main.js
         const electronApp = await electron.launch({
             executablePath: require('electron'),
             args: ['--no-sandbox', path.join(__dirname, '../../dist-electron/main.js')],
+            cwd: dataDir,
             env: {
                 ...process.env,
                 NODE_ENV: 'test',
+                LLM_AGGREGATOR_DATA_DIR: dataDir,
+                APPDATA: path.join(path.dirname(dataDir), 'appdata'),
+                LOCALAPPDATA: path.join(path.dirname(dataDir), 'appdata'),
+                TEMP: path.join(path.dirname(dataDir), 'appdata'),
+                TMP: path.join(path.dirname(dataDir), 'appdata'),
             },
             // Increase timeout for Electron startup
             timeout: 45000

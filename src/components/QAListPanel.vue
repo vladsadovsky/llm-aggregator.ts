@@ -21,7 +21,7 @@ const qaListRef = ref<HTMLElement | null>(null)
 // Watch store trigger for opening QA editor (from global keyboard shortcut)
 watch(() => uiStore.showQAEditor, (val) => {
   if (val) {
-    const canAdd = !!threadStore.selectedThreadId || uiStore.showAllQAs
+    const canAdd = !!threadStore.selectedThreadId || uiStore.showAllQAs || uiStore.showUnthreaded
     if (canAdd) {
       showEditor.value = true
     }
@@ -33,6 +33,21 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // Items displayed in the list
 const displayedItems = computed(() => {
+  if (uiStore.showUnthreaded) {
+    let items = [...threadStore.unthreadedPairIds]
+
+    if (searchResults.value !== null) {
+      items = items.filter((id) => searchResults.value!.includes(id))
+    }
+
+    items.sort((a, b) => {
+      const ta = qaStore.pairs[a]?.timestamp || ''
+      const tb = qaStore.pairs[b]?.timestamp || ''
+      return tb.localeCompare(ta)
+    })
+    return items
+  }
+
   // All QAs mode
   if (uiStore.showAllQAs) {
     let items = Object.keys(qaStore.pairs)
@@ -73,6 +88,7 @@ const displayedItems = computed(() => {
 })
 
 const panelTitle = computed(() => {
+  if (uiStore.showUnthreaded) return 'Unthreaded'
   if (uiStore.showAllQAs) return 'All QAs'
   if (!threadStore.selectedThreadId) return 'Select a thread'
   const thread = threadStore.threads[threadStore.selectedThreadId]
@@ -80,7 +96,7 @@ const panelTitle = computed(() => {
 })
 
 function selectPair(id: string) {
-  if (uiStore.isEditing) return  // Don't switch items while editing
+  if (uiStore.isEditing) return
   qaStore.selectPair(id)
 }
 
@@ -133,6 +149,11 @@ function focusQAList() {
   void nextTick(() => {
     qaListRef.value?.focus()
   })
+}
+
+function showThreadsPanel() {
+  uiStore.setThreadsCollapsed(false)
+  uiStore.isSidebarVisible = true
 }
 
 function onFocusQAListRequest() {
@@ -199,14 +220,15 @@ function onQAListKeydown(e: KeyboardEvent) {
     <div class="panel-header">
       <div class="header-left">
         <Button
-          v-if="!uiStore.isSidebarVisible"
+          v-if="uiStore.threadsCollapsed"
           icon="pi pi-bars"
           text
           rounded
           size="small"
+          data-testid="show-threads-button"
           title="Show sidebar"
           class="sidebar-toggle-btn"
-          @click="uiStore.isSidebarVisible = true"
+          @click="showThreadsPanel"
         />
         <span class="panel-title">{{ panelTitle }}</span>
       </div>
@@ -218,6 +240,7 @@ function onQAListKeydown(e: KeyboardEvent) {
       <div class="search-row">
         <InputText
           v-model="uiStore.searchQuery"
+          data-testid="search-input"
           placeholder="Search as you type..."
           size="small"
           class="search-input"
@@ -268,7 +291,7 @@ function onQAListKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- QA list -->
-    <div ref="qaListRef" class="qa-list" tabindex="0" @keydown="onQAListKeydown">
+    <div ref="qaListRef" class="qa-list" data-testid="qa-list" tabindex="0" @keydown="onQAListKeydown">
       <div
         v-for="id in displayedItems"
         :key="id"
@@ -290,7 +313,11 @@ function onQAListKeydown(e: KeyboardEvent) {
 
       <!-- Empty state -->
       <div v-if="displayedItems.length === 0" class="empty-state">
-        <template v-if="uiStore.showAllQAs">
+        <template v-if="uiStore.showUnthreaded">
+          <i class="pi pi-check-circle" />
+          <p>All QAs are in threads</p>
+        </template>
+        <template v-else-if="uiStore.showAllQAs">
           <i class="pi pi-search" />
           <p>No QAs found</p>
         </template>
@@ -318,7 +345,8 @@ function onQAListKeydown(e: KeyboardEvent) {
     <div class="panel-footer">
       <button
         class="add-button"
-        :disabled="!threadStore.selectedThreadId && !uiStore.showAllQAs"
+        data-testid="add-qa-button"
+        :disabled="!threadStore.selectedThreadId && !uiStore.showAllQAs && !uiStore.showUnthreaded"
         @click="showEditor = true"
       >
         <i class="pi pi-plus" />

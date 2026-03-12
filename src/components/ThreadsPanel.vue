@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -15,14 +15,24 @@ const confirm = useConfirm()
 const toast = useToast()
 
 const newThreadName = ref('')
+const newThreadTags = ref('')
 const showNewThreadInput = ref(false)
 const editingThreadId = ref<string | null>(null)
 const editingName = ref('')
+const editingTags = ref('')
+
+function parseTags(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+}
 
 function selectThread(tid: string) {
   threadStore.selectThread(tid)
   uiStore.setLastUsedThreadId(tid)
   uiStore.showAllQAs = false
+  uiStore.showUnthreaded = false
   // Auto-select the first QA in the thread
   const thread = threadStore.threads[tid]
   if (thread && thread.items.length > 0) {
@@ -35,8 +45,13 @@ function selectThread(tid: string) {
 async function createThread() {
   const name = newThreadName.value.trim()
   if (!name) return
+  const tags = parseTags(newThreadTags.value)
   const tid = await threadStore.createThread(name)
+  if (tags.length > 0) {
+    await threadStore.updateThread(tid, name, tags)
+  }
   newThreadName.value = ''
+  newThreadTags.value = ''
   showNewThreadInput.value = false
   selectThread(tid)
   toast.add({ severity: 'success', summary: 'Thread created', life: 2000 })
@@ -45,11 +60,16 @@ async function createThread() {
 function startRename(tid: string) {
   editingThreadId.value = tid
   editingName.value = threadStore.threads[tid].name
+  editingTags.value = (threadStore.threads[tid].tags ?? []).join(', ')
 }
 
 async function finishRename() {
   if (editingThreadId.value && editingName.value.trim()) {
-    await threadStore.renameThread(editingThreadId.value, editingName.value.trim())
+    await threadStore.updateThread(
+      editingThreadId.value,
+      editingName.value.trim(),
+      parseTags(editingTags.value),
+    )
   }
   editingThreadId.value = null
 }
@@ -73,6 +93,20 @@ function showAllQAs() {
   threadStore.selectedThreadId = null
   qaStore.selectedPairId = null
   uiStore.showAllQAs = true
+  uiStore.showUnthreaded = false
+}
+
+function showUnthreaded() {
+  threadStore.selectedThreadId = null
+  uiStore.showAllQAs = false
+  uiStore.showUnthreaded = true
+
+  const firstUnthreaded = threadStore.unthreadedPairIds[0]
+  if (firstUnthreaded) {
+    qaStore.selectPair(firstUnthreaded)
+  } else {
+    qaStore.selectedPairId = null
+  }
 }
 
 function onNewThreadKeydown(e: KeyboardEvent) {
@@ -80,6 +114,7 @@ function onNewThreadKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     showNewThreadInput.value = false
     newThreadName.value = ''
+    newThreadTags.value = ''
   }
 }
 
@@ -89,7 +124,7 @@ function onRenameKeydown(e: KeyboardEvent) {
 }
 
 function onThreadListKeydown(e: KeyboardEvent) {
-  const ids = threadStore.sortedThreadIds
+  const ids = threadStore.filteredSortedThreadIds
   if (ids.length === 0) return
   const currentIdx = threadStore.selectedThreadId ? ids.indexOf(threadStore.selectedThreadId) : -1
 
@@ -103,6 +138,8 @@ function onThreadListKeydown(e: KeyboardEvent) {
     selectThread(ids[prev])
   }
 }
+
+const hasFilters = computed(() => threadStore.activeTagFilters.length > 0)
 
 function onRenameSelectedThreadRequest() {
   if (!threadStore.selectedThreadId) return
@@ -123,20 +160,65 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="panel-header">
       <span class="panel-title">Threads</span>
-      <Button
-        icon="pi pi-list"
-        text
-        rounded
-        size="small"
-        title="Show all QAs"
-        @click="showAllQAs"
-      />
+      <div class="header-actions">
+        <Button
+          icon="pi pi-inbox"
+          text
+          rounded
+          size="small"
+          data-testid="show-unthreaded-button"
+          title="Show unthreaded QAs"
+          @click="showUnthreaded"
+        />
+        <Button
+          icon="pi pi-list"
+          text
+          rounded
+          size="small"
+          data-testid="show-all-qas-button"
+          title="Show all QAs"
+          @click="showAllQAs"
+        />
+      </div>
+    </div>
+
+    <div v-if="threadStore.allThreadTags.length > 0" class="tag-filter-bar">
+      <button
+        v-for="tag in threadStore.allThreadTags"
+        :key="tag"
+        class="tag-filter-chip"
+        :class="{ active: threadStore.activeTagFilters.includes(tag) }"
+        @click="threadStore.toggleTagFilter(tag)"
+      >{{ tag }}</button>
+      <button
+        v-if="hasFilters"
+        class="tag-filter-clear"
+        title="Clear all filters"
+        @click="threadStore.clearTagFilters()"
+      >×</button>
     </div>
 
     <!-- Thread list -->
-    <div class="thread-list" tabindex="0" @keydown="onThreadListKeydown">
+    <div class="thread-list" data-testid="thread-list" tabindex="0" @keydown="onThreadListKeydown">
       <div
-        v-for="tid in threadStore.sortedThreadIds"
+        class="thread-item thread-item--virtual"
+        data-testid="unthreaded-thread-item"
+        :class="{ active: uiStore.showUnthreaded }"
+        @click="showUnthreaded"
+      >
+        <div class="thread-info">
+          <div class="thread-name">
+            <i class="pi pi-inbox" />
+            <span>Unthreaded</span>
+          </div>
+        </div>
+        <span v-if="threadStore.unthreadedPairIds.length > 0" class="virtual-count">
+          {{ threadStore.unthreadedPairIds.length }}
+        </span>
+      </div>
+
+      <div
+        v-for="tid in threadStore.filteredSortedThreadIds"
         :key="tid"
         class="thread-item"
         :class="{ active: threadStore.selectedThreadId === tid }"
@@ -144,9 +226,20 @@ onUnmounted(() => {
       >
         <!-- Normal display -->
         <template v-if="editingThreadId !== tid">
-          <div class="thread-name">
-            <i class="pi pi-folder" />
-            <span>{{ threadStore.threads[tid].name }}</span>
+          <div class="thread-info">
+            <div class="thread-name">
+              <i class="pi pi-folder" />
+              <span>{{ threadStore.threads[tid].name }}</span>
+            </div>
+            <div v-if="threadStore.threads[tid].tags?.length" class="thread-tags">
+              <span
+                v-for="tag in threadStore.threads[tid].tags"
+                :key="tag"
+                class="thread-tag"
+                :class="{ 'thread-tag--active': threadStore.activeTagFilters.includes(tag) }"
+                @click.stop="threadStore.toggleTagFilter(tag)"
+              >{{ tag }}</span>
+            </div>
           </div>
           <div class="thread-actions">
             <Button
@@ -171,20 +264,37 @@ onUnmounted(() => {
 
         <!-- Editing name -->
         <template v-else>
-          <InputText
-            v-model="editingName"
-            class="rename-input"
-            size="small"
-            autofocus
-            @keydown="onRenameKeydown"
-            @blur="finishRename"
-            @click.stop
-          />
+          <div class="edit-form" @click.stop>
+            <InputText
+              v-model="editingName"
+              class="edit-input"
+              size="small"
+              placeholder="Thread name"
+              autofocus
+              @keydown="onRenameKeydown"
+              @blur="finishRename"
+            />
+            <InputText
+              v-model="editingTags"
+              class="edit-input"
+              size="small"
+              placeholder="Tags (comma-separated)"
+              @keydown="onRenameKeydown"
+            />
+          </div>
         </template>
       </div>
 
-      <!-- Empty state -->
-      <div v-if="threadStore.sortedThreadIds.length === 0" class="empty-state">
+      <div
+        v-if="threadStore.filteredSortedThreadIds.length === 0 && threadStore.sortedThreadIds.length > 0"
+        class="empty-state"
+      >
+        <i class="pi pi-filter-slash" />
+        <p>No threads match</p>
+        <button class="clear-link" @click="threadStore.clearTagFilters()">Clear filter</button>
+      </div>
+
+      <div v-else-if="threadStore.sortedThreadIds.length === 0" class="empty-state">
         <i class="pi pi-inbox" />
         <p>No threads yet</p>
       </div>
@@ -192,17 +302,26 @@ onUnmounted(() => {
 
     <!-- Bottom: Add thread (OneNote-style) -->
     <div class="panel-footer">
-      <div v-if="showNewThreadInput" class="new-thread-input">
+      <div v-if="showNewThreadInput" class="new-thread-inputs">
         <InputText
           v-model="newThreadName"
+            data-testid="new-thread-name-input"
           placeholder="Thread name..."
           size="small"
           class="w-full"
           autofocus
           @keydown="onNewThreadKeydown"
         />
+        <InputText
+          v-model="newThreadTags"
+          data-testid="new-thread-tags-input"
+          placeholder="Tags (comma-separated)"
+          size="small"
+          class="w-full"
+          @keydown="onNewThreadKeydown"
+        />
       </div>
-      <button class="add-button" @click="showNewThreadInput = !showNewThreadInput">
+      <button class="add-button" data-testid="add-thread-button" @click="showNewThreadInput = !showNewThreadInput">
         <i class="pi pi-plus" />
         <span>Add thread</span>
       </button>
@@ -229,9 +348,72 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .panel-title {
   font-weight: 600;
   font-size: 14px;
+  color: var(--text-color);
+}
+
+.tag-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-section);
+}
+
+.tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-hover);
+  color: var(--text-color-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1.6;
+}
+
+.tag-filter-chip:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.tag-filter-chip.active {
+  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.tag-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  margin-left: 2px;
+  padding: 0;
+  line-height: 1;
+}
+
+.tag-filter-clear:hover {
+  background: var(--surface-hover);
   color: var(--text-color);
 }
 
@@ -244,12 +426,13 @@ onUnmounted(() => {
 
 .thread-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 7px 12px;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: all 0.15s ease;
+  gap: 4px;
 }
 
 .thread-item:hover {
@@ -261,12 +444,15 @@ onUnmounted(() => {
   border-left-color: var(--primary-color);
 }
 
+.thread-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .thread-name {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  min-width: 0;
 }
 
 .thread-name span {
@@ -276,16 +462,70 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.thread-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+  padding-left: 20px;
+}
+
+.thread-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-color-secondary);
+  font-size: 10px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.thread-tag:hover,
+.thread-tag--active {
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.thread-item--virtual .thread-name span {
+  color: var(--text-color-secondary);
+}
+
+.thread-item--virtual.active .thread-name span {
+  color: var(--primary-color);
+}
+
+.virtual-count {
+  font-size: 11px;
+  background: var(--surface-200);
+  padding: 1px 6px;
+  border-radius: 10px;
+  color: var(--text-color-secondary);
+  flex-shrink: 0;
+}
+
 .thread-actions {
   display: none;
   gap: 2px;
+  flex-shrink: 0;
+  margin-top: -2px;
 }
 
 .thread-item:hover .thread-actions {
   display: flex;
 }
 
-.rename-input {
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.edit-input {
   width: 100%;
 }
 
@@ -310,8 +550,20 @@ onUnmounted(() => {
   padding: 4px;
 }
 
-.new-thread-input {
+.new-thread-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 4px 8px 4px;
+}
+
+.clear-link {
+  margin-top: 6px;
+  border: none;
+  background: transparent;
+  color: var(--primary-color);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .add-button {

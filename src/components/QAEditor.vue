@@ -509,6 +509,7 @@ function handleKeydown(event: KeyboardEvent) {
         <label>Add to Thread</label>
         <Select
           v-model="targetThreadId"
+          data-testid="target-thread-select"
           :options="threadOptions"
           optionLabel="label"
           optionValue="value"

@@ -2,6 +2,23 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { QACreateData } from '../types/QAPair'
 
+const ZOOM_STEPS = [75, 87, 100, 115, 125, 150, 175, 200, 250, 300]
+const ZOOM_KEY = 'llm-aggregator.contentZoom'
+const THREADS_COLLAPSED_KEY = 'llm-aggregator.threadsCollapsed'
+const LIST_COLLAPSED_KEY = 'llm-aggregator.listCollapsed'
+
+function loadZoom(): number {
+  if (typeof window === 'undefined') return 100
+  const saved = window.localStorage.getItem(ZOOM_KEY)
+  const parsed = saved ? parseInt(saved, 10) : NaN
+  return ZOOM_STEPS.includes(parsed) ? parsed : 100
+}
+
+function loadBool(key: string): boolean {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(key) === 'true'
+}
+
 export const useUIStore = defineStore('ui', () => {
   const persistedRememberLastMetadata =
     typeof window !== 'undefined' ? window.localStorage.getItem('llm:rememberLastMetadata') : null
@@ -29,9 +46,13 @@ export const useUIStore = defineStore('ui', () => {
   const sortBy = ref<'date' | 'title'>('date')
   const isEditing = ref(false)
   const showAllQAs = ref(false)
+  const showUnthreaded = ref(false)
   const showQAEditor = ref(false)
   const darkMode = ref(false)
   const isSidebarVisible = ref(true)
+  const contentZoom = ref<number>(loadZoom())
+  const threadsCollapsed = ref<boolean>(loadBool(THREADS_COLLAPSED_KEY))
+  const listCollapsed = ref<boolean>(loadBool(LIST_COLLAPSED_KEY))
 
   // Pane sizes (percentages)
   const sidebarWidth = ref(15)
@@ -52,6 +73,61 @@ export const useUIStore = defineStore('ui', () => {
       document.documentElement.classList.add('dark-mode')
     } else {
       document.documentElement.classList.remove('dark-mode')
+    }
+  }
+
+  function zoomIn() {
+    const idx = ZOOM_STEPS.indexOf(contentZoom.value)
+    if (idx < ZOOM_STEPS.length - 1) {
+      contentZoom.value = ZOOM_STEPS[idx + 1]
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(ZOOM_KEY, String(contentZoom.value))
+      }
+    }
+  }
+
+  function zoomOut() {
+    const idx = ZOOM_STEPS.indexOf(contentZoom.value)
+    if (idx > 0) {
+      contentZoom.value = ZOOM_STEPS[idx - 1]
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(ZOOM_KEY, String(contentZoom.value))
+      }
+    }
+  }
+
+  function zoomReset() {
+    contentZoom.value = 100
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ZOOM_KEY, '100')
+    }
+  }
+
+  function toggleThreads() {
+    threadsCollapsed.value = !threadsCollapsed.value
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THREADS_COLLAPSED_KEY, String(threadsCollapsed.value))
+    }
+  }
+
+  function setThreadsCollapsed(value: boolean) {
+    threadsCollapsed.value = value
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THREADS_COLLAPSED_KEY, String(value))
+    }
+  }
+
+  function toggleList() {
+    listCollapsed.value = !listCollapsed.value
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LIST_COLLAPSED_KEY, String(listCollapsed.value))
+    }
+  }
+
+  function setListCollapsed(value: boolean) {
+    listCollapsed.value = value
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LIST_COLLAPSED_KEY, String(value))
     }
   }
 
@@ -118,10 +194,21 @@ export const useUIStore = defineStore('ui', () => {
     sortBy,
     isEditing,
     showAllQAs,
+    showUnthreaded,
     showQAEditor,
     darkMode,
     toggleDarkMode,
     isSidebarVisible,
+    contentZoom,
+    threadsCollapsed,
+    listCollapsed,
+    zoomIn,
+    zoomOut,
+    zoomReset,
+    toggleThreads,
+    setThreadsCollapsed,
+    toggleList,
+    setListCollapsed,
     sidebarWidth,
     listWidth,
     lastUsedSource,

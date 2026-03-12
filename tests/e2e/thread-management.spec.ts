@@ -11,7 +11,7 @@ test.describe('Thread Management', () => {
 
         // Create a new thread
         await window.getByTestId('add-thread-button').click();
-        const newThreadInput = window.locator('.new-thread-input input');
+        const newThreadInput = window.getByTestId('new-thread-name-input');
         await newThreadInput.fill(threadName);
         await newThreadInput.press('Enter');
 
@@ -29,7 +29,7 @@ test.describe('Thread Management', () => {
         await renameBtn.click({ force: true });
 
         // Type new name
-        const renameInput = threadItem.locator('.rename-input');
+        const renameInput = threadItem.locator('input').first();
         await expect(renameInput).toBeVisible();
         await renameInput.fill(renamedName);
         await renameInput.press('Enter');

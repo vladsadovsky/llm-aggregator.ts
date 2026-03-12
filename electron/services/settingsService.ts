@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { debugLog, debugError } from './logger'
 
 const isDev = process.env.NODE_ENV !== 'production'
+const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
 
 export interface AppSettings {
   /** Absolute path to the data directory containing archive/ and threads.json */
@@ -64,5 +65,9 @@ export function saveSettings(settings: AppSettings): void {
 }
 
 export function getDataDirectory(): string {
+  const testDataDir = process.env[TEST_DATA_DIR_ENV]?.trim()
+  if (testDataDir) {
+    return testDataDir
+  }
   return loadSettings().dataDirectory
 }

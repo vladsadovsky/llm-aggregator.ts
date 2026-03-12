@@ -6,6 +6,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
+import Select from 'primevue/select'
 import QAMetadataBar from './QAMetadataBar.vue'
 import QAEditForm from './QAEditForm.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -20,6 +21,35 @@ const pair = computed(() => {
   if (!qaStore.selectedPairId) return null
   return qaStore.pairs[qaStore.selectedPairId] || null
 })
+
+const memberThreads = computed(() =>
+  qaStore.selectedPairId ? threadStore.threadsContaining(qaStore.selectedPairId) : []
+)
+
+const availableThreads = computed(() =>
+  qaStore.selectedPairId ? threadStore.threadsNotContaining(qaStore.selectedPairId) : []
+)
+
+const addThreadSelection = ref<string | null>(null)
+
+async function onAddToThread(event: { value: string }) {
+  if (!qaStore.selectedPairId || !event.value) return
+  await threadStore.addToThread(event.value, qaStore.selectedPairId)
+  addThreadSelection.value = null
+  toast.add({ severity: 'success', summary: 'Added to thread', life: 2000 })
+}
+
+async function removeFromMemberThread(tid: string) {
+  if (!qaStore.selectedPairId) return
+  await threadStore.removeFromThread(tid, qaStore.selectedPairId)
+
+  if (tid === threadStore.selectedThreadId && !uiStore.showAllQAs && !uiStore.showUnthreaded) {
+    qaStore.selectedPairId = null
+    window.dispatchEvent(new Event('llm:focus-qa-list'))
+  }
+
+  toast.add({ severity: 'info', summary: 'Removed from thread', life: 2000 })
+}
 
 function startEdit() {
   uiStore.isEditing = true
@@ -47,9 +77,8 @@ function confirmDelete() {
     acceptClass: 'p-button-danger',
     accept: async () => {
       const id = qaStore.selectedPairId!
-      // Also remove from current thread
-      if (threadStore.selectedThreadId) {
-        await threadStore.removeFromThread(threadStore.selectedThreadId, id)
+      for (const thread of threadStore.threadsContaining(id)) {
+        await threadStore.removeFromThread(thread.id, id)
       }
       await qaStore.deletePair(id)
       toast.add({ severity: 'info', summary: 'QA deleted', life: 2000 })
@@ -61,6 +90,7 @@ async function removeFromThread() {
   if (!qaStore.selectedPairId || !threadStore.selectedThreadId) return
   await threadStore.removeFromThread(threadStore.selectedThreadId, qaStore.selectedPairId)
   qaStore.selectedPairId = null
+  window.dispatchEvent(new Event('llm:focus-qa-list'))
   toast.add({ severity: 'info', summary: 'Removed from thread', life: 2000 })
 }
 
@@ -74,9 +104,67 @@ async function moveDown() {
   await threadStore.moveInThread(threadStore.selectedThreadId, qaStore.selectedPairId, 1)
 }
 
+async function moveToStart() {
+  if (!qaStore.selectedPairId || !threadStore.selectedThreadId) return
+  await threadStore.moveToStartOfThread(threadStore.selectedThreadId, qaStore.selectedPairId)
+}
+
+async function moveToEnd() {
+  if (!qaStore.selectedPairId || !threadStore.selectedThreadId) return
+  await threadStore.moveToEndOfThread(threadStore.selectedThreadId, qaStore.selectedPairId)
+}
+
 const showMoveButtons = computed(() => {
-  return threadStore.selectedThreadId && !uiStore.showAllQAs
+  return threadStore.selectedThreadId && !uiStore.showAllQAs && !uiStore.showUnthreaded
 })
+
+const nextPairId = computed<string | null>(() => {
+  if (!threadStore.selectedThreadId || !qaStore.selectedPairId) return null
+  const items = threadStore.threads[threadStore.selectedThreadId]?.items ?? []
+  const idx = items.indexOf(qaStore.selectedPairId)
+  if (idx === -1) return null
+
+  for (let i = idx + 1; i < items.length; i += 1) {
+    if (items[i] in qaStore.pairs) return items[i]
+  }
+  return null
+})
+
+async function mergeWithNext() {
+  const currentId = qaStore.selectedPairId
+  const nextId = nextPairId.value
+  if (!currentId || !nextId) return
+
+  const current = qaStore.pairs[currentId]
+  const next = qaStore.pairs[nextId]
+  if (!current || !next) return
+
+  const separator = '\n\n---\n\n'
+  const mergedQuestion =
+    current.question.trimEnd() +
+    separator +
+    `**${next.title}**\n\n` +
+    next.question.trimStart()
+  const mergedAnswer =
+    current.answer.trimEnd() +
+    separator +
+    `**${next.title}**\n\n` +
+    next.answer.trimStart()
+  const mergedTags = [...new Set([...(current.tags ?? []), ...(next.tags ?? [])])]
+
+  await qaStore.updatePair(currentId, {
+    question: mergedQuestion,
+    answer: mergedAnswer,
+    tags: mergedTags,
+  })
+
+  for (const thread of threadStore.threadsContaining(nextId)) {
+    await threadStore.removeFromThread(thread.id, nextId)
+  }
+  await qaStore.deletePair(nextId)
+
+  toast.add({ severity: 'success', summary: 'Merged with next QA', life: 2000 })
+}
 
 function onEditSelectedQARequest() {
   if (!pair.value || uiStore.isEditing) return
@@ -118,7 +206,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="qa-content-panel">
+  <div class="qa-content-panel" :style="{ zoom: uiStore.contentZoom / 100 }">
     <!-- Content when a QA is selected -->
     <template v-if="pair">
       <!-- Edit mode -->
@@ -137,6 +225,7 @@ onUnmounted(() => {
             icon="pi pi-pencil"
             label="Edit"
             size="small"
+            data-testid="edit-qa-button"
             outlined
             @click="startEdit"
           />
@@ -144,6 +233,7 @@ onUnmounted(() => {
             icon="pi pi-trash"
             label="Delete"
             size="small"
+            data-testid="delete-qa-button"
             outlined
             severity="danger"
             @click="confirmDelete"
@@ -152,20 +242,27 @@ onUnmounted(() => {
             icon="pi pi-copy"
             label="Duplicate"
             size="small"
+            data-testid="duplicate-qa-button"
             outlined
             @click="duplicateSelectedQA"
           />
-          <Button
-            v-if="showMoveButtons"
-            icon="pi pi-minus"
-            label="Remove"
-            size="small"
-            outlined
-            severity="warn"
-            title="Remove from this thread (keeps the file)"
-            @click="removeFromThread"
-          />
           <div v-if="showMoveButtons" class="move-buttons">
+            <Button
+              icon="pi pi-minus"
+              label="Remove"
+              size="small"
+              outlined
+              severity="warn"
+              title="Remove from this thread (keeps the file)"
+              @click="removeFromThread"
+            />
+            <Button
+              icon="pi pi-angle-double-up"
+              size="small"
+              outlined
+              title="Move to start of thread"
+              @click="moveToStart"
+            />
             <Button
               icon="pi pi-arrow-up"
               size="small"
@@ -180,7 +277,78 @@ onUnmounted(() => {
               title="Move down"
               @click="moveDown"
             />
+            <Button
+              icon="pi pi-angle-double-down"
+              size="small"
+              outlined
+              title="Move to end of thread"
+              @click="moveToEnd"
+            />
+            <Button
+              v-if="nextPairId"
+              icon="pi pi-sitemap"
+              size="small"
+              data-testid="merge-next-qa-button"
+              outlined
+              severity="secondary"
+              title="Merge with next QA in thread"
+              @click="mergeWithNext"
+            />
           </div>
+
+          <div class="zoom-controls">
+            <Button
+              icon="pi pi-minus"
+              size="small"
+              text
+              :disabled="uiStore.contentZoom <= 75"
+              title="Zoom out"
+              @click="uiStore.zoomOut()"
+            />
+            <span
+              class="zoom-label"
+              data-testid="zoom-label"
+              title="Double-click to reset zoom"
+              @dblclick="uiStore.zoomReset()"
+            >{{ uiStore.contentZoom }}%</span>
+            <Button
+              icon="pi pi-plus"
+              size="small"
+              text
+              :disabled="uiStore.contentZoom >= 300"
+              title="Zoom in"
+              @click="uiStore.zoomIn()"
+            />
+          </div>
+        </div>
+
+        <div class="thread-bar">
+          <span class="thread-bar-label">Threads:</span>
+          <span
+            v-for="thread in memberThreads"
+            :key="thread.id"
+            class="thread-chip"
+            :class="{ 'thread-chip--current': thread.id === threadStore.selectedThreadId }"
+          >
+            {{ thread.name }}
+            <button
+              class="thread-chip-remove"
+              title="Remove from this thread"
+              @click="removeFromMemberThread(thread.id)"
+            >×</button>
+          </span>
+          <span v-if="memberThreads.length === 0" class="thread-bar-none">not in any thread</span>
+          <Select
+            v-if="availableThreads.length > 0"
+            v-model="addThreadSelection"
+            data-testid="add-to-thread-select"
+            :options="availableThreads"
+            optionLabel="name"
+            optionValue="id"
+            placeholder="+ Add to thread"
+            class="thread-add-select"
+            @change="onAddToThread"
+          />
         </div>
 
         <!-- Question -->
@@ -233,7 +401,91 @@ onUnmounted(() => {
 .move-buttons {
   display: flex;
   gap: 4px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
+}
+
+.zoom-label {
+  font-size: 11px;
+  min-width: 32px;
+  text-align: center;
+  color: var(--text-color-secondary);
+  cursor: default;
+  user-select: none;
+}
+
+.thread-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.thread-bar-label {
+  color: var(--text-color-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 2px;
+}
+
+.thread-bar-none {
+  color: var(--text-color-secondary);
+  font-style: italic;
+}
+
+.thread-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 10px;
+  border-radius: 12px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-size: 12px;
+}
+
+.thread-chip--current {
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.thread-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 14px;
+  color: inherit;
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+}
+
+.thread-chip-remove:hover {
+  opacity: 1;
+}
+
+.thread-add-select {
+  font-size: 12px;
+}
+
+.thread-add-select :deep(.p-select) {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .qa-section {

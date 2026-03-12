@@ -4,8 +4,6 @@ import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import Splitter from 'primevue/splitter'
-import SplitterPanel from 'primevue/splitterpanel'
 import ConfirmDialog from 'primevue/confirmdialog'
 import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
@@ -71,6 +69,8 @@ onMounted(async () => {
   if (Object.keys(threadStore.threads).length === 0 && Object.keys(qaStore.pairs).length > 0) {
     uiStore.showAllQAs = true
   }
+
+  uiStore.isSidebarVisible = !uiStore.threadsCollapsed
 
   isLoading.value = false
 
@@ -166,6 +166,15 @@ async function moveSelectedQA(direction: -1 | 1) {
 function runCommand(action: () => void) {
   showCommandPalette.value = false
   action()
+}
+
+function toggleThreadsPanel() {
+  uiStore.toggleThreads()
+  uiStore.isSidebarVisible = !uiStore.threadsCollapsed
+}
+
+function toggleListPanel() {
+  uiStore.toggleList()
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
@@ -344,69 +353,77 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   </div>
 
   <div v-else class="app-container">
-    <Splitter class="w-full h-full border-none">
-      <SplitterPanel v-if="uiStore.isSidebarVisible" :size="uiStore.sidebarWidth" :minSize="10" class="app-sidebar">
+    <div class="panel-wrap" :class="{ collapsed: uiStore.threadsCollapsed }">
+      <div class="panel-content panel-content--threads">
         <div class="app-toolbar">
           <span class="app-brand">LLM Aggregator</span>
-          <div class="toolbar-buttons">
+        </div>
+        <ThreadsPanel />
+      </div>
+      <button
+        class="panel-toggle"
+        data-testid="threads-panel-toggle"
+        :title="uiStore.threadsCollapsed ? 'Expand threads' : 'Collapse threads'"
+        @click="toggleThreadsPanel"
+      >
+        <i :class="uiStore.threadsCollapsed ? 'pi pi-chevron-right' : 'pi pi-chevron-left'" />
+      </button>
+    </div>
+
+    <div class="panel-wrap panel-wrap--list" :class="{ collapsed: uiStore.listCollapsed }">
+      <div class="panel-content panel-content--list">
+        <QAListPanel />
+      </div>
+      <button
+        class="panel-toggle"
+        data-testid="list-panel-toggle"
+        :title="uiStore.listCollapsed ? 'Expand list' : 'Collapse list'"
+        @click="toggleListPanel"
+      >
+        <i :class="uiStore.listCollapsed ? 'pi pi-chevron-right' : 'pi pi-chevron-left'" />
+      </button>
+    </div>
+
+    <div class="content-wrap">
+      <div class="content-header-toolbar">
+         <div class="spacer breadcrumb">
+           <template v-if="uiStore.showAllQAs">
+             <span class="bc-item" @click="uiStore.showAllQAs = true">All QAs</span>
+           </template>
+           <template v-else-if="threadStore.selectedThreadId">
+             <span class="bc-item" @click="uiStore.showAllQAs = false">Threads</span>
+             <i class="pi pi-angle-right bc-separator"></i>
+             <span class="bc-item bc-active">{{ threadStore.selectedThread?.name }}</span>
+           </template>
+           <template v-else-if="uiStore.showUnthreaded">
+             <span class="bc-item">Unthreaded</span>
+           </template>
+           <template v-if="qaStore.selectedPair()">
+             <i class="pi pi-angle-right bc-separator"></i>
+             <span class="bc-item bc-active qa-title" :title="qaStore.selectedPair()!.title">{{ qaStore.selectedPair()!.title }}</span>
+           </template>
+         </div>
+         <div class="toolbar-buttons px-2 py-1">
             <Button
-              icon="pi pi-angle-left"
+              :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
               text
               rounded
               size="small"
-              title="Hide sidebar"
-              @click="uiStore.isSidebarVisible = false"
+              :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
+              @click="uiStore.toggleDarkMode()"
             />
-          </div>
-        </div>
-        <ThreadsPanel />
-      </SplitterPanel>
-      
-      <SplitterPanel :size="100 - (uiStore.isSidebarVisible ? uiStore.sidebarWidth : 0)">
-        <Splitter class="w-full h-full border-none">
-          <SplitterPanel :size="uiStore.isSidebarVisible ? 30 : 25" :minSize="15">
-            <QAListPanel />
-          </SplitterPanel>
-          <SplitterPanel :size="uiStore.isSidebarVisible ? 70 : 75" :minSize="30">
-            <div class="content-header-toolbar">
-               <div class="spacer breadcrumb">
-                 <template v-if="uiStore.showAllQAs">
-                   <span class="bc-item" @click="uiStore.showAllQAs = true">All QAs</span>
-                 </template>
-                 <template v-else-if="threadStore.selectedThread">
-                   <span class="bc-item" @click="uiStore.showAllQAs = false">Threads</span>
-                   <i class="pi pi-angle-right bc-separator"></i>
-                   <span class="bc-item bc-active">{{ threadStore.selectedThread.name }}</span>
-                 </template>
-                 <template v-if="qaStore.selectedPair()">
-                   <i class="pi pi-angle-right bc-separator"></i>
-                   <span class="bc-item bc-active qa-title" :title="qaStore.selectedPair()!.title">{{ qaStore.selectedPair()!.title }}</span>
-                 </template>
-               </div>
-               <div class="toolbar-buttons px-2 py-1">
-                  <Button
-                    :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
-                    text
-                    rounded
-                    size="small"
-                    :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
-                    @click="uiStore.toggleDarkMode()"
-                  />
-                  <Button
-                    icon="pi pi-cog"
-                    text
-                    rounded
-                    size="small"
-                    :title="`Settings (${modKeyLabel}+,)`"
-                    @click="showSettings = true"
-                  />
-               </div>
-            </div>
-            <QAContentPanel />
-          </SplitterPanel>
-        </Splitter>
-      </SplitterPanel>
-    </Splitter>
+            <Button
+              icon="pi pi-cog"
+              text
+              rounded
+              size="small"
+              :title="`Settings (${modKeyLabel}+,)`"
+              @click="showSettings = true"
+            />
+         </div>
+      </div>
+      <QAContentPanel />
+    </div>
   </div>
 </template>
 
@@ -439,7 +456,65 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   overflow: hidden;
 }
 
+.panel-wrap {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.panel-content {
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.panel-content--threads {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.panel-content--list {
+  width: 340px;
+  height: 100%;
+}
+
+.panel-wrap.collapsed .panel-content {
+  width: 0;
+}
+
+.panel-toggle {
+  width: 14px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface-ground);
+  border: none;
+  border-right: 1px solid var(--border-color);
+  cursor: pointer;
+  color: var(--text-color-secondary);
+  padding: 0;
+  font-size: 10px;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.panel-toggle:hover {
+  opacity: 1;
+  background: var(--surface-hover);
+}
+
 .app-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.content-wrap {
+  min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   height: 100%;

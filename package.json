@@ -33,6 +33,7 @@
     "vue": "^3.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/js-yaml": "^4.0.0",
     "@types/markdown-it": "^14.0.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
@@ -62,7 +63,10 @@
     ],
     "mac": {
       "icon": "public/icons/llm-aggregator.icns",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     }
   },
   "author": "Vlad Sadovsky",

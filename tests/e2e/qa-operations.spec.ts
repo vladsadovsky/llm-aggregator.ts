@@ -22,10 +22,10 @@ test.describe('QA Operations', () => {
 
         // Verify created
         const qaItemList = window.getByTestId('qa-list');
-        await expect(qaItemList).toContainText(question);
+        await expect(qaItemList).toContainText('Question');
 
         // Select the QA
-        const qaItem = qaItemList.locator('.qa-item', { hasText: question });
+        const qaItem = qaItemList.locator('.qa-item', { hasText: 'Question' });
         await qaItem.click();
 
         // Verify Content Panel

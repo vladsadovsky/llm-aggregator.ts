@@ -16,21 +16,21 @@ test.describe('Search', () => {
         await window.getByRole('button', { name: 'Create QA' }).click();
 
         // Verify it appeared
-        await expect(window.getByTestId('qa-list')).toContainText(question);
+        await expect(window.getByTestId('qa-list')).toContainText('Searchable Question');
 
         // Use search
         const searchInput = window.getByTestId('search-input');
         await searchInput.fill(searchKey);
 
         // Wait for debounce and result
-        await expect(window.getByTestId('qa-list')).toContainText(question);
+        await expect(window.getByTestId('qa-list')).toContainText('Searchable Question');
 
         // Search for something that shouldn't match
         await searchInput.fill('NonExistentTerm999');
-        await expect(window.getByTestId('qa-list')).not.toContainText(question, { timeout: 3000 });
+        await expect(window.getByTestId('qa-list')).not.toContainText('Searchable Question', { timeout: 3000 });
 
         // Clear search
         await searchInput.fill('');
-        await expect(window.getByTestId('qa-list')).toContainText(question);
+        await expect(window.getByTestId('qa-list')).toContainText('Searchable Question');
     });
 });

@@ -5,6 +5,12 @@ release/
 *.local
 .DS_Store
 
+# Tool generated data
+playwright-report/
+coverage/
+test-results
+
+
 # Runtime data files (user-specific)
 settings.json
 threads.json
