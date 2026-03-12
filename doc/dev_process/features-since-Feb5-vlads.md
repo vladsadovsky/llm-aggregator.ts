@@ -1,4 +1,4 @@
-# Features Implemented Since 56b8a7ec54d684c375aee75fbaac711f9f6631e5
+# Features Implemented Since 2026-02-06
 
 Date: 2026-03-12
 
@@ -31,6 +31,7 @@ This list is evidence-based and not derived from commit titles alone. It combine
 - Added collapse/expand toggles for Threads and QA List panes in the main shell.
 - Added a recovery button to re-open the threads pane from list panel when collapsed.
 - Persisted collapsed state in local storage.
+- NB: after merge into master this will be superceded by the alternative design by eveselov, this one is archived 
 
 Evidence:
 - `src/App.vue` (`threads-panel-toggle`, `list-panel-toggle`)
@@ -43,6 +44,7 @@ Evidence:
 - Introduced explicit Unthreaded mode in thread navigation.
 - Added dedicated unthreaded list item and mode switching.
 - Added empty-state messaging when all QAs are already assigned.
+- NB came from merging with master on 3/11 
 
 Evidence:
 - `src/components/ThreadsPanel.vue` (`show-unthreaded-button`, unthreaded virtual item)
@@ -54,6 +56,7 @@ Evidence:
 - Added “add to thread” selector directly in QA content view.
 - Added remove-from-thread control while keeping file data intact.
 - Displayed per-QA thread membership chips.
+- NB came from merging with master on 3/11 
 
 Evidence:
 - `src/components/QAContentPanel.vue` (`add-to-thread-select`, thread chip/remove UI)
@@ -64,6 +67,7 @@ Evidence:
 - Added zoom out/in controls and current zoom label in QA content panel.
 - Added reset-on-double-click for zoom label.
 - Persisted zoom level in local storage.
+- NB came from merging with master on 3/11 
 
 Evidence:
 - `src/components/QAContentPanel.vue` (`zoom-label`, zoom buttons)
@@ -159,14 +163,10 @@ Evidence:
 ### 13. Primitive MCP integration assets for Claude Desktop
 
 - Added MCP server implementation and config scaffolding for exposing conversation archive to Claude Desktop.
+- use case is to tell Claude Desktop about LLM aggregator and enable it to export long conversation into QA pairs. Not fully tested yet, no suitable E2E with installation. 
 
 Evidence:
 - `build/claude/claude-conversation-mcp/index.js`
 - `build/claude/claude-conversation-mcp/package.json`
 - `build/claude/config/claude_desktop_config.json`
 - `README.md` section: “Integration with Claude Desktop as an MCP server”
-
-## Notes
-
-- This document reports implemented features in the current `master` state relative to commit `56b8a7ec54d684c375aee75fbaac711f9f6631e5`.
-- Because several commits were aggregate/merge commits, feature identification is grounded in current code/tests/docs evidence rather than commit labels.
