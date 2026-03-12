@@ -18,7 +18,13 @@
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --project=electron",
+    "test:e2e:debug": "playwright test --project=electron --debug",
+    "test:e2e:ui": "playwright test --project=electron --ui",
+    "test:e2e:report": "playwright show-report",
+    "test:visual": "playwright test tests/visual --project=electron",
+    "test:visual:update": "playwright test tests/visual --project=electron --update-snapshots"
   },
   "dependencies": {
     "@primeuix/themes": "^2.0.3",

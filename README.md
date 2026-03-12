@@ -116,6 +116,64 @@ npm run typecheck
 npm test
 ```
 
+### Run Electron UI tests with Playwright
+
+Recommendation for this repo: keep the common Playwright entrypoints in `package.json`, and back reusable ad hoc Electron test flows with a checked-in helper under `scripts/` instead of leaving them as prose only.
+
+Why this split:
+
+- Stable, repeatable paths such as "run all Electron e2e tests", "debug a test", and "open the HTML report" should be easy to discover as npm scripts.
+- Reusable repo-specific Playwright CLI patterns should live in `scripts/` so docs reference a real maintained entrypoint.
+- Truly one-off filtering and flag combinations can still be shown as direct CLI examples.
+
+Common commands:
+
+```bash
+# Run all Electron Playwright tests
+npm run test:e2e
+
+# Run only visual regression tests
+npm run test:visual
+
+# Debug a failing Electron Playwright test interactively
+npm run test:e2e:debug
+
+# Open Playwright's interactive UI runner
+npm run test:e2e:ui
+
+# Open the last generated HTML report
+npm run test:e2e:report
+
+# Accept the current UI as the new visual baseline
+npm run test:visual:update
+```
+
+When to use `npm run test:visual:update`:
+
+- Use it only when you intentionally accept the current UI as the new approved appearance.
+- Run it after deliberate layout, theme, spacing, or shell changes that should become the new snapshot baseline.
+- Do not use it to hide unexplained visual regressions; first confirm the UI change is actually desired.
+
+Useful ad hoc commands:
+
+```bash
+# Run one Electron spec file via the repo helper
+bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts
+
+# Run one Electron spec with line reporter
+bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts --reporter=line
+
+# Run a single Electron test by name
+bash scripts/playwright-electron.sh --grep "supports collapse controls"
+```
+
+Notes specific to this repo:
+
+- The Playwright project name is `electron`; use `--project=electron` on direct CLI runs.
+- `scripts/playwright-electron.sh` is the checked-in helper for targeted Electron Playwright runs.
+- The Electron fixture uses an isolated temporary working directory, so Playwright runs do not write `threads.json` or `archive/` into the repo root.
+- Generated artifacts go to `playwright-report/` and `test-results/`, which are already ignored.
+
 ### Integration with Claude Desktop as an MCP server
 If you want to access saved conversations inside Claude chatbot you need to set up an MCP server, exporting the conversations and point Claude to it.
 

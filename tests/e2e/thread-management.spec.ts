@@ -17,11 +17,11 @@ test.describe('Thread Management', () => {
 
         // Verify thread is created
         const threadList = window.getByTestId('thread-list');
-        const newThread = threadList.getByText(threadName);
+        const newThread = threadList.locator('.thread-item', { hasText: threadName });
         await expect(newThread).toBeVisible();
 
         // Rename thread
-        const threadItem = threadList.locator('.thread-item', { hasText: threadName });
+        const threadItem = newThread;
         // Force hover and click as hover-based actions can be flay in some Linux environments
         await threadItem.hover();
         const renameBtn = threadItem.getByTitle('Rename');
@@ -29,16 +29,18 @@ test.describe('Thread Management', () => {
         await renameBtn.click({ force: true });
 
         // Type new name
-        const renameInput = threadItem.locator('input').first();
+        const renameInput = threadList.getByPlaceholder('Thread name');
         await expect(renameInput).toBeVisible();
+        await renameInput.click();
+        await renameInput.press('ControlOrMeta+A');
         await renameInput.fill(renamedName);
-        await renameInput.press('Enter');
+        await renameInput.press('Tab');
 
         // Verify rename
-        await expect(threadList.getByText(renamedName)).toBeVisible();
+        const renamedItem = threadList.locator('.thread-item', { hasText: renamedName });
+        await expect(renamedItem).toBeVisible();
 
         // Delete thread
-        const renamedItem = threadList.locator('.thread-item', { hasText: renamedName });
         await renamedItem.hover();
         await renamedItem.getByTitle('Delete').click();
 
@@ -47,6 +49,6 @@ test.describe('Thread Management', () => {
         await dialog.getByRole('button', { name: 'Delete' }).click();
 
         // Verify deletion
-        await expect(threadList.getByText(renamedName)).toBeHidden();
+        await expect(threadList.locator('.thread-item', { hasText: renamedName })).toHaveCount(0);
     });
 });

@@ -33,6 +33,54 @@ npm run typecheck
 npm test
 ```
 
+### Run Electron UI tests with Playwright
+
+For this repository, Playwright should be exposed three ways:
+
+- `package.json` scripts for the common workflows that everyone should run the same way
+- checked-in helpers under `scripts/` for reusable repo-specific CLI flows
+- explicit CLI examples only when the flow is genuinely one-off
+
+Common npm-script entrypoints:
+
+```bash
+npm run test:e2e
+npm run test:e2e:debug
+npm run test:e2e:ui
+npm run test:e2e:report
+npm run test:visual
+npm run test:visual:update
+```
+
+Recommended visual-baseline workflow:
+
+1. Run `npm run test:visual` to confirm whether the current UI differs from the approved snapshots.
+2. If the UI change is intentional and should become the new baseline, run `npm run test:visual:update`.
+3. Rerun `npm run test:e2e` so the suite passes against the updated approved snapshots.
+
+Only update snapshots when you are intentionally accepting the current appearance. Do not use snapshot updates as a shortcut around unexplained UI regressions.
+
+Direct CLI examples for targeted runs:
+
+```bash
+# Single Electron spec via repo helper
+bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts
+
+# Single Electron spec with compact console output
+bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts --reporter=line
+
+# Filter by test title
+bash scripts/playwright-electron.sh --grep "supports collapse controls"
+```
+
+Repo-specific notes:
+
+- Playwright is configured in `playwright.config.ts` with an `electron` project.
+- `scripts/playwright-electron.sh` is the checked-in wrapper for targeted Electron Playwright runs.
+- The Electron fixture in `tests/e2e/electron.fixture.ts` launches the app against a temporary isolated data directory.
+- Reports are written to `playwright-report/`; transient run artifacts go to `test-results/`.
+- Use the script helper when you need spec-level targeting or non-default reporters and want a repo-maintained entrypoint.
+
 ## Building Native Applications
 
 ### Build for the current platform
