@@ -1,13 +1,28 @@
-# LLM Aggregator
+# Build & Debug Guide — LLM Aggregator
 
-
-## Getting Started
-
-### Install dependencies
+## Quick Start
 
 ```bash
 npm install
+npm run dev       # Electron app with hot-reload
 ```
+
+## NPM Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server + Electron window (hot-reload) |
+| `npm run dev:server` | Start Vite server only (no Electron, for browser debugging) |
+| `npm run build` | Type-check + production Vite build |
+| `npm run electron:build` | Production build + native installer for current platform |
+| `npm run electron:build:win` | Windows installer (NSIS + portable .exe) |
+| `npm run electron:build:mac` | macOS installer (.dmg + .zip) |
+| `npm run electron:build:linux` | Linux installer (.AppImage + .deb) |
+| `npm run typecheck` | TypeScript type check only (no emit) |
+| `npm run lint` | ESLint with auto-fix |
+| `npm run test` | Run Vitest tests once |
+| `npm run test:watch` | Run Vitest in watch mode |
+
 
 ### Run in development mode
 
@@ -104,7 +119,7 @@ npm run electron:build:linux
 
 ### Build output
 
-Installers are placed in the `dist/` directory:
+Installers are placed in the `release/` directory:
 
 | Platform | Formats | File |
 |----------|---------|------|
@@ -114,45 +129,75 @@ Installers are placed in the `dist/` directory:
 
 ### Notes on cross-platform builds
 
-- macOS builds require a macOS host (code signing is optional)
+- macOS builds require a macOS host (code signing is optional but recommended for distribution)
 - Windows builds can be made on macOS/Linux using Wine (installed automatically by electron-builder)
 - Linux builds work on any Linux host
 
+## VS Code Extensions
 
-## Debugging 
+Install these before debugging:
 
-It is important to install Vue Visual Code extension (vue.solar) from the store in order to enable setting up breakpoints in source code and other Vue extended functions.
+- **Vue - Official** (`vue.volar`) — required for breakpoints in `.vue` files and Vue Language Features
+- **TypeScript Vue Plugin** (bundled with Vue - Official)
 
-Before starting source level debugging you are advised to run both typecheck and lint steps if you are modifying the codebase, by using following npm commands:
+Also recommended: install **Vue DevTools** in Chrome/Edge browser for frontend-only debugging:
+https://devtools.vuejs.org/
 
-```
+## Debugging
+
+Before debugging, run type-check and lint to catch errors early:
+
+```bash
 npm run typecheck
-npm run lint 
+npm run lint
 ```
 
-Default ports are used: 5173 for Vite access and 9223 for Electron native process.
+### Option 1: Frontend only (browser, no Electron)
 
-### Debugging front end only (no Electron)
-Debugging of the front end (UI components) without access to native Electron functionality is possible and sometimes preferable to do when the browser launches with ```npm run dev``` and DevTools panel is used. It is recommended that in addition to Chrome Dev Tools Vue Dev Tools are also installed  https://devtools.vuejs.org/. When debugging front end only Edge browser may also be used in the same way, but with the different launch configuration.
+Use this when working on UI components that don't need native file I/O.
 
-Launch configuraitons for front end only are 
+1. Start the Vite server:
+   ```bash
+   npm run dev:server
+   ```
+2. In VS Code, use one of these launch configurations:
+   - **"Chrome Launch Frontend"** — opens Chrome pointed at `localhost:5173`
+   - **"Edge Launch Frontend"** — same but for Edge
 
-"Eddge Launch Frontend" 
-Chrome Launch Frontend",
+The Vite server defaults to port **5173**. If it starts on port 5174 or higher, there is an orphaned Vite process running — find and kill it first.
 
-Both of them expect Vite server (Launched by ```npm run dev``` command) to be running and ports must be matched. Default port used is Vite default 5173 on localhost.  Command may be executed in VSCode built in terminal or in the outside terminal. 
+In browser mode, `window.api` is unavailable (no Electron IPC), so data operations will fail gracefully or be mocked.
 
-If you see a message that Vite server started on port 5174 or later, that means there is an orphaned running copy of the server or server from another app under development, that must be terminated. 
+### Option 2: Full stack (Electron + Vue, recommended)
 
+Use this when you need to debug IPC, file I/O, or the Electron main process alongside the Vue frontend.
 
-### Debugging full stack (both front end and Electron backend)
-When needed, Visual Code fully integrated  full stack debugging is enabled via the compound configuration caleld "Full Stack: Backend and Renderer". This compount combines two separateconfigurations , one for the launching Electron backend, called ""Electron Main (Backend)"and an attaching configuraiton, called "Electron Renderer (FrontEnd)". Chomium embedded into Electron is utilized  by creating a new attaching configuraiton and a new compound. In this mode of debugging breakpoints can be set up both in front end code (Chromium) and Electron native backend code (node process), tho Vue Devtools won't be available in the front end. 
+Launch the compound configuration:
 
-Compound configuration will pre-launch start of the necessary vite web server, thus you need to make sure previous instance is stopped. Usually if the instance is stuck in VS Code Terminal, need to kill it. 
+**"Full Stack: Backend + Renderer"**
 
-Name of the compound launch configuration you launch to start both Vite server and electron process, as well as Chromium browser instance is "Full Stack: Backend + Renderer"
+This compound:
+1. Starts the Vite dev server (`dev:server` script)
+2. Launches the Electron main process with the Node.js debugger attached (port **9223**)
+3. Attaches Chromium DevTools to the renderer process
 
-Note, the same as with front end debugging, make sure you don't have orphaned instances of Vite server and Electron processes. 
+Breakpoints can be set in both `.ts` / `.vue` renderer files and `electron/` main process files.
+
+> Note: Vue DevTools browser extension is **not** available in this mode (Electron's Chromium doesn't support extensions). Use Chromium DevTools instead.
+
+### Ports
+
+| Service | Port |
+|---------|------|
+| Vite dev server | 5173 |
+| Electron Node.js debugger | 9223 |
+
+### Avoiding orphaned processes
+
+Before starting a debug session, make sure no previous instances are running:
+- Kill any `Vite` terminal in VS Code that is still active
+- Kill any running Electron window from a previous session
+- Check Task Manager (Windows) or `ps aux | grep electron` (macOS/Linux)
 
 ## Project Structure
 
@@ -195,6 +240,23 @@ Note, the same as with front end debugging, make sure you don't have orphaned in
 ├── electron-builder.yml       # Native packaging config
 └── index.html
 ```
+
+
+
+## Data Files (Runtime)
+
+At runtime the app reads/writes from a configurable **data directory** (default: CWD in dev, `userData` in packaged builds):
+
+```
+<dataDirectory>/
+├── settings.json       # App settings
+├── threads.json        # Thread definitions and QA ordering
+└── archive/
+    ├── 20260204_2135_00_claude_whatIsLife.md
+    ├── 20260205_1845_00_chatgpt_howToSortArray.md
+    └── ...
+```
+
 
 ## Technology Stack
 

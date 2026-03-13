@@ -71,6 +71,55 @@ Specifications for the application were prepared manually. Baseline version of t
 - **URL validation** — invalid URLs are flagged with an error message before saving
 - **Auto-focus** — the Question field receives focus automatically when the editor opens
 
+### Structured Paste And Batch Creation (Feature 6)
+
+Feature 6 supports pasting multiple QA entries into the **Question** field and creating them in one action.
+
+How it works:
+- Paste structured text into the Question field in the New QA dialog.
+- The first parsed QA fills the editor fields.
+- Remaining parsed QAs are queued as a pending batch.
+- Click **Create Parsed Batch (N)** to create all detected entries.
+- If needed, use **Create & Add Another** for rapid manual flow between entries.
+
+Supported format A: Label-based QA blocks
+
+```text
+Title: Shared title for this batch
+Source: claude
+URL: https://example.com/conversation/123
+Tags: planning, ux, qa
+
+Question: What is the objective of this feature?
+Answer: It enables structured multi-QA paste and batch creation.
+
+Question: Which button creates all parsed entries?
+Answer: Use the Create Parsed Batch button.
+```
+
+Supported format B: Markdown heading blocks
+
+```text
+## Question
+What is the objective of this feature?
+
+## Answer
+It enables structured multi-QA paste and batch creation.
+
+## Question
+Which button creates all parsed entries?
+
+## Answer
+Use the Create Parsed Batch button.
+```
+
+Formatting notes:
+- Labels are case-insensitive (`Question`/`question`, `Answer`/`answer`, and also `q`/`a`).
+- Shared metadata keys are optional: `Title:`, `Source:`, `URL:`, `Tags:`.
+- Shared metadata is read from the top part of the pasted text.
+- `Tags:` should be comma-separated.
+- A QA entry is parsed only when both question and answer are present.
+
 ### Dark Mode
 
 - Toggle dark mode from the **moon/sun icon** in the toolbar or from **Settings**
@@ -116,64 +165,6 @@ npm run typecheck
 npm test
 ```
 
-### Run Electron UI tests with Playwright
-
-Recommendation for this repo: keep the common Playwright entrypoints in `package.json`, and back reusable ad hoc Electron test flows with a checked-in helper under `scripts/` instead of leaving them as prose only.
-
-Why this split:
-
-- Stable, repeatable paths such as "run all Electron e2e tests", "debug a test", and "open the HTML report" should be easy to discover as npm scripts.
-- Reusable repo-specific Playwright CLI patterns should live in `scripts/` so docs reference a real maintained entrypoint.
-- Truly one-off filtering and flag combinations can still be shown as direct CLI examples.
-
-Common commands:
-
-```bash
-# Run all Electron Playwright tests
-npm run test:e2e
-
-# Run only visual regression tests
-npm run test:visual
-
-# Debug a failing Electron Playwright test interactively
-npm run test:e2e:debug
-
-# Open Playwright's interactive UI runner
-npm run test:e2e:ui
-
-# Open the last generated HTML report
-npm run test:e2e:report
-
-# Accept the current UI as the new visual baseline
-npm run test:visual:update
-```
-
-When to use `npm run test:visual:update`:
-
-- Use it only when you intentionally accept the current UI as the new approved appearance.
-- Run it after deliberate layout, theme, spacing, or shell changes that should become the new snapshot baseline.
-- Do not use it to hide unexplained visual regressions; first confirm the UI change is actually desired.
-
-Useful ad hoc commands:
-
-```bash
-# Run one Electron spec file via the repo helper
-bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts
-
-# Run one Electron spec with line reporter
-bash scripts/playwright-electron.sh tests/e2e/merged-features.spec.ts --reporter=line
-
-# Run a single Electron test by name
-bash scripts/playwright-electron.sh --grep "supports collapse controls"
-```
-
-Notes specific to this repo:
-
-- The Playwright project name is `electron`; use `--project=electron` on direct CLI runs.
-- `scripts/playwright-electron.sh` is the checked-in helper for targeted Electron Playwright runs.
-- The Electron fixture uses an isolated temporary working directory, so Playwright runs do not write `threads.json` or `archive/` into the repo root.
-- Generated artifacts go to `playwright-report/` and `test-results/`, which are already ignored.
-
 ### Integration with Claude Desktop as an MCP server
 If you want to access saved conversations inside Claude chatbot you need to set up an MCP server, exporting the conversations and point Claude to it.
 
@@ -215,6 +206,41 @@ You can also change this from within the app via the **Settings** dialog (gear i
 | Frontmatter Parsing | gray-matter |
 | Native Packaging | electron-builder |
 
+## Data Format
+
+The application stores data as plain files — no database required:
+
+- **`threads.json`** — thread definitions and QA ordering
+- **`archive/*.md`** — individual QA pairs as Markdown files with YAML frontmatter
+
+These files are fully portable and human-readable. You can edit them outside the app, back them up with git, or sync them across machines.
+
+### QA File Example
+
+```markdown
+---
+id: '20260204_2135'
+title: ResTest1
+source: claude
+url: https://claude.ai/chat/...
+tags:
+  - research
+  - testing
+timestamp: '2026-02-04T21:35:57.826479'
+version: 1
+thread_pairs: []
+---
+
+## Question
+What is the meaning of life?
+
+## Answer
+42
+```
+
+## Generative AI Usage
+
+Specifications for the application were prepared manually. The baseline version of the code was designed by Claude Opus 4.6 to a large degree, collaborating on planning and design documents to formalize requirements.
 
 ### Contribution guidelines 
 
