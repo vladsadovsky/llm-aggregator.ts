@@ -247,4 +247,7 @@ Specifications for the application were prepared manually. The baseline version 
 * For now the project does not have any tests - you are welcome to add some.
 * The implementation is currently very primitive and in some respects is not user-friendly - you are welcom to create a PR to improve.
 
+# Credits
+Developer and maintainer sadovskyvlad@gmail.com 
+An original idea and conceptual model is by eveselov@hotmail.com 
 
