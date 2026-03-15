@@ -192,16 +192,31 @@ function duplicateSelectedQA() {
   )
 }
 
+async function exportSelectedQA() {
+  if (!pair.value) return
+  const result = await window.api.exportQA(pair.value.id)
+  if (result) {
+    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    toast.add({ severity: 'success', summary: 'QA exported', detail: `Saved to ${filename}`, life: 3000 })
+  }
+}
+
+function onExportSelectedQARequest() {
+  void exportSelectedQA()
+}
+
 onMounted(() => {
   window.addEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
   window.addEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
   window.addEventListener('llm:duplicate-selected-qa', duplicateSelectedQA)
+  window.addEventListener('llm:export-selected-qa', onExportSelectedQARequest)
 })
 
 onUnmounted(() => {
   window.removeEventListener('llm:edit-selected-qa', onEditSelectedQARequest)
   window.removeEventListener('llm:delete-selected-qa', onDeleteSelectedQARequest)
   window.removeEventListener('llm:duplicate-selected-qa', duplicateSelectedQA)
+  window.removeEventListener('llm:export-selected-qa', onExportSelectedQARequest)
 })
 </script>
 
@@ -245,6 +260,14 @@ onUnmounted(() => {
             data-testid="duplicate-qa-button"
             outlined
             @click="duplicateSelectedQA"
+          />
+          <Button
+            icon="pi pi-download"
+            label="Export"
+            size="small"
+            data-testid="export-qa-button"
+            outlined
+            @click="exportSelectedQA"
           />
           <div v-if="showMoveButtons" class="move-buttons">
             <Button

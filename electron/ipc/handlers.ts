@@ -11,6 +11,9 @@ import {
 } from '../services/qaPairService'
 import { search } from '../services/searchService'
 import { loadSettings, saveSettings, AppSettings } from '../services/settingsService'
+import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
+import { importFromFile } from '../services/fileImportService'
+import type { ImportResult } from '../services/qaImportFormatService'
 
 export function registerIpcHandlers(): void {
   // ─── Settings ──────────────────────────────────────────────
@@ -67,5 +70,24 @@ export function registerIpcHandlers(): void {
   // ─── Search ────────────────────────────────────────────────
   ipcMain.handle('search:query', async (_event, query: string, type: 'full-text' | 'tags') => {
     return search(query, type)
+  })
+
+  // ─── Export / Import ───────────────────────────────────────
+  ipcMain.handle('export:qa', async (_event, id: string) => {
+    const pair = getPair(id)
+    if (!pair) return null
+    return exportQAToFile(pair)
+  })
+
+  ipcMain.handle('export:thread', async (_event, threadId: string) => {
+    const threads = loadThreads()
+    const thread = threads[threadId]
+    if (!thread) return null
+    const pairs = listAllPairs()
+    return exportThreadToFile(thread, pairs)
+  })
+
+  ipcMain.handle('import:file', async (): Promise<ImportResult | null> => {
+    return importFromFile()
   })
 }

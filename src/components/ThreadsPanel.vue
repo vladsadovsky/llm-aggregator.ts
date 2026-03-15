@@ -89,6 +89,14 @@ function confirmDelete(tid: string) {
   })
 }
 
+async function exportThread(tid: string) {
+  const result = await window.api.exportThread(tid)
+  if (result) {
+    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    toast.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
+  }
+}
+
 function showAllQAs() {
   threadStore.selectedThreadId = null
   qaStore.selectedPairId = null
@@ -249,6 +257,15 @@ onUnmounted(() => {
               size="small"
               @click.stop="startRename(tid)"
               title="Rename"
+            />
+            <Button
+              icon="pi pi-download"
+              text
+              rounded
+              size="small"
+              data-testid="export-thread-button"
+              @click.stop="exportThread(tid)"
+              title="Export thread to file"
             />
             <Button
               icon="pi pi-trash"

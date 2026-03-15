@@ -82,4 +82,8 @@ export const mockApi: ElectronAPI = {
         console.log('Mock: Searching', query, type)
         return ['qa-1']
     },
+
+    exportQA: async (_id) => null,
+    exportThread: async (_threadId) => null,
+    importFromFile: async () => null,
 }

@@ -46,4 +46,6 @@ Before substantial edits:
 ## PR Checklist
 - [ ] `npm run build` passed after edits.
 - [ ] Updated `doc/dev_process/build-notes.md` when behavior/workflow changed.
+- [ ] Reviewed and updated `README.md` (user-facing features, keyboard shortcuts, workflows) when any user-visible functionality was added or changed.
+- [ ] Reviewed and updated any other documentation that describes affected functionality (in-app help dialogs, spec files under `doc/plans/`, guides under `doc/guides/`).
 - [ ] Confirmed no unrelated file drift.

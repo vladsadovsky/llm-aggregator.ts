@@ -16,21 +16,22 @@ Built with Vue 3, TypeScript, Electron, and PrimeVue.
 4. [Data Flow: From UI to Disk](#data-flow-from-ui-to-disk)
 5. [Core User Workflows](#core-user-workflows)
 6. [Structured Paste and Batch Creation](#structured-paste-and-batch-creation)
-7. [Keyboard Shortcuts](#keyboard-shortcuts)
-8. [Getting Started](#getting-started)
-9. [Build, Test, and Script Reference](#build-test-and-script-reference)
-10. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
-11. [Debugging in VS Code](#debugging-in-vs-code)
-12. [Building Native Installers](#building-native-installers)
-13. [Runtime Configuration](#runtime-configuration)
-14. [Data Model and File Format](#data-model-and-file-format)
-15. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
-16. [Project Structure](#project-structure)
-17. [Technology Stack](#technology-stack)
-18. [Generative AI Usage](#generative-ai-usage)
-19. [Contributing](#contributing)
-20. [Credits](#credits)
-21. [License](#license)
+7. [Export and Import](#export-and-import)
+8. [Keyboard Shortcuts](#keyboard-shortcuts)
+9. [Getting Started](#getting-started)
+10. [Build, Test, and Script Reference](#build-test-and-script-reference)
+11. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
+12. [Debugging in VS Code](#debugging-in-vs-code)
+13. [Building Native Installers](#building-native-installers)
+14. [Runtime Configuration](#runtime-configuration)
+15. [Data Model and File Format](#data-model-and-file-format)
+16. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
+17. [Project Structure](#project-structure)
+18. [Technology Stack](#technology-stack)
+19. [Generative AI Usage](#generative-ai-usage)
+20. [Contributing](#contributing)
+21. [Credits](#credits)
+22. [License](#license)
 
 ---
 
@@ -124,11 +125,23 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 - Markdown rendering with syntax-highlighted code.
 - Metadata bar for source context and provenance.
 
+### Export and import
+
+#### Export and import to/from a file
+- Export any selected QA or thread to a portable Markdown file (Save As dialog).
+- Import a previously exported file — or a hand-authored file — to recreate QA entries in the archive.
+- Thread imports reconstruct the thread and item order automatically.
+- Import always creates new records; existing content is never overwritten.
+- Version mismatches are handled with best-effort parsing and a per-item warning summary.
+
+#### Export  to a note
+Same as a to a file, but targeting one note or section in a note repository app (OneNote or Apple Notes)
+
 ---
 
 ## Structured Paste and Batch Creation
 
-The new QA dialog supports multi-entry parsing for fast ingestion.
+The QA dialog supports multi-entry parsing for fast ingestion.
 
 Behavior:
 
@@ -177,6 +190,75 @@ Parsing rules:
 
 ---
 
+## Export and Import
+
+### Exporting a QA pair
+
+1. Select a QA in the list.
+2. Click **Export** in the content panel toolbar, or press `X`.
+3. A Save dialog opens. Choose a filename and location.
+4. The file is written as a portable Markdown file and a success toast is shown.
+
+### Exporting a thread
+
+1. Hover over a thread in the Threads panel.
+2. Click the download icon (Export) button that appears next to Rename and Delete.
+3. Alternatively, select the thread and press `X` with no QA selected.
+4. A Save dialog opens. The file contains all thread QAs in order, plus thread metadata.
+
+### Importing
+
+1. Press `Ctrl+O` (or `Cmd+O` on macOS), or choose **Import from File** from the command palette.
+2. An Open dialog opens. Select a `.md` file.
+3. After import:
+   - A toast confirms how many QAs were created.
+   - If warnings were detected (missing fields, version mismatch, no file header), an import summary dialog lists each issue per-item.
+   - If the file contains a thread, the thread is reconstructed with items in their original order.
+
+### Export file format
+
+Exported files are standard Markdown with a YAML frontmatter header:
+
+```markdown
+---
+writer_app: llm-aggregator
+writer_version: 1.0.0
+schema_version: 1
+exported_at: 2026-03-15T12:00:00.000Z
+export_type: qa        # or: thread
+---
+
+title: My Question Title
+source: claude
+url: https://claude.ai/chat/abc123
+tags: typescript, electron
+version: 3
+original_id: 20260204_2135
+original_timestamp: 2026-02-04T21:35:57.826Z
+
+## Question
+
+Question text here.
+
+## Answer
+
+Answer text here.
+```
+
+Thread files include a `thread_name` header field and separate QA blocks with `---` dividers.
+
+### Human-authored import files
+
+Files without a YAML header are accepted. The parser uses the same flexible rules as the structured-paste feature:
+
+- `## Question` / `## Answer` Markdown headings.
+- Or `q: ...` / `a: ...` inline labels.
+- Per-QA metadata lines (`title:`, `source:`, `tags:`, etc.) before the first `## Question` are optional.
+
+Missing fields are filled with safe defaults and listed in the import summary.
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action | Context |
@@ -190,6 +272,9 @@ Parsing rules:
 | Alt+Up / Alt+Down | Move selected QA | Thread mode |
 | E | Edit selected QA | Global |
 | Delete | Delete selected QA (with confirmation) | Global |
+| D | Duplicate selected QA into new form | Global |
+| X | Export selected QA or thread to file | Global |
+| Ctrl/Cmd+O | Import from file | Global |
 | Ctrl/Cmd+K | Open command palette | Global |
 | ? | Show keyboard help | Global |
 | Ctrl/Cmd+Enter | Submit form | QA editor |

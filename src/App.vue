@@ -5,6 +5,7 @@ import Toast from 'primevue/toast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Dialog from 'primevue/dialog'
 import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
@@ -13,6 +14,7 @@ import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { debugError } from './utils/logger'
+import type { ImportResult } from './global'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
@@ -23,6 +25,8 @@ const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
 const commandQuery = ref('')
 const isLoading = ref(true)
+const showImportSummary = ref(false)
+const importSummaryResult = ref<ImportResult | null>(null)
 
 const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
 
@@ -34,6 +38,8 @@ const filteredCommands = computed(() => {
     { label: 'Edit Selected QA', shortcut: 'E', action: requestEditSelectedQA },
     { label: 'Delete Selected QA', shortcut: 'Delete', action: requestDeleteSelectedQA },
     { label: 'Duplicate Selected QA', shortcut: 'D', action: requestDuplicateSelectedQA },
+    { label: 'Export Selected QA / Thread', shortcut: 'X', action: requestExportSelected },
+    { label: 'Import from File', shortcut: `${modKeyLabel}+O`, action: () => void importFile() },
     { label: 'Open Settings', shortcut: `${modKeyLabel}+,`, action: openSettings },
     { label: 'Show Shortcuts', shortcut: '?', action: openShortcutsHelp },
   ]
@@ -156,6 +162,66 @@ function requestDuplicateSelectedQA() {
   window.dispatchEvent(new Event('llm:duplicate-selected-qa'))
 }
 
+function requestExportSelected() {
+  // QA has priority; fall back to active thread if no QA selected
+  if (qaStore.selectedPairId) {
+    window.dispatchEvent(new Event('llm:export-selected-qa'))
+  } else if (threadStore.selectedThreadId) {
+    void exportSelectedThread()
+  }
+}
+
+async function exportSelectedThread() {
+  if (!threadStore.selectedThreadId) return
+  const result = await window.api.exportThread(threadStore.selectedThreadId)
+  if (result) {
+    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    toast?.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
+  }
+}
+
+async function importFile() {
+  const result = await window.api.importFromFile()
+  if (!result) return // user cancelled
+
+  const createdIds: string[] = []
+  for (const item of result.items) {
+    try {
+      const created = await qaStore.createPair(item.data)
+      createdIds.push(created.id)
+    } catch (err) {
+      debugError('App', 'importFile: createPair failed for item', item.data.title, err)
+    }
+  }
+
+  // If thread export, reconstruct thread with the newly created IDs in order
+  if (result.exportType === 'thread' && result.threadName && createdIds.length > 0) {
+    const tid = await threadStore.createThread(result.threadName)
+    for (const id of createdIds) {
+      await threadStore.addToThread(tid, id)
+    }
+  }
+
+  // Reload so UI reflects new items
+  await qaStore.loadAllPairs()
+  await threadStore.loadThreads()
+
+  const allWarnings = [
+    ...result.fileWarnings,
+    ...result.items.flatMap((i) => i.warnings),
+  ]
+  const hasWarnings = allWarnings.length > 0
+  const severity = hasWarnings ? 'warn' : 'success'
+  const summary = hasWarnings ? 'Import completed with warnings' : 'Import successful'
+  const detail = `${createdIds.length} QA${createdIds.length !== 1 ? 's' : ''} imported`
+  toast?.add({ severity, summary, detail, life: 4000 })
+
+  if (hasWarnings) {
+    importSummaryResult.value = result
+    showImportSummary.value = true
+  }
+}
+
 async function moveSelectedQA(direction: -1 | 1) {
   if (!threadStore.selectedThreadId || !qaStore.selectedPairId || uiStore.showAllQAs || uiStore.isEditing) {
     return
@@ -271,6 +337,23 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
+  // X: Export active selection (QA priority, falls back to thread)
+  if (!isMod && !event.altKey && !event.shiftKey && key === 'x') {
+    if (uiStore.isEditing) return
+    if (qaStore.selectedPairId || threadStore.selectedThreadId) {
+      event.preventDefault()
+      requestExportSelected()
+    }
+    return
+  }
+
+  // Ctrl/Cmd + O: Import from file
+  if (isMod && key === 'o') {
+    event.preventDefault()
+    void importFile()
+    return
+  }
+
   // Ctrl/Cmd + K: Open command palette
   if (isMod && key === 'k') {
     event.preventDefault()
@@ -337,6 +420,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
           <tr><td>D</td><td>Duplicate selected QA into new form</td></tr>
           <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
+          <tr><td>X</td><td>Export selected QA or thread to file</td></tr>
+          <tr><td>{{ modKeyLabel }}+O</td><td>Import from file</td></tr>
           <tr><td>?</td><td>Show this help</td></tr>
           <tr><td>{{ modKeyLabel }}+Enter</td><td>Submit QA form</td></tr>
         </tbody>
@@ -344,6 +429,32 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     </div>
   </div>
   
+  <!-- Import summary dialog -->
+  <Dialog
+    v-model:visible="showImportSummary"
+    header="Import Summary"
+    :modal="true"
+    :closable="true"
+    :style="{ width: '560px', maxWidth: '90vw' }"
+    data-testid="import-summary-dialog"
+  >
+    <div v-if="importSummaryResult">
+      <p v-if="importSummaryResult.fileWarnings.length > 0" class="import-section-label">File warnings</p>
+      <ul v-if="importSummaryResult.fileWarnings.length > 0" class="import-warnings-list">
+        <li v-for="(w, i) in importSummaryResult.fileWarnings" :key="'fw-' + i">{{ w }}</li>
+      </ul>
+      <p v-if="importSummaryResult.items.some(it => it.warnings.length > 0)" class="import-section-label">Item warnings</p>
+      <ul class="import-warnings-list">
+        <template v-for="(item, idx) in importSummaryResult.items" :key="idx">
+          <li v-for="(w, wi) in item.warnings" :key="idx + '-' + wi">{{ w }}</li>
+        </template>
+      </ul>
+    </div>
+    <template #footer>
+      <Button label="Close" @click="showImportSummary = false" />
+    </template>
+  </Dialog>
+
   <!-- Loading screen -->
   <div v-if="isLoading" class="loading-screen">
     <div class="loading-content">
