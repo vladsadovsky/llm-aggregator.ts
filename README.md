@@ -527,6 +527,19 @@ Why this format works well:
 
 ---
 
+## LLM Lens Setup
+
+1. Open **Settings** → **AI** tab
+2. Enter your OpenAI API key
+3. Select a model (`gpt-4o` recommended; `gpt-4o-mini` for lower cost)
+4. Click **Test Connection**
+5. Click **Generate All Embeddings** to index your archive
+6. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+
+Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
+
+---
+
 ## Claude Desktop MCP Integration
 
 To expose saved conversations to Claude Desktop via MCP:

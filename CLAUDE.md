@@ -172,5 +172,6 @@ Per the project owner's stated roadmap:
 - Better LLM integration (auto-import from chats)
 - Thread hierarchies / nesting
 - Better search (vector indexing, semantic search)
+- Anthropic provider implementation
 - Enhanced markdown editor
 - Import/export formats
