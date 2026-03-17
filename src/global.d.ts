@@ -66,7 +66,7 @@ export interface ImportResult {
 export interface ExportResult {
   savedPath: string
 }
-
+ 79db6aa (Phase 6 — Done)
 export interface ElectronAPI {
   // Settings
   settingsLoad: () => Promise<AppSettings>
@@ -111,7 +111,7 @@ export interface ElectronAPI {
   // Export / Import
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
-  importFromFile: () => Promise<ImportResult | null>
+  importFromFile: () => Promise<ImportResult | null> 79db6aa (Phase 6 — Done)
 }
 
 declare global {

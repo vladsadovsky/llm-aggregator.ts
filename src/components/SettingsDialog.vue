@@ -10,7 +10,7 @@ import Checkbox from 'primevue/checkbox'
 import Password from 'primevue/password'
 import Select from 'primevue/select'
 import AnnotationDialog from './AnnotationDialog.vue'
-import HealthReportDialog from './HealthReportDialog.vue'
+import HealthReportDialog from './HealthReportDialog.vue' 79db6aa (Phase 6 — Done)
 
 const emit = defineEmits<{
   close: []
@@ -29,7 +29,7 @@ const anthropicApiKey = ref('')
 const testingConnection = ref(false)
 const generatingEmbeddings = ref(false)
 const showAnnotationDialog = ref(false)
-const showHealthDialog = ref(false)
+const showHealthDialog = ref(false) 79db6aa (Phase 6 — Done)
 const embeddingsResult = ref<{ total: number; generated: number; skipped: number } | null>(null)
 
 const providerOptions = [
@@ -298,7 +298,7 @@ function handleKeydown(event: KeyboardEvent) {
       </div>
 
       <AnnotationDialog v-if="showAnnotationDialog" @close="showAnnotationDialog = false" />
-      <HealthReportDialog v-if="showHealthDialog" @close="showHealthDialog = false" />
+      <HealthReportDialog v-if="showHealthDialog" @close="showHealthDialog = false" /> 79db6aa (Phase 6 — Done)
 
       <div class="button-row">
         <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
