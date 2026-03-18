@@ -70,7 +70,7 @@ export interface ElectronAPI {
   // Export / Import
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
-  importFromFile: () => Promise<ImportResult | null> 79db6aa (Phase 6 — Done)
+  importFromFile: () => Promise<ImportResult | null>
 }
 
 export interface QAPairData {
@@ -159,7 +159,7 @@ export interface HealthReport {
   deadEndCandidates: DeadEndEntry[]
 }
 
- 79db6aa (Phase 6 — Done)
+
 const api: ElectronAPI = {
   // Settings
   settingsLoad: () => ipcRenderer.invoke('settings:load'),
@@ -206,7 +206,7 @@ const api: ElectronAPI = {
   // Export / Import
   exportQA: (id) => ipcRenderer.invoke('export:qa', id),
   exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
-  importFromFile: () => ipcRenderer.invoke('import:file'), 79db6aa (Phase 6 — Done)
+  importFromFile: () => ipcRenderer.invoke('import:file'),
 }
 
 contextBridge.exposeInMainWorld('api', api)

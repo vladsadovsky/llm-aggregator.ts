@@ -23,7 +23,7 @@ import { sessionBriefing, priorArtCheck, steelmanRetrieval, questionSeeding, con
 import { generateAnnotations, applyAnnotations } from '../services/annotationService'
 import type { AnnotationProposal, ConfidenceLevel } from '../services/annotationService'
 import { runHealthCheck } from '../services/healthService'
-import type { HealthReport } from '../services/healthService' 79db6aa (Phase 6 — Done)
+import type { HealthReport } from '../services/healthService'
 
 export function registerIpcHandlers(): void {
   // ─── Settings ──────────────────────────────────────────────
@@ -177,5 +177,5 @@ export function registerIpcHandlers(): void {
   // ─── Archive Health ─────────────────────────────────────────
   ipcMain.handle('archive:healthCheck', async (): Promise<HealthReport> => {
     return runHealthCheck()
-  }) 79db6aa (Phase 6 — Done)
+  })
 }
