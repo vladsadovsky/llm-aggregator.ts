@@ -144,7 +144,7 @@ function showRequestToast(before: TokenStats, after: TokenStats) {
   if (delta.llmIn === 0 && delta.llmOut === 0 && delta.embedIn === 0) return
   if (toastTimer) clearTimeout(toastTimer)
   toast.value = delta
-  toastTimer = setTimeout(() => { toast.value = null }, 5000)
+  toastTimer = setTimeout(() => { toast.value = null }, 12000)
 }
 
 onMounted(async () => {
