@@ -134,6 +134,13 @@ interface RequestToast {
 const toast = ref<RequestToast | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
+function copyToast(t: RequestToast) {
+  const parts: string[] = [`Model: ${t.model}`]
+  if (t.llmIn || t.llmOut) parts.push(`LLM: ${t.llmIn.toLocaleString()} in · ${t.llmOut.toLocaleString()} out`)
+  if (t.embedIn) parts.push(`Embed: ${t.embedIn.toLocaleString()} in`)
+  void navigator.clipboard.writeText(parts.join('\n'))
+}
+
 function showRequestToast(before: TokenStats, after: TokenStats) {
   const delta: RequestToast = {
     llmIn: after.llm.input - before.llm.input,
@@ -299,6 +306,7 @@ defineExpose({ open, toggle })
             </span>
           </div>
         </div>
+        <button class="toast-copy" title="Copy to clipboard" @click.stop="copyToast(toast!)"><i class="pi pi-copy" /></button>
         <button class="toast-close" title="Dismiss"><i class="pi pi-times" /></button>
       </div>
     </Transition>
@@ -596,6 +604,7 @@ defineExpose({ open, toggle })
   color: var(--border-color);
 }
 
+.toast-copy,
 .toast-close {
   width: 18px;
   height: 18px;
@@ -612,6 +621,7 @@ defineExpose({ open, toggle })
   flex-shrink: 0;
 }
 
+.toast-copy:hover,
 .toast-close:hover {
   background: var(--surface-hover);
   color: var(--text-color);
