@@ -20,11 +20,12 @@ const qaListRef = ref<HTMLElement | null>(null)
 const showSaveAsThread = ref(false)
 const saveAsThreadName = ref('')
 
-// Watch store trigger for opening QA editor (from global keyboard shortcut)
+// Watch store trigger for opening QA editor (from global keyboard shortcut or Save-as-QA)
 watch(() => uiStore.showQAEditor, (val) => {
   if (val) {
+    const hasDraft = !!uiStore.qaEditorDraft
     const canAdd = !!threadStore.selectedThreadId || uiStore.showAllQAs || uiStore.showUnthreaded
-    if (canAdd) {
+    if (canAdd || hasDraft) {
       showEditor.value = true
     }
     uiStore.showQAEditor = false
