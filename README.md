@@ -496,7 +496,7 @@ threads.json stores thread names and ordered QA IDs.
 
 ### QA entries
 
-Each QA is one Markdown file in archive with YAML frontmatter.
+Each QA is a Markdown file with YAML frontmatter. The **question is stored as a frontmatter field**; the **answer is the unrestricted Markdown body** below — no structural headers required.
 
 ```markdown
 ---
@@ -509,14 +509,13 @@ tags:
   - notes
 timestamp: '2026-02-04T21:35:57.826479'
 version: 1
-thread_pairs: []
+question: What is the meaning of life?
+ai_topic: epistemology
+ai_confidence: working
 ---
 
-## Question
-What is the meaning of life?
-
-## Answer
-42
+42, and here is why — use any Markdown you like: `code`, **bold**,
+## headings, tables, whatever.
 ```
 
 Why this format works well:
@@ -524,6 +523,8 @@ Why this format works well:
 - Human-readable and diff-friendly
 - Easy to back up and sync
 - No schema lock to proprietary systems
+
+> **Note:** The `question` field is parsed as YAML. A bare `---` line inside a question would be misread as the frontmatter closing delimiter. The app automatically replaces bare `---` with `<hr>` on write. Hand-edited files should use `<hr>` for horizontal rules in questions.
 
 ---
 
