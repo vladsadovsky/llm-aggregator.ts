@@ -112,6 +112,7 @@ interface TokenStats {
   embeddings: { input: number }
 }
 const tokenStats = ref<TokenStats>({ llm: { input: 0, output: 0 }, embeddings: { input: 0 } })
+const llmModel = ref('')
 
 async function refreshTokenStats() {
   tokenStats.value = await window.api.aiGetTokenStats()
@@ -122,9 +123,38 @@ async function resetTokenStats() {
   await refreshTokenStats()
 }
 
-onMounted(() => {
-  refreshTokenStats()
+// ─── Per-request toast ────────────────────────────────────────────────────────
+
+interface RequestToast {
+  llmIn: number
+  llmOut: number
+  embedIn: number
+  model: string
+}
+const toast = ref<RequestToast | null>(null)
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showRequestToast(before: TokenStats, after: TokenStats) {
+  const delta: RequestToast = {
+    llmIn: after.llm.input - before.llm.input,
+    llmOut: after.llm.output - before.llm.output,
+    embedIn: after.embeddings.input - before.embeddings.input,
+    model: llmModel.value,
+  }
+  if (delta.llmIn === 0 && delta.llmOut === 0 && delta.embedIn === 0) return
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.value = delta
+  toastTimer = setTimeout(() => { toast.value = null }, 5000)
+}
+
+onMounted(async () => {
   document.addEventListener('mousedown', onDocClick)
+  const [stats, settings] = await Promise.all([
+    window.api.aiGetTokenStats(),
+    window.api.settingsLoad(),
+  ])
+  tokenStats.value = stats
+  llmModel.value = settings.llmModel || 'gpt-4o'
 })
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -160,19 +190,22 @@ async function run() {
   isLoading.value = true
   output.value = ''
   errorMessage.value = ''
+  const statsBefore = await window.api.aiGetTokenStats()
   try {
     switch (activeMode.value) {
-      case 'brief':         output.value = await window.api.aiSessionBrief(q); break
-      case 'prior-art':     output.value = await window.api.aiPriorArt(q); break
-      case 'steelman':      output.value = await window.api.aiSteelman(q); break
-      case 'question-seed': output.value = await window.api.aiQuestionSeed(q); break
+      case 'brief':           output.value = await window.api.aiSessionBrief(q); break
+      case 'prior-art':       output.value = await window.api.aiPriorArt(q); break
+      case 'steelman':        output.value = await window.api.aiSteelman(q); break
+      case 'question-seed':   output.value = await window.api.aiQuestionSeed(q); break
       case 'concept-summary': output.value = await window.api.aiConceptSummary(q); break
     }
   } catch (err) {
     errorMessage.value = (err as Error).message
   } finally {
     isLoading.value = false
-    void refreshTokenStats()
+    const statsAfter = await window.api.aiGetTokenStats()
+    tokenStats.value = statsAfter
+    showRequestToast(statsBefore, statsAfter)
   }
 }
 
@@ -249,6 +282,26 @@ defineExpose({ open, toggle })
         </button>
       </div>
     </div>
+
+    <!-- ── Per-request token toast ──────────────────────────────── -->
+    <Transition name="toast">
+      <div v-if="toast" class="token-toast" @click="toast = null">
+        <i class="pi pi-microchip-ai toast-icon" />
+        <div class="toast-body">
+          <div class="toast-model">{{ toast.model }}</div>
+          <div class="toast-counts">
+            <span v-if="toast.llmIn || toast.llmOut">
+              LLM {{ toast.llmIn.toLocaleString() }}&thinsp;in · {{ toast.llmOut.toLocaleString() }}&thinsp;out
+            </span>
+            <span v-if="(toast.llmIn || toast.llmOut) && toast.embedIn" class="toast-sep">·</span>
+            <span v-if="toast.embedIn">
+              Embed {{ toast.embedIn.toLocaleString() }}&thinsp;in
+            </span>
+          </div>
+        </div>
+        <button class="toast-close" title="Dismiss"><i class="pi pi-times" /></button>
+      </div>
+    </Transition>
 
     <!-- ── Body (only visible when open) ────────────────────────── -->
     <div v-if="isOpen" class="insights-body">
@@ -490,6 +543,89 @@ defineExpose({ open, toggle })
 .close-btn:hover {
   background: var(--surface-hover);
   color: var(--text-color);
+}
+
+/* ── Per-request toast ──────────────────────────────── */
+
+.token-toast {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-overlay, var(--surface-card));
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 600;
+  max-width: 340px;
+}
+
+.toast-icon {
+  font-size: 14px;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-model {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 2px;
+}
+
+.toast-counts {
+  font-size: 11px;
+  color: var(--text-color-secondary);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.toast-sep {
+  color: var(--border-color);
+}
+
+.toast-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-color);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 /* ── Body ───────────────────────────────────────────── */
