@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import MarkdownRenderer from './MarkdownRenderer.vue'
+import { useUIStore } from '../stores/uiStore'
+
+const uiStore = useUIStore()
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,61 @@ const isLoading = ref(false)
 const errorMessage = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
+// ─── Prompt history ───────────────────────────────────────────────────────────
+
+const HISTORY_KEY = (mode: LensMode) => `lens-history-${mode}`
+const MAX_HISTORY = 20
+
+function loadHistory(mode: LensMode): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY(mode)) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+function saveHistory(mode: LensMode, items: string[]) {
+  localStorage.setItem(HISTORY_KEY(mode), JSON.stringify(items))
+}
+
+function addToHistory(mode: LensMode, entry: string) {
+  const items = loadHistory(mode).filter(h => h !== entry)
+  items.unshift(entry)
+  saveHistory(mode, items.slice(0, MAX_HISTORY))
+  if (activeMode.value === mode) historyItems.value = loadHistory(mode)
+}
+
+const historyItems = ref<string[]>([])
+const showHistory = ref(false)
+const historyRef = ref<HTMLElement | null>(null)
+
+function openHistory() {
+  historyItems.value = loadHistory(activeMode.value)
+  if (historyItems.value.length === 0) return
+  showHistory.value = true
+}
+
+function selectHistory(entry: string) {
+  query.value = entry
+  showHistory.value = false
+  void nextTick(() => inputRef.value?.focus())
+}
+
+function deleteHistoryEntry(entry: string) {
+  const items = loadHistory(activeMode.value).filter(h => h !== entry)
+  saveHistory(activeMode.value, items)
+  historyItems.value = items
+  if (items.length === 0) showHistory.value = false
+}
+
+function onDocClick(e: MouseEvent) {
+  if (showHistory.value && historyRef.value && !historyRef.value.contains(e.target as Node)) {
+    showHistory.value = false
+  }
+}
+
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+
 interface TokenStats {
   llm: { input: number; output: number }
   embeddings: { input: number }
@@ -64,7 +122,10 @@ async function resetTokenStats() {
   await refreshTokenStats()
 }
 
-onMounted(refreshTokenStats)
+onMounted(() => {
+  refreshTokenStats()
+  document.addEventListener('mousedown', onDocClick)
+})
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +147,8 @@ function setMode(mode: LensMode) {
   activeMode.value = mode
   output.value = ''
   errorMessage.value = ''
+  showHistory.value = false
+  historyItems.value = loadHistory(mode)
   void nextTick(() => inputRef.value?.focus())
 }
 
@@ -93,6 +156,7 @@ async function run() {
   const q = query.value.trim()
   if (!q || isLoading.value) return
 
+  addToHistory(activeMode.value, q)
   isLoading.value = true
   output.value = ''
   errorMessage.value = ''
@@ -116,6 +180,20 @@ async function copyOutput() {
   if (output.value) {
     await navigator.clipboard.writeText(output.value)
   }
+}
+
+function saveAsQA() {
+  if (!output.value) return
+  const q = query.value.trim()
+  const modeLabel = MODES.find(m => m.value === activeMode.value)?.label ?? 'Lens'
+  uiStore.openQAEditorWithDraft({
+    title: q.length > 80 ? q.slice(0, 77) + '…' : q,
+    question: q,
+    answer: output.value,
+    source: 'lens',
+    tags: [modeLabel.toLowerCase()],
+    url: '',
+  })
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -174,14 +252,36 @@ defineExpose({ open, toggle })
 
     <!-- ── Body (only visible when open) ────────────────────────── -->
     <div v-if="isOpen" class="insights-body">
-      <div class="input-row">
-        <InputText
-          ref="inputRef"
-          v-model="query"
-          :placeholder="MODES.find(m => m.value === activeMode)?.placeholder ?? ''"
-          class="query-input"
-          @keydown="handleKeydown"
-        />
+      <div class="input-row" ref="historyRef">
+        <div class="input-wrap">
+          <InputText
+            ref="inputRef"
+            v-model="query"
+            :placeholder="MODES.find(m => m.value === activeMode)?.placeholder ?? ''"
+            class="query-input"
+            @keydown="handleKeydown"
+          />
+          <button
+            v-if="loadHistory(activeMode).length > 0"
+            class="history-trigger"
+            title="Show prompt history"
+            @click="openHistory"
+          >
+            <i class="pi pi-history" />
+          </button>
+          <div v-if="showHistory" class="history-dropdown">
+            <div
+              v-for="entry in historyItems"
+              :key="entry"
+              class="history-item"
+            >
+              <span class="history-text" @click="selectHistory(entry)" :title="entry">{{ entry }}</span>
+              <button class="history-delete" title="Remove" @click.stop="deleteHistoryEntry(entry)">
+                <i class="pi pi-times" />
+              </button>
+            </div>
+          </div>
+        </div>
         <Button
           :label="isLoading ? '' : 'Run'"
           icon="pi pi-play"
@@ -198,6 +298,15 @@ defineExpose({ open, toggle })
           outlined
           title="Copy to clipboard"
           @click="copyOutput"
+        />
+        <Button
+          v-if="output"
+          icon="pi pi-save"
+          size="small"
+          severity="secondary"
+          outlined
+          title="Save as QA pair"
+          @click="saveAsQA"
         />
       </div>
 
@@ -400,9 +509,103 @@ defineExpose({ open, toggle })
   flex-shrink: 0;
 }
 
-.query-input {
+.input-wrap {
   flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.query-input {
+  width: 100%;
   font-size: 13px;
+  padding-right: 28px;
+}
+
+.history-trigger {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  padding: 0;
+}
+
+.history-trigger:hover {
+  background: var(--surface-hover);
+  color: var(--text-color);
+}
+
+.history-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 600;
+  background: var(--surface-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.history-item:hover {
+  background: var(--surface-hover);
+}
+
+.history-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-color);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 0;
+}
+
+.history-delete {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.history-item:hover .history-delete {
+  opacity: 1;
+}
+
+.history-delete:hover {
+  background: var(--surface-ground);
+  color: var(--red-500, #ef4444);
 }
 
 .output-area {

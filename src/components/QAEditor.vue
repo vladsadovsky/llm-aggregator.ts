@@ -33,6 +33,7 @@ const sourceOptions = [
   { label: 'Gemini', value: 'gemini' },
   { label: 'Copilot', value: 'copilot' },
   { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Lens', value: 'lens' },
 ]
 
 const title = ref('')
