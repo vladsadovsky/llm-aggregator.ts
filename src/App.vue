@@ -10,6 +10,7 @@ import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import InsightsPanel from './components/InsightsPanel.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
@@ -21,6 +22,7 @@ const qaStore = useQAStore()
 const uiStore = useUIStore()
 const toast = useToast()
 const showSettings = ref(false)
+const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
 const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
 const commandQuery = ref('')
@@ -516,6 +518,14 @@ function handleGlobalKeydown(event: KeyboardEvent) {
          </div>
          <div class="toolbar-buttons px-2 py-1">
             <Button
+              icon="pi pi-sparkles"
+              text
+              rounded
+              size="small"
+              title="Lens — Session Brief / Prior Art"
+              @click="insightsPanelRef?.toggle()"
+            />
+            <Button
               :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
               text
               rounded
@@ -536,6 +546,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       <QAContentPanel />
     </div>
   </div>
+  <InsightsPanel ref="insightsPanelRef" />
 </template>
 
 <style scoped>
@@ -565,6 +576,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  padding-bottom: 36px; /* reserve space for the Lens strip */
+  box-sizing: border-box;
 }
 
 .panel-wrap {

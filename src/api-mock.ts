@@ -3,6 +3,8 @@ import type { ElectronAPI, QAPairData, AppSettings } from '../electron/preload'
 export const mockApi: ElectronAPI = {
     settingsLoad: async () => ({
         dataDirectory: '/mock/data/dir',
+        llmProvider: 'openai' as const,
+        llmModel: 'gpt-4o',
     }),
     settingsSave: async (settings: AppSettings) => {
         console.log('Mock: Saving settings', settings)
@@ -86,4 +88,30 @@ export const mockApi: ElectronAPI = {
     exportQA: async (_id) => null,
     exportThread: async (_threadId) => null,
     importFromFile: async () => null,
+
+    secretsLoad: async () => ({ openaiApiKey: '', anthropicApiKey: '' }),
+    secretsSave: async () => {},
+
+    searchSemantic: async () => [],
+
+    aiGenerateMetadata: async () => null,
+    aiGenerateEmbedding: async () => {},
+    aiGenerateAllEmbeddings: async () => ({ total: 0, generated: 0, skipped: 0 }),
+    aiTestConnection: async () => ({ ok: false, error: 'Mock mode' }),
+    aiSessionBrief: async () => '',
+    aiPriorArt: async () => '',
+    aiGetTokenStats: async () => ({ llm: { input: 0, output: 0 }, embeddings: { input: 0 } }),
+    aiResetTokenStats: async () => {},
+    aiSteelman: async () => '',
+    aiQuestionSeed: async () => '',
+    aiConceptSummary: async () => '',
+    aiGenerateAnnotations: async () => [],
+    aiApplyAnnotations: async () => {},
+    archiveHealthCheck: async () => ({
+        totalPairs: 0,
+        orphanIds: [],
+        metadataGaps: { missingTopic: [], missingSummary: [], missingConfidence: [] },
+        duplicateCandidates: [],
+        deadEndCandidates: [],
+    }),
 }

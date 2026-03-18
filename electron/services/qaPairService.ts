@@ -16,6 +16,13 @@ export interface QAPairData {
   threadPairs: Array<{ thread_id: string; order: number }>
   question: string
   answer: string
+  // Machine-generated metadata (all optional, prefixed ai_)
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }
 
 export interface QACreateData {
@@ -34,6 +41,12 @@ export interface QAUpdateData {
   tags?: string[]
   question?: string
   answer?: string
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }
 
 function getArchiveDir(): string {
@@ -68,6 +81,13 @@ function parseQAFile(filepath: string): QAPairData | null {
       threadPairs: metadata.thread_pairs || [],
       question,
       answer,
+      // Machine-generated metadata (optional)
+      ...(metadata.ai_topic !== undefined && { aiTopic: metadata.ai_topic }),
+      ...(metadata.ai_concepts !== undefined && { aiConcepts: metadata.ai_concepts }),
+      ...(metadata.ai_status !== undefined && { aiStatus: metadata.ai_status }),
+      ...(metadata.ai_confidence !== undefined && { aiConfidence: metadata.ai_confidence }),
+      ...(metadata.ai_summary !== undefined && { aiSummary: metadata.ai_summary }),
+      ...(metadata.ai_related_ids !== undefined && { aiRelatedIds: metadata.ai_related_ids }),
     }
   } catch (err) {
     console.error(`Error parsing ${filepath}:`, err)
@@ -164,7 +184,7 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
   const updatedPair = { ...pair, ...data }
   const newVersion = pair.version + 1
 
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     id: pair.id,
     title: updatedPair.title,
     timestamp: pair.timestamp,
@@ -174,6 +194,13 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
     version: newVersion,
     thread_pairs: pair.threadPairs,
   }
+  // Persist ai_ fields if present (use snake_case keys in frontmatter)
+  if (updatedPair.aiTopic !== undefined) metadata.ai_topic = updatedPair.aiTopic
+  if (updatedPair.aiConcepts !== undefined) metadata.ai_concepts = updatedPair.aiConcepts
+  if (updatedPair.aiStatus !== undefined) metadata.ai_status = updatedPair.aiStatus
+  if (updatedPair.aiConfidence !== undefined) metadata.ai_confidence = updatedPair.aiConfidence
+  if (updatedPair.aiSummary !== undefined) metadata.ai_summary = updatedPair.aiSummary
+  if (updatedPair.aiRelatedIds !== undefined) metadata.ai_related_ids = updatedPair.aiRelatedIds
 
   const content = matter.stringify(
     `\n## Question\n${updatedPair.question}\n\n## Answer\n${updatedPair.answer}\n`,

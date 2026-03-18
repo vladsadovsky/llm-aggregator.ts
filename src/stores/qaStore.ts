@@ -60,7 +60,10 @@ export const useQAStore = defineStore('qa', () => {
     }
   }
 
-  async function searchPairs(query: string, type: 'full-text' | 'tags'): Promise<string[]> {
+  async function searchPairs(query: string, type: 'full-text' | 'tags' | 'semantic'): Promise<string[]> {
+    if (type === 'semantic') {
+      return withRetry(() => window.api.searchSemantic(query, 20))
+    }
     return withRetry(() => window.api.searchQuery(query, type))
   }
 

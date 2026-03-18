@@ -9,6 +9,10 @@ const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
 export interface AppSettings {
   /** Absolute path to the data directory containing archive/ and threads.json */
   dataDirectory: string
+  /** LLM provider to use for AI features */
+  llmProvider: 'openai' | 'anthropic'
+  /** Model to use for completions (provider-specific) */
+  llmModel: string
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -35,6 +39,8 @@ export function loadSettings(): AppSettings {
   debugLog('settingsService', 'loadSettings from:', filepath)
   const defaults: AppSettings = {
     dataDirectory: getDefaultDataDir(),
+    llmProvider: 'openai',
+    llmModel: 'gpt-4o',
   }
 
   if (!existsSync(filepath)) {
