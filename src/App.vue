@@ -14,12 +14,14 @@ import InsightsPanel from './components/InsightsPanel.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
+import { useTagStore } from './stores/tagStore'
 import { debugError } from './utils/logger'
 import type { ImportResult } from './global'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
+const tagStore = useTagStore()
 const toast = useToast()
 const showSettings = ref(false)
 const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
@@ -56,11 +58,13 @@ const filteredCommands = computed(() => {
 })
 
 onMounted(async () => {
-  // Load threads and QA pairs in parallel; don't let one failure block the other
+  // Load threads, QA pairs, and tag dictionary in parallel; don't let one failure block the others
   const [threadResult, qaResult] = await Promise.allSettled([
     threadStore.loadThreads(),
     qaStore.loadAllPairs(),
   ])
+  // Tag store loads independently — failure is non-fatal
+  tagStore.load().catch(() => {})
 
   if (threadResult.status === 'rejected') {
     debugError('App', 'Failed to load threads:', threadResult.reason)

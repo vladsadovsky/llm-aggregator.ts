@@ -13,6 +13,12 @@ export interface AppSettings {
   llmProvider: 'openai' | 'anthropic'
   /** Model to use for completions (provider-specific) */
   llmModel: string
+  /** Tag vocabulary enforcement mode */
+  tagEnforcement: 'off' | 'warn' | 'strict'
+  /** Vocabulary size at which a soft warning appears when adding new tags */
+  tagSoftLimit: number
+  /** Vocabulary size at which new tags are blocked entirely (strict mode) */
+  tagHardLimit: number
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -41,6 +47,9 @@ export function loadSettings(): AppSettings {
     dataDirectory: getDefaultDataDir(),
     llmProvider: 'openai',
     llmModel: 'gpt-4o',
+    tagEnforcement: 'warn',
+    tagSoftLimit: 50,
+    tagHardLimit: 100,
   }
 
   if (!existsSync(filepath)) {

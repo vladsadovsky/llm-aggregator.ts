@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useQAStore } from '../stores/qaStore'
+import { useTagStore } from '../stores/tagStore'
 import type { QAPairData, QAUpdateData } from '../types/QAPair'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const qaStore = useQAStore()
+const tagStore = useTagStore()
 
 const sourceOptions = [
   { label: 'Claude', value: 'claude' },
@@ -51,10 +53,15 @@ watch(url, (newUrl: string) => {
   }
 }, { immediate: true })
 
+// Tags not in dictionary (for warn mode display)
+const newTagsInInput = computed(() =>
+  tagStore.enforcementActive ? tagStore.filterNewTags(tags.value) : []
+)
+
 function searchTags(event: { query: string }) {
   const query = event.query.toLowerCase()
-  tagSuggestions.value = qaStore.allTags
-    .filter(t => t.includes(query) && !tags.value.includes(t))
+  const source = tagStore.enforcementActive ? tagStore.canonicalTags : qaStore.allTags
+  tagSuggestions.value = source.filter((t: string) => t.includes(query) && !tags.value.includes(t))
 }
 
 function commitPendingTags() {
@@ -74,10 +81,15 @@ function commitPendingTags() {
 
   const existing = new Set(tags.value.map((t) => t.toLowerCase()))
   for (const tag of pendingTags) {
-    const normalized = tag.toLowerCase()
-    if (!existing.has(normalized)) {
-      tags.value.push(tag)
-      existing.add(normalized)
+    const resolved = tagStore.resolveTag(tag) ?? tag.toLowerCase()
+
+    if (tagStore.effectiveEnforcement === 'strict' && !tagStore.isKnownTag(tag)) {
+      continue
+    }
+
+    if (!existing.has(resolved)) {
+      tags.value.push(resolved)
+      existing.add(resolved)
     }
   }
 
@@ -91,13 +103,22 @@ async function save() {
   commitPendingTags()
   if (urlError.value) return
 
+  const tagArray = tags.value.map((t: string) => t.trim()).filter(Boolean)
+
+  // Auto-add new tags to dictionary in warn mode (only when below hard limit)
+  if (tagStore.effectiveEnforcement === 'warn') {
+    for (const tag of tagArray) {
+      if (!tagStore.isKnownTag(tag)) {
+        window.api.tagsAdd(tag).catch(() => {}) // best-effort, non-blocking
+      }
+    }
+  }
+
   const data: QAUpdateData = {
     title: title.value.trim() || 'Untitled',
     source: source.value,
     url: url.value.trim(),
-    tags: tags.value
-      .map((t: string) => t.trim())
-      .filter(Boolean),
+    tags: tagArray,
     question: question.value,
     answer: answer.value,
   }
@@ -135,6 +156,7 @@ function onGlobalCancelRequest() {
 }
 
 onMounted(() => {
+  if (!tagStore.loaded) tagStore.load() // fire-and-forget
   window.addEventListener('llm:save-current-edit', onGlobalSaveRequest)
   window.addEventListener('llm:cancel-current-edit', onGlobalCancelRequest)
 })
@@ -188,6 +210,15 @@ onUnmounted(() => {
         placeholder="Type to add tags..."
         class="w-full"
       />
+      <small v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0" class="field-hint tag-new-hint">
+        New tags (will be added to dictionary): {{ newTagsInInput.join(', ') }}
+      </small>
+      <small v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'" class="field-hint tag-new-hint">
+        Tag vocabulary is large ({{ tagStore.tagCount }} tags). Consider reusing existing tags.
+      </small>
+      <small v-if="tagStore.effectiveEnforcement === 'strict'" class="field-hint">
+        Only dictionary tags allowed.
+      </small>
     </div>
 
     <div class="field">
@@ -238,6 +269,17 @@ onUnmounted(() => {
   margin-top: 4px;
   font-size: 11px;
   color: var(--red-500);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+
+.tag-new-hint {
+  color: var(--orange-500);
 }
 
 .field-row {

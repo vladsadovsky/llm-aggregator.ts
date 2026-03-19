@@ -1,10 +1,13 @@
-import type { ElectronAPI, QAPairData, AppSettings } from '../electron/preload'
+import type { ElectronAPI, QAPairData, AppSettings, TagDictionary } from '../electron/preload'
 
 export const mockApi: ElectronAPI = {
     settingsLoad: async () => ({
         dataDirectory: '/mock/data/dir',
         llmProvider: 'openai' as const,
         llmModel: 'gpt-4o',
+        tagEnforcement: 'warn' as const,
+        tagSoftLimit: 50,
+        tagHardLimit: 100,
     }),
     settingsSave: async (settings: AppSettings) => {
         console.log('Mock: Saving settings', settings)
@@ -107,6 +110,16 @@ export const mockApi: ElectronAPI = {
     aiConceptSummary: async () => '',
     aiGenerateAnnotations: async () => [],
     aiApplyAnnotations: async () => {},
+    tagsLoad: async (): Promise<TagDictionary> => ({ version: 1, tags: {} }),
+    tagsSave: async () => {},
+    tagsAdd: async () => {},
+    tagsRemove: async () => {},
+    tagsRename: async () => {},
+    tagsAddAlias: async () => {},
+    tagsRemoveAlias: async () => {},
+    tagsResolve: async () => null,
+    tagsSync: async () => ({ added: [] }),
+
     archiveHealthCheck: async () => ({
         totalPairs: 0,
         orphanIds: [],

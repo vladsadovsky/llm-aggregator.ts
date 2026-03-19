@@ -11,6 +11,8 @@ import Password from 'primevue/password'
 import Select from 'primevue/select'
 import AnnotationDialog from './AnnotationDialog.vue'
 import HealthReportDialog from './HealthReportDialog.vue'
+import TagManagerDialog from './TagManagerDialog.vue'
+import { useTagStore } from '../stores/tagStore'
 
 const emit = defineEmits<{
   close: []
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
+const tagStore = useTagStore()
 const toast = useToast()
 
 const dataDirectory = ref('')
@@ -30,6 +33,17 @@ const testingConnection = ref(false)
 const generatingEmbeddings = ref(false)
 const showAnnotationDialog = ref(false)
 const showHealthDialog = ref(false)
+const showTagManager = ref(false)
+
+const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
+const tagSoftLimit = ref(50)
+const tagHardLimit = ref(100)
+
+const enforcementOptions = [
+  { label: 'Off — free-form tags', value: 'off' },
+  { label: 'Warn — flag new tags', value: 'warn' },
+  { label: 'Strict — dictionary only', value: 'strict' },
+]
 const embeddingsResult = ref<{ total: number; generated: number; skipped: number } | null>(null)
 
 const providerOptions = [
@@ -74,6 +88,9 @@ onMounted(async () => {
   llmModel.value = settings.llmModel || (modelOptionsByProvider[llmProvider.value]?.[0]?.value ?? 'gpt-4o')
   openaiApiKey.value = secrets.openaiApiKey ?? ''
   anthropicApiKey.value = secrets.anthropicApiKey ?? ''
+  tagEnforcement.value = settings.tagEnforcement ?? 'warn'
+  tagSoftLimit.value = settings.tagSoftLimit ?? 50
+  tagHardLimit.value = settings.tagHardLimit ?? 100
 })
 
 async function pickDirectory() {
@@ -85,12 +102,22 @@ async function pickDirectory() {
 
 async function save() {
   await Promise.all([
-    window.api.settingsSave({ dataDirectory: dataDirectory.value, llmProvider: llmProvider.value, llmModel: llmModel.value }),
+    window.api.settingsSave({
+      dataDirectory: dataDirectory.value,
+      llmProvider: llmProvider.value,
+      llmModel: llmModel.value,
+      tagEnforcement: tagEnforcement.value,
+      tagSoftLimit: tagSoftLimit.value,
+      tagHardLimit: tagHardLimit.value,
+    }),
     window.api.secretsSave({ openaiApiKey: openaiApiKey.value, anthropicApiKey: anthropicApiKey.value }),
   ])
   // Reload data from the new directory
-  await threadStore.loadThreads()
-  await qaStore.loadAllPairs()
+  await Promise.all([
+    threadStore.loadThreads(),
+    qaStore.loadAllPairs(),
+    tagStore.load(),
+  ])
   toast.add({ severity: 'success', summary: 'Settings saved', life: 3000 })
   emit('close')
 }
@@ -299,6 +326,55 @@ function handleKeydown(event: KeyboardEvent) {
 
       <AnnotationDialog v-if="showAnnotationDialog" @close="showAnnotationDialog = false" />
       <HealthReportDialog v-if="showHealthDialog" @close="showHealthDialog = false" />
+      <TagManagerDialog v-if="showTagManager" @close="showTagManager = false" />
+
+      <div class="field">
+        <label>Tags</label>
+        <p class="field-help">
+          Control how strictly new tags are validated against the dictionary.
+          The dictionary is stored in <code>tag-dictionary.json</code> alongside your archive.
+        </p>
+        <div class="ai-row">
+          <Select
+            v-model="tagEnforcement"
+            :options="enforcementOptions"
+            option-label="label"
+            option-value="value"
+            class="enforcement-select"
+          />
+          <Button
+            label="Manage tags…"
+            icon="pi pi-tags"
+            severity="secondary"
+            outlined
+            size="small"
+            @click="showTagManager = true"
+          />
+        </div>
+        <div v-if="tagEnforcement !== 'off'" class="ai-row" style="margin-top: 8px; gap: 12px;">
+          <span class="field-help" style="margin: 0; white-space: nowrap;">Soft limit</span>
+          <input
+            v-model.number="tagSoftLimit"
+            type="number"
+            min="1"
+            max="999"
+            class="limit-input"
+            title="Warn when vocabulary exceeds this size"
+          />
+          <span class="field-help" style="margin: 0; white-space: nowrap;">Hard limit</span>
+          <input
+            v-model.number="tagHardLimit"
+            type="number"
+            min="1"
+            max="999"
+            class="limit-input"
+            title="Block new tags when vocabulary exceeds this size"
+          />
+          <span class="field-help" style="margin: 0;">
+            Dictionary: {{ tagStore.tagCount }} tag{{ tagStore.tagCount === 1 ? '' : 's' }}
+          </span>
+        </div>
+      </div>
 
       <div class="button-row">
         <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
@@ -413,6 +489,20 @@ function handleKeydown(event: KeyboardEvent) {
 .embeddings-status {
   font-size: 12px;
   color: var(--text-color-secondary);
+}
+
+.enforcement-select {
+  width: 220px;
+}
+
+.limit-input {
+  width: 64px;
+  padding: 4px 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  background: var(--surface-card);
+  color: var(--text-color);
+  font-size: 13px;
 }
 
 .button-row {

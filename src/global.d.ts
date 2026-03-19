@@ -5,6 +5,19 @@ export interface AppSettings {
   dataDirectory: string
   llmProvider: 'openai' | 'anthropic'
   llmModel: string
+  tagEnforcement: 'off' | 'warn' | 'strict'
+  tagSoftLimit: number
+  tagHardLimit: number
+}
+
+export interface TagEntry {
+  created: string
+  aliases: string[]
+}
+
+export interface TagDictionary {
+  version: number
+  tags: Record<string, TagEntry>
 }
 
 export interface AppSecrets {
@@ -107,6 +120,17 @@ export interface ElectronAPI {
 
   // Archive Health
   archiveHealthCheck: () => Promise<HealthReport>
+
+  // Tag Dictionary
+  tagsLoad: () => Promise<TagDictionary>
+  tagsSave: (dict: TagDictionary) => Promise<void>
+  tagsAdd: (tag: string, aliases?: string[]) => Promise<void>
+  tagsRemove: (tag: string) => Promise<void>
+  tagsRename: (oldTag: string, newTag: string) => Promise<void>
+  tagsAddAlias: (tag: string, alias: string) => Promise<void>
+  tagsRemoveAlias: (tag: string, alias: string) => Promise<void>
+  tagsResolve: (input: string) => Promise<string | null>
+  tagsSync: () => Promise<{ added: string[] }>
 
   // Export / Import
   exportQA: (id: string) => Promise<ExportResult | null>

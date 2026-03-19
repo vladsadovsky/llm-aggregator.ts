@@ -24,6 +24,19 @@ import { generateAnnotations, applyAnnotations } from '../services/annotationSer
 import type { AnnotationProposal, ConfidenceLevel } from '../services/annotationService'
 import { runHealthCheck } from '../services/healthService'
 import type { HealthReport } from '../services/healthService'
+import {
+  loadDictionary,
+  saveDictionary,
+  addTag,
+  removeTag,
+  renameTag,
+  addAlias,
+  removeAlias,
+  resolveTag,
+  syncFromArchive,
+  invalidateCache as invalidateTagCache,
+} from '../services/tagDictionaryService'
+import type { TagDictionary } from '../services/tagDictionaryService'
 
 export function registerIpcHandlers(): void {
   // ─── Settings ──────────────────────────────────────────────
@@ -33,6 +46,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
     saveSettings(settings)
+    // Data directory may have changed — drop the tag dictionary cache
+    invalidateTagCache()
   })
 
   ipcMain.handle('settings:pickDirectory', async (): Promise<string | null> => {
@@ -177,5 +192,42 @@ export function registerIpcHandlers(): void {
   // ─── Archive Health ─────────────────────────────────────────
   ipcMain.handle('archive:healthCheck', async (): Promise<HealthReport> => {
     return runHealthCheck()
+  })
+
+  // ─── Tag Dictionary ─────────────────────────────────────────
+  ipcMain.handle('tags:load', async (): Promise<TagDictionary> => {
+    return loadDictionary()
+  })
+
+  ipcMain.handle('tags:save', async (_event, dict: TagDictionary): Promise<void> => {
+    saveDictionary(dict)
+  })
+
+  ipcMain.handle('tags:add', async (_event, tag: string, aliases?: string[]): Promise<void> => {
+    addTag(tag, aliases)
+  })
+
+  ipcMain.handle('tags:remove', async (_event, tag: string): Promise<void> => {
+    removeTag(tag)
+  })
+
+  ipcMain.handle('tags:rename', async (_event, oldTag: string, newTag: string): Promise<void> => {
+    renameTag(oldTag, newTag)
+  })
+
+  ipcMain.handle('tags:addAlias', async (_event, tag: string, alias: string): Promise<void> => {
+    addAlias(tag, alias)
+  })
+
+  ipcMain.handle('tags:removeAlias', async (_event, tag: string, alias: string): Promise<void> => {
+    removeAlias(tag, alias)
+  })
+
+  ipcMain.handle('tags:resolve', async (_event, input: string): Promise<string | null> => {
+    return resolveTag(input)
+  })
+
+  ipcMain.handle('tags:sync', async (): Promise<{ added: string[] }> => {
+    return syncFromArchive()
   })
 }
