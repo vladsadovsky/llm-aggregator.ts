@@ -26,6 +26,8 @@ function extractText(message: any): string {
 export function parseCopilot(json: any, url: string): ParsedConversation {
   const warnings: string[] = []
   const raw = Array.isArray(json?.messages) ? [...json.messages] : []
+  let skippedUnknownRole = 0
+  let skippedEmptyText = 0
 
   // API returns messages newest-first — sort ascending by createdAt.
   raw.sort((a: any, b: any) => {
@@ -38,10 +40,29 @@ export function parseCopilot(json: any, url: string): ParsedConversation {
   for (const m of raw) {
     const author = m?.author
     const role = author === 'ai' ? 'assistant' : author === 'human' ? 'user' : null
-    if (!role) continue
+    if (!role) {
+      skippedUnknownRole += 1
+      continue
+    }
     const text = extractText(m)
-    if (!text) continue
+    if (!text) {
+      skippedEmptyText += 1
+      continue
+    }
     messages.push({ role, text })
+  }
+
+  if (raw.length === 0) {
+    warnings.push('Copilot response contained no messages array entries.')
+  }
+  if (skippedUnknownRole > 0) {
+    warnings.push(`Skipped ${skippedUnknownRole} Copilot messages with unknown author values.`)
+  }
+  if (skippedEmptyText > 0) {
+    warnings.push(`Skipped ${skippedEmptyText} Copilot messages with no text content.`)
+  }
+  if (messages.length === 0 && raw.length > 0) {
+    warnings.push('No importable user/assistant text messages remained after parsing Copilot payload.')
   }
 
   const title = typeof json?.conversationTitle === 'string' ? json.conversationTitle.trim() : ''

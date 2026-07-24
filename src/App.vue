@@ -16,7 +16,7 @@ import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { useTagStore } from './stores/tagStore'
-import { debugError } from './utils/logger'
+import { debugError, debugLog } from './utils/logger'
 import type { ImportResult, SharedImportResult } from './global'
 
 const threadStore = useThreadStore()
@@ -298,6 +298,7 @@ async function importFile() {
 }
 
 function openSharedLinkImport() {
+  debugLog('sharedImportTrace', 'opening shared-link import dialog')
   sharedImportResult.value = null
   sharedImportError.value = ''
   sharedImportBusy.value = false
@@ -305,34 +306,110 @@ function openSharedLinkImport() {
 }
 
 async function handleSharedLinkImport(url: string) {
+  debugLog('sharedImportTrace', 'submit start', {
+    url,
+    selectedThreadId: threadStore.selectedThreadId,
+  })
   sharedImportBusy.value = true
   sharedImportError.value = ''
   try {
     const result = await window.api.importSharedLink(url)
+    debugLog('sharedImportTrace', 'provider result received', {
+      provider: result.provider,
+      model: result.model,
+      threadName: result.threadName,
+      titleWasDerived: result.titleWasDerived,
+      tags: result.tags,
+      items: result.items.length,
+      warnings: result.warnings.length,
+      firstItem: result.items[0]
+        ? {
+            title: result.items[0].data.title,
+            source: result.items[0].data.source,
+            questionLength: result.items[0].data.question.length,
+            answerLength: result.items[0].data.answer.length,
+            warnings: result.items[0].warnings,
+          }
+        : null,
+    })
 
     // Create every QA pair, preserving conversation order.
     const createdIds: string[] = []
     for (const item of result.items) {
+      debugLog('sharedImportTrace', 'creating QA from imported item', {
+        title: item.data.title,
+        source: item.data.source,
+        tags: item.data.tags,
+        questionLength: item.data.question.length,
+        answerLength: item.data.answer.length,
+        warnings: item.warnings,
+      })
       try {
         const created = await qaStore.createPair(item.data)
         createdIds.push(created.id)
+        debugLog('sharedImportTrace', 'createPair success', {
+          createdId: created.id,
+          title: created.title,
+          createdCount: createdIds.length,
+        })
       } catch (err) {
         debugError('App', 'handleSharedLinkImport: createPair failed for', item.data.title, err)
       }
     }
 
+    debugLog('sharedImportTrace', 'createPair phase completed', {
+      importedItems: result.items.length,
+      createdIds,
+      failedCreates: result.items.length - createdIds.length,
+    })
+
     // Create the thread, tag it with provider/model, and add pairs in order.
     if (createdIds.length > 0) {
+      debugLog('sharedImportTrace', 'creating thread for imported QAs', {
+        threadName: result.threadName,
+        createdIds,
+      })
       const tid = await threadStore.createThread(result.threadName)
+      debugLog('sharedImportTrace', 'thread created', {
+        threadId: tid,
+        initialItems: threadStore.threads[tid]?.items ?? null,
+      })
       if (result.tags.length > 0) {
         await threadStore.updateThread(tid, result.threadName, result.tags)
+        debugLog('sharedImportTrace', 'thread tags applied', {
+          threadId: tid,
+          tags: result.tags,
+        })
       }
       for (const id of createdIds) {
+        debugLog('sharedImportTrace', 'addToThread start', { threadId: tid, pairId: id })
         await threadStore.addToThread(tid, id)
+        debugLog('sharedImportTrace', 'addToThread completed', {
+          threadId: tid,
+          pairId: id,
+          currentItems: threadStore.threads[tid]?.items ?? null,
+        })
       }
       await qaStore.loadAllPairs()
       await threadStore.loadThreads()
+      debugLog('sharedImportTrace', 'post-reload thread snapshot', {
+        threadId: tid,
+        exists: Boolean(threadStore.threads[tid]),
+        itemCount: threadStore.threads[tid]?.items?.length ?? 0,
+        items: threadStore.threads[tid]?.items ?? [],
+      })
+
+      // Ensure we exit virtual/archive views so the imported thread is shown directly.
+      uiStore.showAllQAs = false
+      uiStore.showUnthreaded = false
+      uiStore.showGlobalSearchResults = false
+      uiStore.globalSearchResultIds = null
+      uiStore.searchScope = 'thread'
+
       threadStore.selectThread(tid)
+      if (createdIds.length > 0) {
+        qaStore.selectPair(createdIds[0])
+      }
     }
 
     sharedImportResult.value = result

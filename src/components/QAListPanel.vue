@@ -181,6 +181,8 @@ watch(() => uiStore.searchQuery, (newQuery) => {
   
   if (!newQuery.trim()) {
     searchResults.value = null
+    uiStore.globalSearchResultIds = null
+    uiStore.showGlobalSearchResults = false
     isSearching.value = false
     return
   }
