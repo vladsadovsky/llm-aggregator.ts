@@ -113,6 +113,7 @@ export const mockApi: ElectronAPI = {
         ],
         warnings: [],
     }),
+    onMenuAction: () => () => {},
 
     secretsLoad: async () => ({ openaiApiKey: '', anthropicApiKey: '' }),
     secretsSave: async () => {},

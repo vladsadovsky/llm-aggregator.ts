@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 export interface AppSettings {
   dataDirectory: string
@@ -114,6 +114,9 @@ export interface ElectronAPI {
   exportThread: (threadId: string) => Promise<ExportResult | null>
   importFromFile: () => Promise<ImportResult | null>
   importSharedLink: (url: string) => Promise<SharedImportResult>
+
+  // Native application menu → renderer. Returns an unsubscribe function.
+  onMenuAction: (callback: (action: string) => void) => () => void
 }
 
 export interface QAPairData {
@@ -262,6 +265,12 @@ const api: ElectronAPI = {
   exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
   importFromFile: () => ipcRenderer.invoke('import:file'),
   importSharedLink: (url) => ipcRenderer.invoke('import:sharedLink', url),
+
+  onMenuAction: (callback) => {
+    const handler = (_event: IpcRendererEvent, action: string) => callback(action)
+    ipcRenderer.on('menu-action', handler)
+    return () => ipcRenderer.removeListener('menu-action', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

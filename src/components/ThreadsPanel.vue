@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -192,12 +192,28 @@ function onRenameSelectedThreadRequest() {
   startRename(threadStore.selectedThreadId)
 }
 
+function onNewThreadRequest() {
+  showNewThreadInput.value = true
+  void nextTick(() => {
+    const input = document.querySelector(
+      '[data-testid="new-thread-name-input"]',
+    ) as HTMLInputElement | null
+    input?.focus()
+  })
+}
+
 onMounted(() => {
   window.addEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+  window.addEventListener('llm:new-thread', onNewThreadRequest)
+  window.addEventListener('llm:show-all-qas', showAllQAs)
+  window.addEventListener('llm:show-unthreaded', showUnthreaded)
 })
 
 onUnmounted(() => {
   window.removeEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+  window.removeEventListener('llm:new-thread', onNewThreadRequest)
+  window.removeEventListener('llm:show-all-qas', showAllQAs)
+  window.removeEventListener('llm:show-unthreaded', showUnthreaded)
 })
 </script>
 

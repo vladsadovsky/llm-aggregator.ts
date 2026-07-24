@@ -127,6 +127,23 @@ All renderer↔main communication uses `ipcRenderer.invoke()` / `ipcMain.handle(
 | `qaDelete(id)` | `void` | Delete .md file |
 | `searchQuery(q, type)` | `string[]` | Full-text or tag search, returns IDs |
 | `importSharedLink(url)` | `SharedImportResult` | Import a shared LLM conversation (ChatGPT/Gemini/Copilot) as QA pairs |
+| `onMenuAction(cb)` | `() => void` | Subscribe to native-menu clicks (main → renderer `menu-action`); returns an unsubscribe fn |
+
+## Command Exposure (palette + menu)
+
+Every end-user action lives in one registry: **`appCommands`** in `src/App.vue`
+(`{ id, label, shortcut, run }`). It feeds both the **command palette** and the native
+**application menu**:
+
+- The menu is built in `electron/main.ts` (`createApplicationMenu`). App-specific items call
+  `mainWindow.webContents.send('menu-action', '<id>')` — they carry **no accelerators** (the
+  shortcut is a display hint only), so keyboard handling stays solely in `handleGlobalKeydown`.
+- `preload.ts` exposes `onMenuAction`; `App.vue` maps the incoming id back to `appCommands[].run`.
+- Cross-component actions use the existing `llm:*` window-event pattern (e.g. `llm:new-thread`,
+  `llm:show-all-qas`, `llm:import-shared-link`), with listeners in the owning component.
+
+**When adding a user action:** add it to `appCommands` (palette + menu-dispatch), add a menu item
+in `main.ts`, and — only for high-traffic actions — a toolbar/context button.
 
 ## Shared-Link Import
 

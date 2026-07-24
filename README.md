@@ -17,21 +17,22 @@ Built with Vue 3, TypeScript, Electron, and PrimeVue.
 5. [Core User Workflows](#core-user-workflows)
 6. [Structured Paste and Batch Creation](#structured-paste-and-batch-creation)
 7. [Export and Import](#export-and-import)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Getting Started](#getting-started)
-10. [Build, Test, and Script Reference](#build-test-and-script-reference)
-11. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
-12. [Debugging in VS Code](#debugging-in-vs-code)
-13. [Building Native Installers](#building-native-installers)
-14. [Runtime Configuration](#runtime-configuration)
-15. [Data Model and File Format](#data-model-and-file-format)
-16. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
-17. [Project Structure](#project-structure)
-18. [Technology Stack](#technology-stack)
-19. [Generative AI Usage](#generative-ai-usage)
-20. [Contributing](#contributing)
-21. [Credits](#credits)
-22. [License](#license)
+8. [Command Palette and Menus](#command-palette-and-menus)
+9. [Keyboard Shortcuts](#keyboard-shortcuts)
+10. [Getting Started](#getting-started)
+11. [Build, Test, and Script Reference](#build-test-and-script-reference)
+12. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
+13. [Debugging in VS Code](#debugging-in-vs-code)
+14. [Building Native Installers](#building-native-installers)
+15. [Runtime Configuration](#runtime-configuration)
+16. [Data Model and File Format](#data-model-and-file-format)
+17. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
+18. [Project Structure](#project-structure)
+19. [Technology Stack](#technology-stack)
+20. [Generative AI Usage](#generative-ai-usage)
+21. [Contributing](#contributing)
+22. [Credits](#credits)
+23. [License](#license)
 
 ---
 
@@ -292,6 +293,37 @@ How each provider is read:
 > and scrapes the DOM. That path **cannot be exercised by the Node unit tests** — verify it
 > end-to-end by running `npm run dev` and importing a Gemini share link, and re-check after any
 > change to the Gemini extractor or when Gemini alters its share-page markup.
+
+---
+
+## Command Palette and Menus
+
+Every end-user action is reachable from two **complete** surfaces, so no feature is hidden behind
+a single button:
+
+- **Command Palette** (`Ctrl/Cmd+K`) — a searchable list of every command. Type to filter, `Enter`
+  to run. Each entry shows its keyboard shortcut, if any.
+- **Application menu bar** — the same commands, grouped into menus:
+  - **File** — New Q&A, Import from File, Import from Shared Link, Export Selected, Settings.
+  - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
+  - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
+  - **View** — Focus Search, Toggle Dark Mode, Toggle LLM Lens, Toggle Threads / List panels,
+    plus standard reload / zoom / full-screen / dev-tools.
+  - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
+
+  Menu items show their keyboard shortcut as a hint in parentheses.
+
+An in-app **Usage Information** guide (overview, layout, import options, LLM Lens, and the full
+shortcut list) is always available from **Help → Usage Information** in the menu bar.
+
+The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
+in the Threads panel; LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
+where relevant, right-click context menus. Toolbars and context menus deliberately carry only
+high-traffic actions — the Command Palette and menu bar are the complete reference.
+
+> Keyboard shortcuts are handled by the app itself (not by the OS menu), so context-sensitive keys
+> like `E` / `D` / `X` only fire when a Q&A is selected and you are not typing in a field. The menu
+> lists them as hints; clicking the menu item always runs the action regardless of focus.
 
 ---
 

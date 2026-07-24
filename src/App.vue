@@ -36,24 +36,59 @@ const showSharedLinkImport = ref(false)
 const sharedImportBusy = ref(false)
 const sharedImportResult = ref<SharedImportResult | null>(null)
 const sharedImportError = ref('')
+let disposeMenuListener: (() => void) | null = null
 
 const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
 
+// ─── Central command registry ───────────────────────────────────────────────
+// Single source of truth for every end-user action. Both the command palette
+// and the native application menu (via the `menu-action` IPC channel) drive
+// these. Keyboard shortcuts remain owned by handleGlobalKeydown; `shortcut`
+// here is a display hint only.
+interface AppCommand {
+  id: string
+  label: string
+  shortcut: string
+  run: () => void
+}
+
+const appCommands: AppCommand[] = [
+  { id: 'search.focus', label: 'Focus Search', shortcut: `${modKeyLabel}+F`, run: focusSearch },
+  { id: 'qa.new', label: 'New Q&A', shortcut: `${modKeyLabel}+N`, run: openQAEditor },
+  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: 'E', run: requestEditSelectedQA },
+  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: 'D', run: requestDuplicateSelectedQA },
+  { id: 'qa.delete', label: 'Delete Selected Q&A', shortcut: 'Delete', run: requestDeleteSelectedQA },
+  { id: 'qa.save', label: 'Save Changes', shortcut: `${modKeyLabel}+S`, run: requestSaveCurrentEdit },
+  { id: 'qa.moveUp', label: 'Move Q&A Up in Thread', shortcut: 'Alt+Up', run: () => void moveSelectedQA(-1) },
+  { id: 'qa.moveDown', label: 'Move Q&A Down in Thread', shortcut: 'Alt+Down', run: () => void moveSelectedQA(1) },
+  { id: 'io.export', label: 'Export Selected Q&A / Thread', shortcut: 'X', run: requestExportSelected },
+  { id: 'io.importFile', label: 'Import from File', shortcut: `${modKeyLabel}+O`, run: () => void importFile() },
+  { id: 'io.importSharedLink', label: 'Import from Shared Link', shortcut: `${modKeyLabel}+Shift+O`, run: openSharedLinkImport },
+  { id: 'thread.new', label: 'New Thread', shortcut: '', run: requestNewThread },
+  { id: 'thread.rename', label: 'Rename Selected Thread', shortcut: 'F2', run: requestRenameSelectedThread },
+  { id: 'view.showAll', label: 'Show All Q&As', shortcut: '', run: requestShowAllQAs },
+  { id: 'view.showUnthreaded', label: 'Show Unthreaded Q&As', shortcut: '', run: requestShowUnthreaded },
+  { id: 'view.toggleThreads', label: 'Toggle Threads Panel', shortcut: '', run: toggleThreadsPanel },
+  { id: 'view.toggleList', label: 'Toggle List Panel', shortcut: '', run: toggleListPanel },
+  { id: 'view.zoomIn', label: 'Zoom Content In', shortcut: '', run: () => uiStore.zoomIn() },
+  { id: 'view.zoomOut', label: 'Zoom Content Out', shortcut: '', run: () => uiStore.zoomOut() },
+  { id: 'view.zoomReset', label: 'Reset Content Zoom', shortcut: '', run: () => uiStore.zoomReset() },
+  { id: 'view.darkMode', label: 'Toggle Dark Mode', shortcut: '', run: () => uiStore.toggleDarkMode() },
+  { id: 'view.lens', label: 'Toggle LLM Lens', shortcut: '', run: () => insightsPanelRef.value?.toggle() },
+  { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
+  { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
+  { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
+]
+
+function handleMenuAction(action: string) {
+  const command = appCommands.find((c) => c.id === action)
+  command?.run()
+}
+
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase()
-  const commands = [
-    { label: 'Focus Search', shortcut: `${modKeyLabel}+F`, action: focusSearch },
-    { label: 'Create New QA', shortcut: `${modKeyLabel}+N`, action: openQAEditor },
-    { label: 'Edit Selected QA', shortcut: 'E', action: requestEditSelectedQA },
-    { label: 'Delete Selected QA', shortcut: 'Delete', action: requestDeleteSelectedQA },
-    { label: 'Duplicate Selected QA', shortcut: 'D', action: requestDuplicateSelectedQA },
-    { label: 'Export Selected QA / Thread', shortcut: 'X', action: requestExportSelected },
-    { label: 'Import from File', shortcut: `${modKeyLabel}+O`, action: () => void importFile() },
-    { label: 'Import from Shared Link…', shortcut: `${modKeyLabel}+Shift+O`, action: openSharedLinkImport },
-    { label: 'Open Settings', shortcut: `${modKeyLabel}+,`, action: openSettings },
-    { label: 'Show Shortcuts', shortcut: '?', action: openShortcutsHelp },
-  ]
-
+  // Exclude "Open Command Palette" — you're already in it here.
+  const commands = appCommands.filter((c) => c.id !== 'app.commandPalette')
   if (!query) return commands
   return commands.filter((command) => {
     return (
@@ -97,6 +132,8 @@ onMounted(async () => {
   // Import actions dispatched from the Threads-panel Import menu
   window.addEventListener('llm:import-file', handleImportFileEvent)
   window.addEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
+  // Native application-menu items route here
+  disposeMenuListener = window.api.onMenuAction?.(handleMenuAction) ?? null
 })
 
 function handleImportFileEvent() {
@@ -117,6 +154,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('llm:import-file', handleImportFileEvent)
   window.removeEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
+  disposeMenuListener?.()
 })
 
 function isInputTarget(target: HTMLElement): boolean {
@@ -173,6 +211,18 @@ function requestSaveCurrentEdit() {
 
 function requestRenameSelectedThread() {
   window.dispatchEvent(new Event('llm:rename-selected-thread'))
+}
+
+function requestNewThread() {
+  window.dispatchEvent(new Event('llm:new-thread'))
+}
+
+function requestShowAllQAs() {
+  window.dispatchEvent(new Event('llm:show-all-qas'))
+}
+
+function requestShowUnthreaded() {
+  window.dispatchEvent(new Event('llm:show-unthreaded'))
 }
 
 function requestEditSelectedQA() {
@@ -478,7 +528,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           v-for="command in filteredCommands"
           :key="command.label"
           class="command-item"
-          @click="runCommand(command.action)"
+          @click="runCommand(command.run)"
         >
           <span>{{ command.label }}</span>
           <kbd v-if="command.shortcut">{{ command.shortcut }}</kbd>

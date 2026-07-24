@@ -155,6 +155,9 @@ export interface ElectronAPI {
   exportThread: (threadId: string) => Promise<ExportResult | null>
   importFromFile: () => Promise<ImportResult | null>
   importSharedLink: (url: string) => Promise<SharedImportResult>
+
+  // Native application menu → renderer. Returns an unsubscribe function.
+  onMenuAction: (callback: (action: string) => void) => () => void
 }
 
 declare global {
