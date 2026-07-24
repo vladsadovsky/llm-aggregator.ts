@@ -7,12 +7,35 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Menu from 'primevue/menu'
+import type { MenuItem } from 'primevue/menuitem'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
 const confirm = useConfirm()
 const toast = useToast()
+
+// Import sources — a cascading popup menu on the header's Import button. Each item
+// dispatches a window event that App.vue handles (same decoupled pattern as the
+// other `llm:*` app actions). Keyboard shortcuts for each source live in App.vue.
+const importMenu = ref<InstanceType<typeof Menu> | null>(null)
+const importItems: MenuItem[] = [
+  {
+    label: 'From file (.md)…',
+    icon: 'pi pi-file',
+    command: () => window.dispatchEvent(new Event('llm:import-file')),
+  },
+  {
+    label: 'From shared link…',
+    icon: 'pi pi-link',
+    command: () => window.dispatchEvent(new Event('llm:import-shared-link')),
+  },
+]
+
+function toggleImportMenu(event: Event) {
+  importMenu.value?.toggle(event)
+}
 
 const newThreadName = ref('')
 const newThreadTags = ref('')
@@ -93,7 +116,7 @@ function confirmDelete(tid: string) {
 async function exportThread(tid: string) {
   const result = await window.api.exportThread(tid)
   if (result) {
-    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    const filename = result.savedPath.split(/[/\\]/).pop() ?? result.savedPath
     toast.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
   }
 }
@@ -185,6 +208,21 @@ onUnmounted(() => {
       <span class="panel-title">Threads</span>
       <div class="header-actions">
         <Button
+          icon="pi pi-file-import"
+          text
+          rounded
+          size="small"
+          data-testid="import-menu-button"
+          title="Import…"
+          aria-haspopup="true"
+          @click="toggleImportMenu"
+        />
+        <Menu
+          ref="importMenu"
+          :model="importItems"
+          :popup="true"
+        />
+        <Button
           icon="pi pi-inbox"
           text
           rounded
@@ -205,24 +243,36 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="threadStore.allThreadTags.length > 0" class="tag-filter-bar">
+    <div
+      v-if="threadStore.allThreadTags.length > 0"
+      class="tag-filter-bar"
+    >
       <button
         v-for="tag in threadStore.allThreadTags"
         :key="tag"
         class="tag-filter-chip"
         :class="{ active: threadStore.activeTagFilters.includes(tag) }"
         @click="threadStore.toggleTagFilter(tag)"
-      >{{ tag }}</button>
+      >
+        {{ tag }}
+      </button>
       <button
         v-if="hasFilters"
         class="tag-filter-clear"
         title="Clear all filters"
         @click="threadStore.clearTagFilters()"
-      >×</button>
+      >
+        ×
+      </button>
     </div>
 
     <!-- Thread list -->
-    <div class="thread-list" data-testid="thread-list" tabindex="0" @keydown="onThreadListKeydown">
+    <div
+      class="thread-list"
+      data-testid="thread-list"
+      tabindex="0"
+      @keydown="onThreadListKeydown"
+    >
       <!-- Global search results pseudo-entry -->
       <div
         v-if="uiStore.isGlobalSearchActive"
@@ -251,7 +301,10 @@ onUnmounted(() => {
             <span>Unthreaded</span>
           </div>
         </div>
-        <span v-if="threadStore.unthreadedPairIds.length > 0" class="virtual-count">
+        <span
+          v-if="threadStore.unthreadedPairIds.length > 0"
+          class="virtual-count"
+        >
           {{ threadStore.unthreadedPairIds.length }}
         </span>
       </div>
@@ -270,7 +323,10 @@ onUnmounted(() => {
               <i class="pi pi-folder" />
               <span>{{ threadStore.threads[tid].name }}</span>
             </div>
-            <div v-if="threadStore.threads[tid].tags?.length" class="thread-tags">
+            <div
+              v-if="threadStore.threads[tid].tags?.length"
+              class="thread-tags"
+            >
               <span
                 v-for="tag in threadStore.threads[tid].tags"
                 :key="tag"
@@ -291,8 +347,8 @@ onUnmounted(() => {
                 text
                 rounded
                 size="small"
-                @click.stop="startRename(tid)"
                 title="Rename"
+                @click.stop="startRename(tid)"
               />
               <Button
                 icon="pi pi-download"
@@ -300,8 +356,8 @@ onUnmounted(() => {
                 rounded
                 size="small"
                 data-testid="export-thread-button"
-                @click.stop="exportThread(tid)"
                 title="Export thread to file"
+                @click.stop="exportThread(tid)"
               />
               <Button
                 icon="pi pi-trash"
@@ -309,8 +365,8 @@ onUnmounted(() => {
                 rounded
                 size="small"
                 severity="danger"
-                @click.stop="confirmDelete(tid)"
                 title="Delete"
+                @click.stop="confirmDelete(tid)"
               />
             </div>
           </div>
@@ -318,7 +374,10 @@ onUnmounted(() => {
 
         <!-- Editing name -->
         <template v-else>
-          <div class="edit-form" @click.stop>
+          <div
+            class="edit-form"
+            @click.stop
+          >
             <InputText
               v-model="editingName"
               class="edit-input"
@@ -345,10 +404,18 @@ onUnmounted(() => {
       >
         <i class="pi pi-filter-slash" />
         <p>No threads match</p>
-        <button class="clear-link" @click="threadStore.clearTagFilters()">Clear filter</button>
+        <button
+          class="clear-link"
+          @click="threadStore.clearTagFilters()"
+        >
+          Clear filter
+        </button>
       </div>
 
-      <div v-else-if="threadStore.sortedThreadIds.length === 0" class="empty-state">
+      <div
+        v-else-if="threadStore.sortedThreadIds.length === 0"
+        class="empty-state"
+      >
         <i class="pi pi-inbox" />
         <p>No threads yet</p>
       </div>
@@ -356,10 +423,13 @@ onUnmounted(() => {
 
     <!-- Bottom: Add thread (OneNote-style) -->
     <div class="panel-footer">
-      <div v-if="showNewThreadInput" class="new-thread-inputs">
+      <div
+        v-if="showNewThreadInput"
+        class="new-thread-inputs"
+      >
         <InputText
           v-model="newThreadName"
-            data-testid="new-thread-name-input"
+          data-testid="new-thread-name-input"
           placeholder="Thread name..."
           size="small"
           class="w-full"
@@ -375,7 +445,11 @@ onUnmounted(() => {
           @keydown="onNewThreadKeydown"
         />
       </div>
-      <button class="add-button" data-testid="add-thread-button" @click="showNewThreadInput = !showNewThreadInput">
+      <button
+        class="add-button"
+        data-testid="add-thread-button"
+        @click="showNewThreadInput = !showNewThreadInput"
+      >
         <i class="pi pi-plus" />
         <span>Add thread</span>
       </button>

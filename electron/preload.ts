@@ -37,6 +37,24 @@ export interface ExportResult {
   savedPath: string
 }
 
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+
+export interface SharedImportQA {
+  data: QACreateData
+  warnings: string[]
+}
+
+export interface SharedImportResult {
+  provider: ProviderId
+  url: string
+  model: string
+  threadName: string
+  titleWasDerived: boolean
+  tags: string[]
+  items: SharedImportQA[]
+  warnings: string[]
+}
+
 export interface ElectronAPI {
   // Settings
   settingsLoad: () => Promise<AppSettings>
@@ -95,6 +113,7 @@ export interface ElectronAPI {
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
   importFromFile: () => Promise<ImportResult | null>
+  importSharedLink: (url: string) => Promise<SharedImportResult>
 }
 
 export interface QAPairData {
@@ -242,6 +261,7 @@ const api: ElectronAPI = {
   exportQA: (id) => ipcRenderer.invoke('export:qa', id),
   exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
   importFromFile: () => ipcRenderer.invoke('import:file'),
+  importSharedLink: (url) => ipcRenderer.invoke('import:sharedLink', url),
 }
 
 contextBridge.exposeInMainWorld('api', api)

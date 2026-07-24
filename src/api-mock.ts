@@ -91,6 +91,28 @@ export const mockApi: ElectronAPI = {
     exportQA: async (_id) => null,
     exportThread: async (_threadId) => null,
     importFromFile: async () => null,
+    importSharedLink: async (url: string) => ({
+        provider: 'chatgpt' as const,
+        url,
+        model: 'gpt-4o',
+        threadName: 'Mock Imported Conversation',
+        titleWasDerived: false,
+        tags: ['chatgpt', 'gpt-4o'],
+        items: [
+            {
+                data: {
+                    title: 'Mock question',
+                    source: 'chatgpt',
+                    url,
+                    tags: ['chatgpt', 'gpt-4o'],
+                    question: 'What is this?',
+                    answer: 'A mocked imported answer.',
+                },
+                warnings: [],
+            },
+        ],
+        warnings: [],
+    }),
 
     secretsLoad: async () => ({ openaiApiKey: '', anthropicApiKey: '' }),
     secretsSave: async () => {},

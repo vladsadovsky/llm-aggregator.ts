@@ -14,6 +14,8 @@ import { loadSettings, saveSettings, AppSettings } from '../services/settingsSer
 import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
 import { importFromFile } from '../services/fileImportService'
 import type { ImportResult } from '../services/qaImportFormatService'
+import { importSharedLink } from '../services/import/sharedLinkImportService'
+import type { SharedImportResult } from '../services/import/types'
 import { loadSecrets, saveSecrets, AppSecrets } from '../services/secretsService'
 import { generateMetadata } from '../services/metadataService'
 import { generateEmbedding, generateAllEmbeddings, semanticSearch } from '../services/embeddingService'
@@ -114,6 +116,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('import:file', async (): Promise<ImportResult | null> => {
     return importFromFile()
+  })
+
+  ipcMain.handle('import:sharedLink', async (_event, url: string): Promise<SharedImportResult> => {
+    return importSharedLink(url)
   })
 
   // ─── Semantic Search ────────────────────────────────────────

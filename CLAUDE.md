@@ -35,6 +35,7 @@ src/                                 electron/
 | `electron/services/qaPairService.ts` | Archive `.md` file CRUD |
 | `electron/services/threadService.ts` | `threads.json` CRUD |
 | `electron/services/searchService.ts` | Full-text and tag search |
+| `electron/services/import/` | Shared-link conversation import (ChatGPT/Gemini/Copilot) |
 | `electron/services/settingsService.ts` | `settings.json` load/save |
 | `electron/services/pathResolver.ts` | Data directory resolution |
 | `electron/services/logger.ts` | Dev-only logging (Electron side) |
@@ -43,6 +44,7 @@ src/                                 electron/
 | `src/components/QAListPanel.vue` | Middle column — QA list with search |
 | `src/components/QAContentPanel.vue` | Right column — QA viewer/editor |
 | `src/components/QAEditor.vue` | Modal dialog for creating new QA |
+| `src/components/SharedLinkImportDialog.vue` | Modal dialog for importing a shared conversation link |
 | `src/components/QAEditForm.vue` | Inline form for editing existing QA |
 | `src/components/QAMetadataBar.vue` | Metadata display (source, tags, date) |
 | `src/components/MarkdownRenderer.vue` | Markdown + syntax highlighting |
@@ -124,6 +126,22 @@ All renderer↔main communication uses `ipcRenderer.invoke()` / `ipcMain.handle(
 | `qaUpdate(id, data)` | `QAPairData` | Update .md file, increment version |
 | `qaDelete(id)` | `void` | Delete .md file |
 | `searchQuery(q, type)` | `string[]` | Full-text or tag search, returns IDs |
+| `importSharedLink(url)` | `SharedImportResult` | Import a shared LLM conversation (ChatGPT/Gemini/Copilot) as QA pairs |
+
+## Shared-Link Import
+
+`electron/services/import/` turns a **shared conversation URL** into QA pairs + a thread.
+The renderer (`SharedLinkImportDialog.vue` → `App.vue`) creates the pairs and thread from the
+returned `SharedImportResult`, mirroring the file-import flow.
+
+- **ChatGPT** — JSON from `chatgpt.com/backend-api/share/<id>` (walks the `mapping` tree).
+- **Copilot** — JSON from `copilot.microsoft.com/c/api/conversations/shares/<id>` (sorted by `createdAt`).
+- **Gemini** — no server JSON; rendered in a hidden `BrowserWindow` and extracted from the DOM.
+
+Transport uses Electron's `net` module (Chromium stack — Node `fetch` overflows on Google's
+headers). Provider parsers are **pure** (no Electron/FS) and unit-tested. The thread + every QA
+are tagged with the provider and model name; if no title is found, the thread name is derived
+from the first question and the UI reminds the user to rename it.
 
 ## Tech Stack
 

@@ -196,7 +196,7 @@ async function exportSelectedQA() {
   if (!pair.value) return
   const result = await window.api.exportQA(pair.value.id)
   if (result) {
-    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    const filename = result.savedPath.split(/[/\\]/).pop() ?? result.savedPath
     toast.add({ severity: 'success', summary: 'QA exported', detail: `Saved to ${filename}`, life: 3000 })
   }
 }

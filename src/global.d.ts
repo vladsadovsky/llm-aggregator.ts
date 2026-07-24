@@ -80,6 +80,24 @@ export interface ExportResult {
   savedPath: string
 }
 
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+
+export interface SharedImportQA {
+  data: QACreateData
+  warnings: string[]
+}
+
+export interface SharedImportResult {
+  provider: ProviderId
+  url: string
+  model: string
+  threadName: string
+  titleWasDerived: boolean
+  tags: string[]
+  items: SharedImportQA[]
+  warnings: string[]
+}
+
 export interface ElectronAPI {
   // Settings
   settingsLoad: () => Promise<AppSettings>
@@ -136,6 +154,7 @@ export interface ElectronAPI {
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
   importFromFile: () => Promise<ImportResult | null>
+  importSharedLink: (url: string) => Promise<SharedImportResult>
 }
 
 declare global {

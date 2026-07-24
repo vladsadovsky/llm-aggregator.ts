@@ -134,6 +134,13 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 - Import always creates new records; existing content is never overwritten.
 - Version mismatches are handled with best-effort parsing and a per-item warning summary.
 
+#### Import from a shared conversation link
+- Paste a public share link from **ChatGPT**, **Gemini**, or **Copilot** to import a whole
+  conversation at once — it is split into Q&A pairs and grouped into a new thread.
+- The thread and every imported QA are tagged with the provider and model name.
+- If a conversation title is found it becomes the thread name; otherwise a name is derived from
+  the first question and the app reminds you to rename it.
+
 #### Export  to a note
 Same as a to a file, but targeting one note or section in a note repository app (OneNote or Apple Notes)
 
@@ -257,6 +264,35 @@ Files without a YAML header are accepted. The parser uses the same flexible rule
 
 Missing fields are filled with safe defaults and listed in the import summary.
 
+### Importing from a shared conversation link
+
+Import an entire shared conversation from a public link. Choose **Import → Shared link** (command
+palette or the Import menu) and paste a URL of one of these forms:
+
+- `https://chatgpt.com/share/…`
+- `https://gemini.google.com/share/…`
+- `https://copilot.microsoft.com/shares/…`
+
+The conversation is fetched, split into ordered Q&A pairs, and grouped into a new thread. The
+thread and each QA are tagged with the provider and model name (for example `gemini` +
+`gemini-3.6-flash`). When a title is present it becomes the thread name; otherwise a name is
+derived from the first question and a reminder to rename it is shown.
+
+How each provider is read:
+
+| Provider | Source | Fidelity |
+|----------|--------|----------|
+| ChatGPT  | `backend-api/share/<id>` JSON (conversation tree) | Full Markdown |
+| Copilot  | `c/api/conversations/shares/<id>` JSON | Full Markdown |
+| Gemini   | Rendered in a hidden Electron `BrowserWindow`; answer HTML is converted back to Markdown with Turndown | Markdown recovered from rendered HTML |
+
+> **Testing note — Gemini requires the Electron runtime.** ChatGPT and Copilot parsing is pure
+> and covered by the Vitest unit suite (including real-response fixtures). Gemini has no
+> server-provided JSON, so its importer loads the real share page in a hidden `BrowserWindow`
+> and scrapes the DOM. That path **cannot be exercised by the Node unit tests** — verify it
+> end-to-end by running `npm run dev` and importing a Gemini share link, and re-check after any
+> change to the Gemini extractor or when Gemini alters its share-page markup.
+
 ---
 
 ## Keyboard Shortcuts
@@ -275,6 +311,7 @@ Missing fields are filled with safe defaults and listed in the import summary.
 | D | Duplicate selected QA into new form | Global |
 | X | Export selected QA or thread to file | Global |
 | Ctrl/Cmd+O | Import from file | Global |
+| Ctrl/Cmd+Shift+O | Import from shared link | Global |
 | Ctrl/Cmd+K | Open command palette | Global |
 | ? | Show keyboard help | Global |
 | Ctrl/Cmd+Enter | Submit form | QA editor |
@@ -681,6 +718,7 @@ Current status: manual setup, planned future automation.
 | State Management | Pinia |
 | Component Library | PrimeVue 4 |
 | Markdown Rendering | markdown-it + highlight.js |
+| HTML → Markdown (shared-link import) | Turndown + turndown-plugin-gfm |
 | Frontmatter Parsing | gray-matter |
 | Testing | Vitest + Playwright |
 | Packaging | electron-builder |
