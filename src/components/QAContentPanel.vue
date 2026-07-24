@@ -218,6 +218,25 @@ onUnmounted(() => {
   window.removeEventListener('llm:duplicate-selected-qa', duplicateSelectedQA)
   window.removeEventListener('llm:export-selected-qa', onExportSelectedQARequest)
 })
+
+const generatingMetadata = ref(false)
+
+async function generateAIMetadata() {
+  const id = qaStore.selectedPairId
+  if (!id) return
+  generatingMetadata.value = true
+  try {
+    const updated = await window.api.aiGenerateMetadata(id)
+    if (updated) {
+      qaStore.pairs[id] = updated
+      toast.add({ severity: 'success', summary: 'Metadata generated', life: 2000 })
+    }
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Metadata failed', detail: (err as Error).message, life: 5000 })
+  } finally {
+    generatingMetadata.value = false
+  }
+}
 </script>
 
 <template>
@@ -268,6 +287,15 @@ onUnmounted(() => {
             data-testid="export-qa-button"
             outlined
             @click="exportSelectedQA"
+          />
+          <Button
+            icon="pi pi-sparkles"
+            label="AI Metadata"
+            size="small"
+            outlined
+            :loading="generatingMetadata"
+            title="Generate AI metadata for this QA"
+            @click="generateAIMetadata"
           />
           <div v-if="showMoveButtons" class="move-buttons">
             <Button

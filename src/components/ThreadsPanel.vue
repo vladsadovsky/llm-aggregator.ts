@@ -33,6 +33,7 @@ function selectThread(tid: string) {
   uiStore.setLastUsedThreadId(tid)
   uiStore.showAllQAs = false
   uiStore.showUnthreaded = false
+  uiStore.showGlobalSearchResults = false
   // Auto-select the first QA in the thread
   const thread = threadStore.threads[tid]
   if (thread && thread.items.length > 0) {
@@ -95,6 +96,20 @@ async function exportThread(tid: string) {
     const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
     toast.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
   }
+}
+
+function selectGlobalSearchResults() {
+  threadStore.selectedThreadId = null
+  qaStore.selectedPairId = null
+  uiStore.showAllQAs = false
+  uiStore.showUnthreaded = false
+  uiStore.showGlobalSearchResults = true
+}
+
+function threadMatchCount(tid: string): number {
+  if (!uiStore.globalSearchResultIds) return 0
+  const resultSet = new Set(uiStore.globalSearchResultIds)
+  return (threadStore.threads[tid]?.items ?? []).filter((id) => resultSet.has(id)).length
 }
 
 function showAllQAs() {
@@ -208,6 +223,22 @@ onUnmounted(() => {
 
     <!-- Thread list -->
     <div class="thread-list" data-testid="thread-list" tabindex="0" @keydown="onThreadListKeydown">
+      <!-- Global search results pseudo-entry -->
+      <div
+        v-if="uiStore.isGlobalSearchActive"
+        class="thread-item thread-item--virtual thread-item--search-results"
+        :class="{ active: uiStore.showGlobalSearchResults }"
+        @click="selectGlobalSearchResults"
+      >
+        <div class="thread-info">
+          <div class="thread-name">
+            <i class="pi pi-search" />
+            <span>Search Results</span>
+          </div>
+        </div>
+        <span class="virtual-count">{{ uiStore.globalSearchResultIds?.length ?? 0 }}</span>
+      </div>
+
       <div
         class="thread-item thread-item--virtual"
         data-testid="unthreaded-thread-item"
@@ -249,33 +280,39 @@ onUnmounted(() => {
               >{{ tag }}</span>
             </div>
           </div>
-          <div class="thread-actions">
-            <Button
-              icon="pi pi-pencil"
-              text
-              rounded
-              size="small"
-              @click.stop="startRename(tid)"
-              title="Rename"
-            />
-            <Button
-              icon="pi pi-download"
-              text
-              rounded
-              size="small"
-              data-testid="export-thread-button"
-              @click.stop="exportThread(tid)"
-              title="Export thread to file"
-            />
-            <Button
-              icon="pi pi-trash"
-              text
-              rounded
-              size="small"
-              severity="danger"
-              @click.stop="confirmDelete(tid)"
-              title="Delete"
-            />
+          <div class="thread-right">
+            <span
+              v-if="uiStore.isGlobalSearchActive && threadMatchCount(tid) > 0"
+              class="match-count"
+            >{{ threadMatchCount(tid) }}</span>
+            <div class="thread-actions">
+              <Button
+                icon="pi pi-pencil"
+                text
+                rounded
+                size="small"
+                @click.stop="startRename(tid)"
+                title="Rename"
+              />
+              <Button
+                icon="pi pi-download"
+                text
+                rounded
+                size="small"
+                data-testid="export-thread-button"
+                @click.stop="exportThread(tid)"
+                title="Export thread to file"
+              />
+              <Button
+                icon="pi pi-trash"
+                text
+                rounded
+                size="small"
+                severity="danger"
+                @click.stop="confirmDelete(tid)"
+                title="Delete"
+              />
+            </div>
           </div>
         </template>
 
@@ -527,12 +564,34 @@ onUnmounted(() => {
 .thread-actions {
   display: none;
   gap: 2px;
-  flex-shrink: 0;
   margin-top: -2px;
 }
 
 .thread-item:hover .thread-actions {
   display: flex;
+}
+
+.thread-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.match-count {
+  font-size: 11px;
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  color: var(--primary-color);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.thread-item--search-results {
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 2px;
 }
 
 .edit-form {

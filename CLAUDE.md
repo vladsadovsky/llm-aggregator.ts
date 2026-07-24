@@ -70,20 +70,30 @@ src/                                 electron/
 ---
 id: '20260204_2135'
 title: My Title
-source: claude          # claude | chatgpt | copilot | grok | gemini | manual | other
+source: claude          # claude | chatgpt | copilot | grok | gemini | manual | other | lens
 url: https://...
 tags: [tag1, tag2]
 timestamp: '2026-02-04T21:35:57.826479'
 version: 1
 thread_pairs: []
+question: The question text (single-line or YAML block scalar for multi-line)
+
+# Machine-generated metadata (optional)
+ai_topic: gradient descent
+ai_concepts: [backprop, loss, optimization]
+ai_status: open | closed | speculative | dead-end
+ai_confidence: speculative | working | confident | validated
+ai_summary: Brief summary of conclusion
 ---
 
-## Question
-...
-
-## Answer
-...
+The answer is the unrestricted Markdown body — any headings, code blocks, tables, or formatting are valid.
 ```
+
+**Format rules:**
+- `question` lives in YAML frontmatter. Multi-line questions use a `|-` block scalar.
+- The answer is the full document body after `---` — no `## Question` / `## Answer` wrappers.
+- A bare `---` line inside `question` would conflict with YAML frontmatter; the app replaces it with `<hr>` on write.
+- Legacy files using `## Question` / `## Answer` body markers are still parsed as a read-only fallback.
 
 **Threads** are stored in `<dataDirectory>/threads.json`:
 ```json
@@ -172,5 +182,6 @@ Per the project owner's stated roadmap:
 - Better LLM integration (auto-import from chats)
 - Thread hierarchies / nesting
 - Better search (vector indexing, semantic search)
+- Anthropic provider implementation
 - Enhanced markdown editor
 - Import/export formats

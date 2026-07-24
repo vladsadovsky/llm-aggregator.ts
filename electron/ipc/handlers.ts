@@ -14,6 +14,29 @@ import { loadSettings, saveSettings, AppSettings } from '../services/settingsSer
 import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
 import { importFromFile } from '../services/fileImportService'
 import type { ImportResult } from '../services/qaImportFormatService'
+import { loadSecrets, saveSecrets, AppSecrets } from '../services/secretsService'
+import { generateMetadata } from '../services/metadataService'
+import { generateEmbedding, generateAllEmbeddings, semanticSearch } from '../services/embeddingService'
+import { getProvider } from '../services/llm/providerFactory'
+import { getTokenStats, resetTokenStats, TokenStats } from '../services/llm/tokenTracker'
+import { sessionBriefing, priorArtCheck, steelmanRetrieval, questionSeeding, conceptStateSummary } from '../services/insightsService'
+import { generateAnnotations, applyAnnotations } from '../services/annotationService'
+import type { AnnotationProposal, ConfidenceLevel } from '../services/annotationService'
+import { runHealthCheck } from '../services/healthService'
+import type { HealthReport } from '../services/healthService'
+import {
+  loadDictionary,
+  saveDictionary,
+  addTag,
+  removeTag,
+  renameTag,
+  addAlias,
+  removeAlias,
+  resolveTag,
+  syncFromArchive,
+  invalidateCache as invalidateTagCache,
+} from '../services/tagDictionaryService'
+import type { TagDictionary } from '../services/tagDictionaryService'
 
 export function registerIpcHandlers(): void {
   // ─── Settings ──────────────────────────────────────────────
@@ -23,6 +46,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
     saveSettings(settings)
+    // Data directory may have changed — drop the tag dictionary cache
+    invalidateTagCache()
   })
 
   ipcMain.handle('settings:pickDirectory', async (): Promise<string | null> => {
@@ -89,5 +114,120 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('import:file', async (): Promise<ImportResult | null> => {
     return importFromFile()
+  })
+
+  // ─── Semantic Search ────────────────────────────────────────
+  ipcMain.handle('search:semantic', async (_event, query: string, topK: number) => {
+    return semanticSearch(query, topK)
+  })
+
+  // ─── Secrets ───────────────────────────────────────────────
+  ipcMain.handle('secrets:load', async (): Promise<AppSecrets> => {
+    return loadSecrets()
+  })
+
+  ipcMain.handle('secrets:save', async (_event, secrets: AppSecrets): Promise<void> => {
+    saveSecrets(secrets)
+  })
+
+  // ─── AI / LLM ──────────────────────────────────────────────
+  ipcMain.handle('ai:generateMetadata', async (_event, id: string) => {
+    return generateMetadata(id)
+  })
+
+  ipcMain.handle('ai:generateEmbedding', async (_event, id: string) => {
+    return generateEmbedding(id)
+  })
+
+  ipcMain.handle('ai:generateAllEmbeddings', async () => {
+    return generateAllEmbeddings()
+  })
+
+  ipcMain.handle('ai:testConnection', async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const provider = getProvider()
+      await provider.testConnection()
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('ai:sessionBrief', async (_event, topic: string): Promise<string> => {
+    return sessionBriefing(topic)
+  })
+
+  ipcMain.handle('ai:priorArt', async (_event, query: string): Promise<string> => {
+    return priorArtCheck(query)
+  })
+
+  ipcMain.handle('ai:steelman', async (_event, hypothesis: string): Promise<string> => {
+    return steelmanRetrieval(hypothesis)
+  })
+
+  ipcMain.handle('ai:questionSeed', async (_event, topic: string): Promise<string> => {
+    return questionSeeding(topic)
+  })
+
+  ipcMain.handle('ai:conceptSummary', async (_event, concept: string): Promise<string> => {
+    return conceptStateSummary(concept)
+  })
+
+  ipcMain.handle('ai:getTokenStats', async (): Promise<TokenStats> => {
+    return getTokenStats()
+  })
+
+  ipcMain.handle('ai:resetTokenStats', async (): Promise<void> => {
+    resetTokenStats()
+  })
+
+  ipcMain.handle('ai:generateAnnotations', async (_event, ids?: string[]): Promise<AnnotationProposal[]> => {
+    return generateAnnotations(ids)
+  })
+
+  ipcMain.handle('ai:applyAnnotations', async (_event, approved: Array<{ id: string; confidence: ConfidenceLevel }>): Promise<void> => {
+    return applyAnnotations(approved)
+  })
+
+  // ─── Archive Health ─────────────────────────────────────────
+  ipcMain.handle('archive:healthCheck', async (): Promise<HealthReport> => {
+    return runHealthCheck()
+  })
+
+  // ─── Tag Dictionary ─────────────────────────────────────────
+  ipcMain.handle('tags:load', async (): Promise<TagDictionary> => {
+    return loadDictionary()
+  })
+
+  ipcMain.handle('tags:save', async (_event, dict: TagDictionary): Promise<void> => {
+    saveDictionary(dict)
+  })
+
+  ipcMain.handle('tags:add', async (_event, tag: string, aliases?: string[]): Promise<void> => {
+    addTag(tag, aliases)
+  })
+
+  ipcMain.handle('tags:remove', async (_event, tag: string): Promise<void> => {
+    removeTag(tag)
+  })
+
+  ipcMain.handle('tags:rename', async (_event, oldTag: string, newTag: string): Promise<void> => {
+    renameTag(oldTag, newTag)
+  })
+
+  ipcMain.handle('tags:addAlias', async (_event, tag: string, alias: string): Promise<void> => {
+    addAlias(tag, alias)
+  })
+
+  ipcMain.handle('tags:removeAlias', async (_event, tag: string, alias: string): Promise<void> => {
+    removeAlias(tag, alias)
+  })
+
+  ipcMain.handle('tags:resolve', async (_event, input: string): Promise<string | null> => {
+    return resolveTag(input)
+  })
+
+  ipcMain.handle('tags:sync', async (): Promise<{ added: string[] }> => {
+    return syncFromArchive()
   })
 }

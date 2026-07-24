@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { QACreateData } from '../types/QAPair'
 
 const ZOOM_STEPS = [75, 87, 100, 115, 125, 150, 175, 200, 250, 300]
@@ -42,7 +42,13 @@ export const useUIStore = defineStore('ui', () => {
     typeof window !== 'undefined' ? window.localStorage.getItem('llm:lastUsedThreadId') || '' : ''
 
   const searchQuery = ref('')
-  const searchType = ref<'full-text' | 'tags'>('full-text')
+  const searchType = ref<'full-text' | 'tags' | 'semantic'>('full-text')
+  const searchScope = ref<'thread' | 'archive'>('thread')
+  const globalSearchResultIds = ref<string[] | null>(null)
+  const showGlobalSearchResults = ref(false)
+  const isGlobalSearchActive = computed(
+    () => searchScope.value === 'archive' && globalSearchResultIds.value !== null,
+  )
   const sortBy = ref<'date' | 'title'>('date')
   const isEditing = ref(false)
   const showAllQAs = ref(false)
@@ -195,6 +201,10 @@ export const useUIStore = defineStore('ui', () => {
     isEditing,
     showAllQAs,
     showUnthreaded,
+    showGlobalSearchResults,
+    globalSearchResultIds,
+    searchScope,
+    isGlobalSearchActive,
     showQAEditor,
     darkMode,
     toggleDarkMode,

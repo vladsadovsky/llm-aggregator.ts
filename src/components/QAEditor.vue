@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useQAStore } from '../stores/qaStore'
 import { useThreadStore } from '../stores/threadStore'
 import { useUIStore } from '../stores/uiStore'
+import { useTagStore } from '../stores/tagStore'
 import type { QACreateData } from '../types/QAPair'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const qaStore = useQAStore()
 const threadStore = useThreadStore()
 const uiStore = useUIStore()
+const tagStore = useTagStore()
 
 const sourceOptions = [
   { label: 'Claude', value: 'claude' },
@@ -33,6 +35,7 @@ const sourceOptions = [
   { label: 'Gemini', value: 'gemini' },
   { label: 'Copilot', value: 'copilot' },
   { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Lens', value: 'lens' },
 ]
 
 const title = ref('')
@@ -115,10 +118,16 @@ watch(url, (newUrl: string) => {
   }
 })
 
+// Tags not in dictionary (for warn mode display)
+const newTagsInInput = computed(() =>
+  tagStore.enforcementActive ? tagStore.filterNewTags(tags.value) : []
+)
+
 function searchTags(event: { query: string }) {
   const query = event.query.toLowerCase()
-  tagSuggestions.value = qaStore.allTags
-    .filter((t: string) => t.includes(query) && !tags.value.includes(t))
+  // When enforcement is active, suggest from dictionary; otherwise from archive
+  const source = tagStore.enforcementActive ? tagStore.canonicalTags : qaStore.allTags
+  tagSuggestions.value = source.filter((t: string) => t.includes(query) && !tags.value.includes(t))
 }
 
 function commitPendingTags() {
@@ -138,10 +147,17 @@ function commitPendingTags() {
 
   const existing = new Set(tags.value.map((t) => t.toLowerCase()))
   for (const tag of pendingTags) {
-    const normalized = tag.toLowerCase()
-    if (!existing.has(normalized)) {
-      tags.value.push(tag)
-      existing.add(normalized)
+    // Resolve alias → canonical; keep original if unknown
+    const resolved = tagStore.resolveTag(tag) ?? tag.toLowerCase()
+
+    if (tagStore.effectiveEnforcement === 'strict' && !tagStore.isKnownTag(tag)) {
+      // Strict mode (or hard limit reached): silently skip tags not in dictionary
+      continue
+    }
+
+    if (!existing.has(resolved)) {
+      tags.value.push(resolved)
+      existing.add(resolved)
     }
   }
 
@@ -260,6 +276,7 @@ function handleStructuredPaste(event: ClipboardEvent) {
 
 // Pre-fill with last-used metadata
 onMounted(async () => {
+  if (!tagStore.loaded) tagStore.load() // fire-and-forget; enforcement applies reactively
   if (props.initialData) {
     title.value = props.initialData.title || ''
     source.value = props.initialData.source || ''
@@ -307,6 +324,15 @@ async function create(continueAdding = false) {
     tags: tagArray,
     question: question.value,
     answer: answer.value,
+  }
+
+  // Auto-add new tags to dictionary in warn mode (only when below hard limit)
+  if (tagStore.effectiveEnforcement === 'warn') {
+    for (const tag of tagArray) {
+      if (!tagStore.isKnownTag(tag)) {
+        window.api.tagsAdd(tag).catch(() => {}) // best-effort, non-blocking
+      }
+    }
   }
 
   // Save last-used metadata
@@ -503,6 +529,15 @@ function handleKeydown(event: KeyboardEvent) {
           placeholder="Type to add tags..."
           class="w-full"
         />
+        <small v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0" class="field-hint tag-new-hint">
+          New tags (will be added to dictionary): {{ newTagsInInput.join(', ') }}
+        </small>
+        <small v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'" class="field-hint tag-new-hint">
+          Tag vocabulary is large ({{ tagStore.tagCount }} tags). Consider reusing existing tags.
+        </small>
+        <small v-if="tagStore.effectiveEnforcement === 'strict'" class="field-hint">
+          Only dictionary tags allowed.
+        </small>
       </div>
 
       <div class="field">
@@ -634,6 +669,11 @@ function handleKeydown(event: KeyboardEvent) {
   font-size: 11px;
   color: var(--text-color-secondary);
   font-style: italic;
+}
+
+.tag-new-hint {
+  color: var(--orange-500);
+  font-style: normal;
 }
 
 .batch-hint {

@@ -1,8 +1,15 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { join, extname } from 'path'
 import matter from 'gray-matter'
+import yaml from 'js-yaml'
 import { getDataDir } from './pathResolver'
 import { debugLog } from './logger'
+
+/** Serialize a metadata object + answer body into a .md file string. */
+function serializeQAFile(frontmatter: Record<string, unknown>, answer: string): string {
+  const yamlStr = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true, quotingType: '"' })
+  return `---\n${yamlStr}---\n\n${answer.trim()}\n`
+}
 
 export interface QAPairData {
   id: string
@@ -16,6 +23,13 @@ export interface QAPairData {
   threadPairs: Array<{ thread_id: string; order: number }>
   question: string
   answer: string
+  // Machine-generated metadata (all optional, prefixed ai_)
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }
 
 export interface QACreateData {
@@ -34,6 +48,12 @@ export interface QAUpdateData {
   tags?: string[]
   question?: string
   answer?: string
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }
 
 function getArchiveDir(): string {
@@ -49,12 +69,19 @@ function parseQAFile(filepath: string): QAPairData | null {
     const content = readFileSync(filepath, 'utf-8')
     const { data: metadata, content: body } = matter(content)
 
-    // Extract question and answer from body
-    const qMatch = body.match(/##?\s*Question\s*\n([\s\S]*?)(?=##?\s*Answer|\s*$)/)
-    const aMatch = body.match(/##?\s*Answer\s*\n([\s\S]*)/)
-
-    const question = qMatch ? qMatch[1].trim() : ''
-    const answer = aMatch ? aMatch[1].trim() : body.trim()
+    // New format: question stored in frontmatter, body is the answer
+    // Legacy format: ## Question / ## Answer markers in body (read-only fallback)
+    let question: string
+    let answer: string
+    if (metadata.question !== undefined) {
+      question = String(metadata.question).trim()
+      answer = body.trim()
+    } else {
+      const qMatch = body.match(/##?\s*Question\s*\n([\s\S]*?)(?=##?\s*Answer|\s*$)/)
+      const aMatch = body.match(/##?\s*Answer\s*\n([\s\S]*)/)
+      question = qMatch ? qMatch[1].trim() : ''
+      answer = aMatch ? aMatch[1].trim() : body.trim()
+    }
 
     return {
       id: metadata.id || filepath.replace(/\.md$/, ''),
@@ -68,6 +95,13 @@ function parseQAFile(filepath: string): QAPairData | null {
       threadPairs: metadata.thread_pairs || [],
       question,
       answer,
+      // Machine-generated metadata (optional)
+      ...(metadata.ai_topic !== undefined && { aiTopic: metadata.ai_topic }),
+      ...(metadata.ai_concepts !== undefined && { aiConcepts: metadata.ai_concepts }),
+      ...(metadata.ai_status !== undefined && { aiStatus: metadata.ai_status }),
+      ...(metadata.ai_confidence !== undefined && { aiConfidence: metadata.ai_confidence }),
+      ...(metadata.ai_summary !== undefined && { aiSummary: metadata.ai_summary }),
+      ...(metadata.ai_related_ids !== undefined && { aiRelatedIds: metadata.ai_related_ids }),
     }
   } catch (err) {
     console.error(`Error parsing ${filepath}:`, err)
@@ -133,12 +167,10 @@ export function createPair(data: QACreateData): QAPairData {
     tags: data.tags,
     version: 0,
     thread_pairs: [],
+    question: data.question,
   }
 
-  const content = matter.stringify(
-    `\n## Question\n${data.question}\n\n## Answer\n${data.answer}\n`,
-    metadata
-  )
+  const content = serializeQAFile(metadata, data.answer)
 
   writeFileSync(filepath, content, 'utf-8')
 
@@ -164,7 +196,7 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
   const updatedPair = { ...pair, ...data }
   const newVersion = pair.version + 1
 
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     id: pair.id,
     title: updatedPair.title,
     timestamp: pair.timestamp,
@@ -173,12 +205,17 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
     tags: updatedPair.tags,
     version: newVersion,
     thread_pairs: pair.threadPairs,
+    question: updatedPair.question,
   }
+  // Persist ai_ fields if present (use snake_case keys in frontmatter)
+  if (updatedPair.aiTopic !== undefined) metadata.ai_topic = updatedPair.aiTopic
+  if (updatedPair.aiConcepts !== undefined) metadata.ai_concepts = updatedPair.aiConcepts
+  if (updatedPair.aiStatus !== undefined) metadata.ai_status = updatedPair.aiStatus
+  if (updatedPair.aiConfidence !== undefined) metadata.ai_confidence = updatedPair.aiConfidence
+  if (updatedPair.aiSummary !== undefined) metadata.ai_summary = updatedPair.aiSummary
+  if (updatedPair.aiRelatedIds !== undefined) metadata.ai_related_ids = updatedPair.aiRelatedIds
 
-  const content = matter.stringify(
-    `\n## Question\n${updatedPair.question}\n\n## Answer\n${updatedPair.answer}\n`,
-    metadata
-  )
+  const content = serializeQAFile(metadata, updatedPair.answer)
 
   writeFileSync(pair.filepath, content, 'utf-8')
 

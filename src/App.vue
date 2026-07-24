@@ -10,17 +10,21 @@ import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import InsightsPanel from './components/InsightsPanel.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
+import { useTagStore } from './stores/tagStore'
 import { debugError } from './utils/logger'
 import type { ImportResult } from './global'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
+const tagStore = useTagStore()
 const toast = useToast()
 const showSettings = ref(false)
+const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
 const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
 const commandQuery = ref('')
@@ -54,11 +58,13 @@ const filteredCommands = computed(() => {
 })
 
 onMounted(async () => {
-  // Load threads and QA pairs in parallel; don't let one failure block the other
+  // Load threads, QA pairs, and tag dictionary in parallel; don't let one failure block the others
   const [threadResult, qaResult] = await Promise.allSettled([
     threadStore.loadThreads(),
     qaStore.loadAllPairs(),
   ])
+  // Tag store loads independently — failure is non-fatal
+  tagStore.load().catch(() => {})
 
   if (threadResult.status === 'rejected') {
     debugError('App', 'Failed to load threads:', threadResult.reason)
@@ -516,6 +522,14 @@ function handleGlobalKeydown(event: KeyboardEvent) {
          </div>
          <div class="toolbar-buttons px-2 py-1">
             <Button
+              icon="pi pi-sparkles"
+              text
+              rounded
+              size="small"
+              title="Lens — Session Brief / Prior Art"
+              @click="insightsPanelRef?.toggle()"
+            />
+            <Button
               :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
               text
               rounded
@@ -536,6 +550,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       <QAContentPanel />
     </div>
   </div>
+  <InsightsPanel ref="insightsPanelRef" />
 </template>
 
 <style scoped>
@@ -565,6 +580,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  padding-bottom: 36px; /* reserve space for the Lens strip */
+  box-sizing: border-box;
 }
 
 .panel-wrap {

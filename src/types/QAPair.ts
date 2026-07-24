@@ -10,6 +10,13 @@ export interface QAPairData {
   threadPairs: Array<{ thread_id: string; order: number }>
   question: string
   answer: string
+  // Machine-generated metadata (all optional, prefixed ai_)
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }
 
 export interface QACreateData {
@@ -28,4 +35,10 @@ export interface QAUpdateData {
   tags?: string[]
   question?: string
   answer?: string
+  aiTopic?: string
+  aiConcepts?: string[]
+  aiStatus?: 'open' | 'closed' | 'speculative' | 'dead-end'
+  aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
+  aiSummary?: string
+  aiRelatedIds?: string[]
 }

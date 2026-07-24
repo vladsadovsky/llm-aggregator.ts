@@ -77,6 +77,24 @@ function sourceIcon(source: string): string {
         class="tag-chip"
       />
     </div>
+
+    <!-- AI metadata row -->
+    <div class="meta-row ai-meta-row" v-if="pair.aiTopic || pair.aiStatus || pair.aiConfidence">
+      <i class="pi pi-sparkles meta-icon ai-icon" title="AI-generated metadata" />
+      <span v-if="pair.aiTopic" class="meta-item ai-topic" :title="pair.aiSummary">
+        {{ pair.aiTopic }}
+      </span>
+      <Chip
+        v-if="pair.aiStatus"
+        :label="pair.aiStatus"
+        :class="['ai-chip', `ai-status-${pair.aiStatus}`]"
+      />
+      <Chip
+        v-if="pair.aiConfidence"
+        :label="pair.aiConfidence"
+        :class="['ai-chip', `ai-confidence-${pair.aiConfidence}`]"
+      />
+    </div>
   </div>
 </template>
 
@@ -137,5 +155,41 @@ function sourceIcon(source: string): string {
 
 .tag-chip {
   font-size: 11px;
+}
+
+.ai-meta-row {
+  margin-top: 4px;
+  opacity: 0.85;
+}
+
+.ai-icon {
+  color: var(--primary-color);
+}
+
+.ai-topic {
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  font-style: italic;
+}
+
+.ai-chip {
+  font-size: 10px;
+}
+
+/* Status colors */
+.ai-status-open { --chip-bg: #e0f0ff; --chip-color: #1a6bb5; }
+.ai-status-closed { --chip-bg: #e6f9ec; --chip-color: #1e7a3a; }
+.ai-status-speculative { --chip-bg: #fff8e0; --chip-color: #8a6200; }
+.ai-status-dead-end { --chip-bg: #f0f0f0; --chip-color: #666; }
+
+/* Confidence colors */
+.ai-confidence-speculative { --chip-bg: #fff0f0; --chip-color: #a33; }
+.ai-confidence-working { --chip-bg: #fff8e0; --chip-color: #8a6200; }
+.ai-confidence-confident { --chip-bg: #e0f0ff; --chip-color: #1a6bb5; }
+.ai-confidence-validated { --chip-bg: #e6f9ec; --chip-color: #1e7a3a; }
+
+:deep(.ai-chip .p-chip) {
+  background: var(--chip-bg);
+  color: var(--chip-color);
 }
 </style>

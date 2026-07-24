@@ -441,23 +441,38 @@ Build specific platforms:
 
 ```bash
 npm run electron:build:win
+npm run electron:build:msi
 npm run electron:build:mac
 npm run electron:build:linux
 ```
 
 Expected artifact families:
 
-- Windows: NSIS installer and portable executable
+- Windows: NSIS installer and portable executable; the MSI-only command builds a native,
+  assisted, per-user MSI for managed Windows Installer deployments
 - macOS: DMG and ZIP
 - Linux: AppImage and DEB
 
 Cross-platform packaging can require host-specific signing/toolchain setup.
+The MSI is currently unsigned and per-user. Code signing and per-machine deployment are
+intentionally deferred to a later release.
+
+Run clean install/uninstall validation inside a disposable Windows VM with:
+
+```powershell
+.\scripts\validate-msi-lifecycle.ps1 -CurrentMsi '.\dist\LLM Aggregator-1.0.2-win.msi'
+```
+
+To exercise a major upgrade, also pass `-PreviousMsi` pointing to an older MSI. The script
+uses silent Windows Installer operations and writes verbose logs beneath the VM's temporary
+directory. Do not run it on a workstation where an installation must be preserved.
 
 ---
 
 ## Runtime Configuration
 
-App settings are stored in settings.json.
+App settings are stored in Electron's per-user application-data directory in `settings.json`.
+The `dataDirectory` setting points to the separate folder that contains the user's archive.
 
 Example:
 
@@ -467,15 +482,75 @@ Example:
 }
 ```
 
+### Default data directory on Windows
+
+When no saved `dataDirectory` setting exists, LLM Aggregator chooses the default location
+using this rule, in order:
+
+1. If Windows advertises a OneDrive location and that OneDrive root directory exists, use:
+
+   ```text
+   <OneDrive root>\Documents\LLM-Aggregator
+   ```
+
+   A typical personal OneDrive location is:
+
+   ```text
+   C:\Users\<username>\OneDrive\Documents\LLM-Aggregator
+   ```
+
+   Work or school OneDrive roots are also supported. The application checks the Windows
+   `OneDrive`, `OneDriveConsumer`, and `OneDriveCommercial` environment locations, in that
+   order. In this context, "active OneDrive" means that Windows advertises one of those
+   locations and its root folder currently exists. The application does not require the
+   OneDrive process to be running at the exact moment it starts.
+
+2. If no advertised OneDrive root exists, use the local Documents folder:
+
+   ```text
+   %USERPROFILE%\Documents\LLM-Aggregator
+   ```
+
+   For example:
+
+   ```text
+   C:\Users\<username>\Documents\LLM-Aggregator
+   ```
+
+This automatic selection applies only when there is no saved setting. Upgrading or
+reinstalling the application does not move an existing archive and does not replace a
+previously selected directory.
+
+#### OneDrive versus local Documents
+
+Choose the OneDrive location when you want the archive included in OneDrive sync and backup
+and you understand that the archive files will be stored in your Microsoft cloud account.
+This can make recovery and use across machines easier, subject to OneDrive's synchronization
+and account configuration.
+
+Choose a local or other custom location when the archive should remain outside OneDrive, when
+its contents are sensitive, or when you want to avoid cloud availability and synchronization
+conflicts. A local location is not automatically backed up by LLM Aggregator.
+
+To inspect or change the active location, open **Settings**, find **Data Directory**, and use
+the folder picker. Changing this setting points the application at the selected directory; it
+does not copy or migrate files from the old directory. Move the existing `archive/`,
+`threads.json`, and `tag-dictionary.json` yourself if you intend to relocate an existing
+archive.
+
 Runtime directory layout:
 
 ```text
 <dataDirectory>/
-  settings.json
   threads.json
+  tag-dictionary.json
   archive/
     *.md
 ```
+
+Other archive-related files may be added alongside these as features are enabled. Secrets and
+the application setting that selects `dataDirectory` remain in Electron's per-user
+application-data directory rather than in the archive folder.
 
 ---
 
@@ -496,7 +571,7 @@ threads.json stores thread names and ordered QA IDs.
 
 ### QA entries
 
-Each QA is one Markdown file in archive with YAML frontmatter.
+Each QA is a Markdown file with YAML frontmatter. The **question is stored as a frontmatter field**; the **answer is the unrestricted Markdown body** below — no structural headers required.
 
 ```markdown
 ---
@@ -509,14 +584,13 @@ tags:
   - notes
 timestamp: '2026-02-04T21:35:57.826479'
 version: 1
-thread_pairs: []
+question: What is the meaning of life?
+ai_topic: epistemology
+ai_confidence: working
 ---
 
-## Question
-What is the meaning of life?
-
-## Answer
-42
+42, and here is why — use any Markdown you like: `code`, **bold**,
+## headings, tables, whatever.
 ```
 
 Why this format works well:
@@ -524,6 +598,21 @@ Why this format works well:
 - Human-readable and diff-friendly
 - Easy to back up and sync
 - No schema lock to proprietary systems
+
+> **Note:** The `question` field is parsed as YAML. A bare `---` line inside a question would be misread as the frontmatter closing delimiter. The app automatically replaces bare `---` with `<hr>` on write. Hand-edited files should use `<hr>` for horizontal rules in questions.
+
+---
+
+## LLM Lens Setup
+
+1. Open **Settings** → **AI** tab
+2. Enter your OpenAI API key
+3. Select a model (`gpt-4o` recommended; `gpt-4o-mini` for lower cost)
+4. Click **Test Connection**
+5. Click **Generate All Embeddings** to index your archive
+6. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+
+Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
 
 ---
 

@@ -17,12 +17,15 @@ const toast = useToast()
 const showEditor = ref(false)
 const searchResults = ref<string[] | null>(null)
 const qaListRef = ref<HTMLElement | null>(null)
+const showSaveAsThread = ref(false)
+const saveAsThreadName = ref('')
 
-// Watch store trigger for opening QA editor (from global keyboard shortcut)
+// Watch store trigger for opening QA editor (from global keyboard shortcut or Save-as-QA)
 watch(() => uiStore.showQAEditor, (val) => {
   if (val) {
+    const hasDraft = !!uiStore.qaEditorDraft
     const canAdd = !!threadStore.selectedThreadId || uiStore.showAllQAs || uiStore.showUnthreaded
-    if (canAdd) {
+    if (canAdd || hasDraft) {
       showEditor.value = true
     }
     uiStore.showQAEditor = false
@@ -31,45 +34,83 @@ watch(() => uiStore.showQAEditor, (val) => {
 const isSearching = ref(false)
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// When semantic search has results, display them in ranked order (not date/title sort)
+function applySearchResults(items: string[]): string[] {
+  if (searchResults.value === null) return items
+  if (uiStore.searchType === 'semantic') {
+    // Preserve semantic ranking: return results in the order returned by the search,
+    // filtered to only IDs that are present in the current view
+    const viewSet = new Set(items)
+    return searchResults.value.filter((id) => viewSet.has(id))
+  }
+  return items.filter((id) => searchResults.value!.includes(id))
+}
+
+function sortItems(items: string[]): string[] {
+  if (uiStore.searchType === 'semantic' && searchResults.value !== null) return items
+  if (uiStore.sortBy === 'date') {
+    items.sort((a, b) =>
+      (qaStore.pairs[b]?.timestamp || '').localeCompare(qaStore.pairs[a]?.timestamp || ''),
+    )
+  } else {
+    items.sort((a, b) =>
+      (qaStore.pairs[a]?.title?.toLowerCase() || '').localeCompare(
+        qaStore.pairs[b]?.title?.toLowerCase() || '',
+      ),
+    )
+  }
+  return items
+}
+
 // Items displayed in the list
 const displayedItems = computed(() => {
+  // Virtual thread — all global search results flat
+  if (uiStore.showGlobalSearchResults && uiStore.globalSearchResultIds) {
+    let items = uiStore.globalSearchResultIds.filter((id) => id in qaStore.pairs)
+    if (uiStore.searchType !== 'semantic') items = sortItems([...items])
+    return items
+  }
+
+  // Thread narrowed by global search
+  if (uiStore.isGlobalSearchActive && threadStore.selectedThreadId) {
+    const thread = threadStore.threads[threadStore.selectedThreadId]
+    if (!thread) return []
+    const globalSet = new Set(uiStore.globalSearchResultIds!)
+    return thread.items.filter((id) => id in qaStore.pairs && globalSet.has(id))
+  }
+
   if (uiStore.showUnthreaded) {
     let items = [...threadStore.unthreadedPairIds]
-
-    if (searchResults.value !== null) {
-      items = items.filter((id) => searchResults.value!.includes(id))
+    items = applySearchResults(items)
+    if (uiStore.searchType !== 'semantic' || searchResults.value === null) {
+      items.sort((a, b) => {
+        const ta = qaStore.pairs[a]?.timestamp || ''
+        const tb = qaStore.pairs[b]?.timestamp || ''
+        return tb.localeCompare(ta)
+      })
     }
-
-    items.sort((a, b) => {
-      const ta = qaStore.pairs[a]?.timestamp || ''
-      const tb = qaStore.pairs[b]?.timestamp || ''
-      return tb.localeCompare(ta)
-    })
     return items
   }
 
   // All QAs mode
   if (uiStore.showAllQAs) {
     let items = Object.keys(qaStore.pairs)
-
-    // Apply search filter
-    if (searchResults.value !== null) {
-      items = items.filter((id) => searchResults.value!.includes(id))
-    }
-
-    // Sort
-    if (uiStore.sortBy === 'date') {
-      items.sort((a, b) => {
-        const ta = qaStore.pairs[a]?.timestamp || ''
-        const tb = qaStore.pairs[b]?.timestamp || ''
-        return tb.localeCompare(ta)
-      })
-    } else {
-      items.sort((a, b) => {
-        const tA = qaStore.pairs[a]?.title?.toLowerCase() || ''
-        const tB = qaStore.pairs[b]?.title?.toLowerCase() || ''
-        return tA.localeCompare(tB)
-      })
+    items = applySearchResults(items)
+    // Skip sort when semantic results are driving the order
+    if (uiStore.searchType !== 'semantic' || searchResults.value === null) {
+      if (uiStore.sortBy === 'date') {
+        items.sort((a, b) => {
+          const ta = qaStore.pairs[a]?.timestamp || ''
+          const tb = qaStore.pairs[b]?.timestamp || ''
+          return tb.localeCompare(ta)
+        })
+      } else {
+        items.sort((a, b) => {
+          const tA = qaStore.pairs[a]?.title?.toLowerCase() || ''
+          const tB = qaStore.pairs[b]?.title?.toLowerCase() || ''
+          return tA.localeCompare(tB)
+        })
+      }
     }
     return items
   }
@@ -79,15 +120,12 @@ const displayedItems = computed(() => {
   const thread = threadStore.threads[threadStore.selectedThreadId]
   if (!thread) return []
   let items = thread.items.filter((id) => id in qaStore.pairs)
-
-  // Apply search filter in thread mode too
-  if (searchResults.value !== null) {
-    items = items.filter((id) => searchResults.value!.includes(id))
-  }
+  items = applySearchResults(items)
   return items
 })
 
 const panelTitle = computed(() => {
+  if (uiStore.showGlobalSearchResults) return 'Search Results'
   if (uiStore.showUnthreaded) return 'Unthreaded'
   if (uiStore.showAllQAs) return 'All QAs'
   if (!threadStore.selectedThreadId) return 'Select a thread'
@@ -103,12 +141,25 @@ function selectPair(id: string) {
 async function doSearch() {
   if (!uiStore.searchQuery.trim()) {
     searchResults.value = null
+    uiStore.globalSearchResultIds = null
+    uiStore.showGlobalSearchResults = false
     isSearching.value = false
     return
   }
   isSearching.value = true
   try {
-    searchResults.value = await qaStore.searchPairs(uiStore.searchQuery, uiStore.searchType)
+    const results = await qaStore.searchPairs(uiStore.searchQuery, uiStore.searchType)
+    searchResults.value = results
+    if (uiStore.searchScope === 'archive') {
+      uiStore.globalSearchResultIds = results
+      // Auto-show virtual thread only if no real thread is currently selected
+      if (!threadStore.selectedThreadId) {
+        uiStore.showGlobalSearchResults = true
+      }
+    } else {
+      uiStore.globalSearchResultIds = null
+      uiStore.showGlobalSearchResults = false
+    }
   } finally {
     isSearching.value = false
   }
@@ -117,10 +168,12 @@ async function doSearch() {
 function clearSearch() {
   uiStore.searchQuery = ''
   searchResults.value = null
+  uiStore.globalSearchResultIds = null
+  uiStore.showGlobalSearchResults = false
   isSearching.value = false
 }
 
-// Real-time search with debounce
+// Real-time search with debounce — semantic search skips auto-trigger (API cost)
 watch(() => uiStore.searchQuery, (newQuery) => {
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer)
@@ -134,16 +187,56 @@ watch(() => uiStore.searchQuery, (newQuery) => {
 
   isSearching.value = true
   searchDebounceTimer = setTimeout(async () => {
+    if (uiStore.searchType === 'semantic') {
+      // Don't auto-fire; user must press Enter or the search button
+      return
+    }
+
     await doSearch()
   }, 400)
 })
 
-// Also watch search type to re-search when it changes
-watch(() => uiStore.searchType, () => {
-  if (uiStore.searchQuery.trim()) {
-    doSearch()
+// Re-search when type changes (except semantic — user must trigger explicitly)
+watch(() => uiStore.searchType, (newType) => {
+  searchResults.value = null
+  if (newType !== 'semantic' && uiStore.searchQuery.trim()) {
+    void doSearch()
   }
 })
+
+// Re-search when scope changes
+watch(() => uiStore.searchScope, () => {
+  searchResults.value = null
+  uiStore.globalSearchResultIds = null
+  uiStore.showGlobalSearchResults = false
+  if (uiStore.searchType !== 'semantic' && uiStore.searchQuery.trim()) {
+    void doSearch()
+  }
+})
+
+function getFirstThreadName(id: string): string | null {
+  for (const [, thread] of Object.entries(threadStore.threads)) {
+    if (thread.items.includes(id)) return thread.name
+  }
+  return null
+}
+
+async function saveSearchAsThread() {
+  const name = saveAsThreadName.value.trim()
+  if (!name || !uiStore.globalSearchResultIds) return
+  const tid = await threadStore.createThread(name)
+  for (const id of uiStore.globalSearchResultIds) {
+    await threadStore.addToThread(tid, id)
+  }
+  showSaveAsThread.value = false
+  saveAsThreadName.value = ''
+  threadStore.selectThread(tid)
+  uiStore.showGlobalSearchResults = false
+  uiStore.globalSearchResultIds = null
+  uiStore.searchQuery = ''
+  searchResults.value = null
+  toast.add({ severity: 'success', summary: 'Thread created', life: 2000 })
+}
 
 function focusQAList() {
   void nextTick(() => {
@@ -232,7 +325,31 @@ function onQAListKeydown(e: KeyboardEvent) {
         />
         <span class="panel-title">{{ panelTitle }}</span>
       </div>
-      <span class="item-count">{{ displayedItems.length }}</span>
+      <div class="header-right">
+        <span class="item-count">{{ displayedItems.length }}</span>
+        <Button
+          v-if="uiStore.showGlobalSearchResults && !showSaveAsThread"
+          icon="pi pi-bookmark"
+          text
+          rounded
+          size="small"
+          title="Save as thread"
+          @click="showSaveAsThread = true"
+        />
+      </div>
+    </div>
+    <!-- Save as thread inline input -->
+    <div v-if="showSaveAsThread" class="save-as-thread-bar">
+      <input
+        v-model="saveAsThreadName"
+        class="save-as-thread-input"
+        placeholder="New thread name..."
+        autofocus
+        @keydown.enter="saveSearchAsThread"
+        @keydown.escape="showSaveAsThread = false; saveAsThreadName = ''"
+      />
+      <Button size="small" label="Save" @click="saveSearchAsThread" />
+      <Button size="small" text label="Cancel" @click="showSaveAsThread = false; saveAsThreadName = ''" />
     </div>
 
     <!-- Search bar -->
@@ -241,9 +358,10 @@ function onQAListKeydown(e: KeyboardEvent) {
         <InputText
           v-model="uiStore.searchQuery"
           data-testid="search-input"
-          placeholder="Search as you type..."
+          :placeholder="uiStore.searchType === 'semantic' ? 'Enter query and press ↵' : 'Search as you type...'"
           size="small"
           class="search-input"
+          @keydown.enter="doSearch"
         />
         <i v-if="isSearching" class="pi pi-spin pi-spinner search-spinner" />
         <Button
@@ -270,6 +388,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           :options="[
             { label: 'Full text', value: 'full-text' },
             { label: 'Tags', value: 'tags' },
+            { label: 'Semantic', value: 'semantic' },
           ]"
           optionLabel="label"
           optionValue="value"
@@ -278,6 +397,7 @@ function onQAListKeydown(e: KeyboardEvent) {
         />
         <Select
           v-model="uiStore.sortBy"
+          v-if="uiStore.searchType !== 'semantic'"
           :options="[
             { label: 'By date', value: 'date' },
             { label: 'By title', value: 'title' },
@@ -287,6 +407,19 @@ function onQAListKeydown(e: KeyboardEvent) {
           size="small"
           class="sort-select"
         />
+        <span v-else class="semantic-hint">ranked by similarity</span>
+        <div class="scope-toggle">
+          <button
+            class="scope-btn"
+            :class="{ active: uiStore.searchScope === 'thread' }"
+            @click="uiStore.searchScope = 'thread'"
+          >Thread</button>
+          <button
+            class="scope-btn"
+            :class="{ active: uiStore.searchScope === 'archive' }"
+            @click="uiStore.searchScope = 'archive'"
+          >Archive</button>
+        </div>
       </div>
     </div>
 
@@ -308,12 +441,23 @@ function onQAListKeydown(e: KeyboardEvent) {
           <span v-if="qaStore.pairs[id]?.source" class="qa-source">
             {{ qaStore.pairs[id].source }}
           </span>
+          <span v-if="uiStore.isGlobalSearchActive" class="qa-thread-badge">
+            {{ getFirstThreadName(id) ?? 'unthreaded' }}
+          </span>
         </div>
       </div>
 
       <!-- Empty state -->
       <div v-if="displayedItems.length === 0" class="empty-state">
-        <template v-if="uiStore.showUnthreaded">
+        <template v-if="uiStore.showGlobalSearchResults">
+          <i class="pi pi-search" />
+          <p>No results found</p>
+        </template>
+        <template v-else-if="uiStore.isGlobalSearchActive && threadStore.selectedThreadId">
+          <i class="pi pi-search" />
+          <p>No matches in this thread</p>
+        </template>
+        <template v-else-if="uiStore.showUnthreaded">
           <i class="pi pi-check-circle" />
           <p>All QAs are in threads</p>
         </template>
@@ -399,9 +543,39 @@ function onQAListKeydown(e: KeyboardEvent) {
   color: var(--text-color-secondary);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .search-bar {
   padding: 8px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.save-as-thread-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+}
+
+.save-as-thread-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-card);
+  color: var(--text-color);
+  outline: none;
+}
+
+.save-as-thread-input:focus {
+  border-color: var(--primary-color);
 }
 
 .search-row {
@@ -423,12 +597,51 @@ function onQAListKeydown(e: KeyboardEvent) {
   display: flex;
   gap: 4px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .search-type-select,
 .sort-select {
   flex: 1;
   font-size: 11px;
+}
+
+.scope-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.scope-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: none;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1.6;
+}
+
+.scope-btn:hover {
+  background: var(--surface-hover);
+}
+
+.scope-btn.active {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.semantic-hint {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
 }
 
 .qa-list {
@@ -488,6 +701,16 @@ function onQAListKeydown(e: KeyboardEvent) {
   padding: 1px 6px;
   border-radius: 8px;
   color: var(--text-color-secondary);
+}
+
+.qa-thread-badge {
+  font-size: 10px;
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: var(--primary-color);
+  margin-left: 4px;
 }
 
 .empty-state {
