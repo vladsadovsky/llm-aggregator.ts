@@ -185,7 +185,10 @@ function handleKeydown(event: KeyboardEvent) {
         <label>Data Directory</label>
         <p class="field-help">
           The folder containing your <code>archive/</code> subfolder and <code>threads.json</code>.
-          Defaults to the current working directory.
+          On Windows, the default is <code>OneDrive\\Documents\\LLM-Aggregator</code> when
+          OneDrive is active, otherwise <code>Documents\\LLM-Aggregator</code>. OneDrive adds
+          cloud sync and backup, but a local folder avoids cloud privacy, availability, and
+          sync-conflict concerns. Choose either location here.
         </p>
         <div class="dir-row">
           <InputText

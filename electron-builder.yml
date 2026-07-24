@@ -30,3 +30,7 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+msi:
+  oneClick: false
+  perMachine: false
+  upgradeCode: "70DA883D-10E1-456D-BFBB-6E77AAE20DFC"

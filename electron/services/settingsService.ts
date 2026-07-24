@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { debugLog, debugError } from './logger'
+import { getDefaultDataDirectory } from './defaultDataDirectory'
 
 const isDev = process.env.NODE_ENV !== 'production'
 const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
@@ -35,16 +36,11 @@ function getSettingsPath(): string {
   return join(process.cwd(), SETTINGS_FILENAME)
 }
 
-function getDefaultDataDir(): string {
-  // Default: current working directory (where the app is launched from)
-  return process.cwd()
-}
-
 export function loadSettings(): AppSettings {
   const filepath = getSettingsPath()
   debugLog('settingsService', 'loadSettings from:', filepath)
   const defaults: AppSettings = {
-    dataDirectory: getDefaultDataDir(),
+    dataDirectory: getDefaultDataDirectory(),
     llmProvider: 'openai',
     llmModel: 'gpt-4o',
     tagEnforcement: 'warn',

@@ -1,6 +1,6 @@
 {
   "name": "llm-aggregator",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "LLM Aggregator - Organize and search LLM conversation Q&A pairs",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "electron:build": "npm run build && electron-builder --config electron-builder.yml",
     "electron:build:mac": "npm run build && electron-builder --config electron-builder.yml --mac",
     "electron:build:win": "npm run build && electron-builder --config electron-builder.yml --win",
+    "electron:build:msi": "npm run build && electron-builder --config electron-builder.yml --win msi",
     "electron:build:linux": "npm run build && electron-builder --config electron-builder.yml --linux",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
