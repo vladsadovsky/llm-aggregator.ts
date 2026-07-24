@@ -344,6 +344,18 @@ bash scripts/playwright-electron.sh --grep "supports collapse controls"
 
 ---
 
+## Bumping up version
+Run:
+npm version patch --no-git-tag-version
+(or minor/major as needed)
+This updates package.json and package-lock together.
+Run:
+npm run build
+For Windows release validation:
+npm run electron:build:msi
+
+---
+
 ## UI Testing Guide (Playwright)
 
 Use these scripts from package.json for the standard UI testing workflow:
@@ -397,6 +409,9 @@ Notes:
 - Electron tests are isolated from your real archive data via a temp fixture.
 
 ---
+
+
+
 
 ## Debugging in VS Code
 
@@ -460,7 +475,7 @@ intentionally deferred to a later release.
 Run clean install/uninstall validation inside a disposable Windows VM with:
 
 ```powershell
-.\scripts\validate-msi-lifecycle.ps1 -CurrentMsi '.\dist\LLM Aggregator-1.0.2-win.msi'
+.\scripts\validate-msi-lifecycle.ps1 -CurrentMsi '.\dist\LLM Aggregator-<version>-win.msi'
 ```
 
 To exercise a major upgrade, also pass `-PreviousMsi` pointing to an older MSI. The script
@@ -697,8 +712,8 @@ npm run test
 
 ## Credits
 
-- Developer and maintainer: sadovskyvlad@gmail.com
-- Original idea and conceptual model: eveselov@hotmail.com
+- Developer, concepts and feature defintions beyond basic, maintainer: sadovskyvlad@gmail.com
+- Original idea and first demonstration of AI feature set: eveselov@hotmail.com
 
 ---
 
