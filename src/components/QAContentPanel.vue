@@ -240,12 +240,19 @@ async function generateAIMetadata() {
 </script>
 
 <template>
-  <div class="qa-content-panel" :style="{ zoom: uiStore.contentZoom / 100 }">
+  <div
+    class="qa-content-panel"
+    :style="{ zoom: uiStore.contentZoom / 100 }"
+  >
     <!-- Content when a QA is selected -->
     <template v-if="pair">
       <!-- Edit mode -->
       <template v-if="uiStore.isEditing">
-        <QAEditForm :pair="pair" @saved="onSaved" @cancel="cancelEdit" />
+        <QAEditForm
+          :pair="pair"
+          @saved="onSaved"
+          @cancel="cancelEdit"
+        />
       </template>
 
       <!-- View mode -->
@@ -297,7 +304,10 @@ async function generateAIMetadata() {
             title="Generate AI metadata for this QA"
             @click="generateAIMetadata"
           />
-          <div v-if="showMoveButtons" class="move-buttons">
+          <div
+            v-if="showMoveButtons"
+            class="move-buttons"
+          >
             <Button
               icon="pi pi-minus"
               label="Remove"
@@ -388,14 +398,17 @@ async function generateAIMetadata() {
               @click="removeFromMemberThread(thread.id)"
             >×</button>
           </span>
-          <span v-if="memberThreads.length === 0" class="thread-bar-none">not in any thread</span>
+          <span
+            v-if="memberThreads.length === 0"
+            class="thread-bar-none"
+          >not in any thread</span>
           <Select
             v-if="availableThreads.length > 0"
             v-model="addThreadSelection"
             data-testid="add-to-thread-select"
             :options="availableThreads"
-            optionLabel="name"
-            optionValue="id"
+            option-label="name"
+            option-value="id"
             placeholder="+ Add to thread"
             class="thread-add-select"
             @change="onAddToThread"
@@ -404,7 +417,9 @@ async function generateAIMetadata() {
 
         <!-- Question -->
         <div class="qa-section">
-          <h3 class="section-label">Question</h3>
+          <h3 class="section-label">
+            Question
+          </h3>
           <div class="section-content">
             <MarkdownRenderer :source="pair.question" />
           </div>
@@ -412,7 +427,9 @@ async function generateAIMetadata() {
 
         <!-- Answer -->
         <div class="qa-section">
-          <h3 class="section-label">Answer</h3>
+          <h3 class="section-label">
+            Answer
+          </h3>
           <div class="section-content">
             <MarkdownRenderer :source="pair.answer" />
           </div>
@@ -421,7 +438,10 @@ async function generateAIMetadata() {
     </template>
 
     <!-- Empty state -->
-    <div v-else class="empty-state">
+    <div
+      v-else
+      class="empty-state"
+    >
       <i class="pi pi-book" />
       <h3>No QA Selected</h3>
       <p>Select a QA from the list to view its content</p>

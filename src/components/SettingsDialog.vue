@@ -174,8 +174,14 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="settings-overlay" @click.self="emit('close')">
-    <div class="settings-dialog" @keydown="handleKeydown">
+  <div
+    class="settings-overlay"
+    @click.self="emit('close')"
+  >
+    <div
+      class="settings-dialog"
+      @keydown="handleKeydown"
+    >
       <h3 class="dialog-title">
         <i class="pi pi-cog" />
         Settings
@@ -199,8 +205,8 @@ function handleKeydown(event: KeyboardEvent) {
           <Button
             icon="pi pi-folder-open"
             outlined
-            @click="pickDirectory"
             title="Browse..."
+            @click="pickDirectory"
           />
         </div>
       </div>
@@ -210,11 +216,14 @@ function handleKeydown(event: KeyboardEvent) {
         <div class="checkbox-field">
           <Checkbox 
             v-model="uiStore.darkMode" 
-            inputId="darkMode" 
+            input-id="darkMode" 
             binary 
             @change="uiStore.toggleDarkMode()"
           />
-          <label for="darkMode" class="checkbox-label">Dark mode</label>
+          <label
+            for="darkMode"
+            class="checkbox-label"
+          >Dark mode</label>
         </div>
       </div>
 
@@ -223,10 +232,13 @@ function handleKeydown(event: KeyboardEvent) {
         <div class="checkbox-field">
           <Checkbox 
             v-model="rememberLastMetadataModel" 
-            inputId="rememberMetadata" 
+            input-id="rememberMetadata" 
             binary 
           />
-          <label for="rememberMetadata" class="checkbox-label">
+          <label
+            for="rememberMetadata"
+            class="checkbox-label"
+          >
             Remember last-used source, tags, and URL
           </label>
         </div>
@@ -263,7 +275,10 @@ function handleKeydown(event: KeyboardEvent) {
             class="model-select"
           />
         </div>
-        <div class="ai-row" style="margin-top: 8px;">
+        <div
+          class="ai-row"
+          style="margin-top: 8px;"
+        >
           <Password
             v-if="llmProvider === 'openai'"
             v-model="openaiApiKey"
@@ -291,7 +306,10 @@ function handleKeydown(event: KeyboardEvent) {
             @click="testConnection"
           />
         </div>
-        <div class="ai-row" style="margin-top: 8px;">
+        <div
+          class="ai-row"
+          style="margin-top: 8px;"
+        >
           <Button
             label="Generate all embeddings"
             icon="pi pi-database"
@@ -301,11 +319,17 @@ function handleKeydown(event: KeyboardEvent) {
             :loading="generatingEmbeddings"
             @click="generateEmbeddings"
           />
-          <span v-if="embeddingsResult" class="embeddings-status">
+          <span
+            v-if="embeddingsResult"
+            class="embeddings-status"
+          >
             {{ embeddingsResult.generated }} new, {{ embeddingsResult.skipped }} up to date
           </span>
         </div>
-        <div class="ai-row" style="margin-top: 8px;">
+        <div
+          class="ai-row"
+          style="margin-top: 8px;"
+        >
           <Button
             label="Confidence Annotation Pass…"
             icon="pi pi-check-circle"
@@ -315,7 +339,10 @@ function handleKeydown(event: KeyboardEvent) {
             @click="showAnnotationDialog = true"
           />
         </div>
-        <div class="ai-row" style="margin-top: 8px;">
+        <div
+          class="ai-row"
+          style="margin-top: 8px;"
+        >
           <Button
             label="Archive Health Check…"
             icon="pi pi-heart"
@@ -327,9 +354,18 @@ function handleKeydown(event: KeyboardEvent) {
         </div>
       </div>
 
-      <AnnotationDialog v-if="showAnnotationDialog" @close="showAnnotationDialog = false" />
-      <HealthReportDialog v-if="showHealthDialog" @close="showHealthDialog = false" />
-      <TagManagerDialog v-if="showTagManager" @close="showTagManager = false" />
+      <AnnotationDialog
+        v-if="showAnnotationDialog"
+        @close="showAnnotationDialog = false"
+      />
+      <HealthReportDialog
+        v-if="showHealthDialog"
+        @close="showHealthDialog = false"
+      />
+      <TagManagerDialog
+        v-if="showTagManager"
+        @close="showTagManager = false"
+      />
 
       <div class="field">
         <label>Tags</label>
@@ -354,8 +390,15 @@ function handleKeydown(event: KeyboardEvent) {
             @click="showTagManager = true"
           />
         </div>
-        <div v-if="tagEnforcement !== 'off'" class="ai-row" style="margin-top: 8px; gap: 12px;">
-          <span class="field-help" style="margin: 0; white-space: nowrap;">Soft limit</span>
+        <div
+          v-if="tagEnforcement !== 'off'"
+          class="ai-row"
+          style="margin-top: 8px; gap: 12px;"
+        >
+          <span
+            class="field-help"
+            style="margin: 0; white-space: nowrap;"
+          >Soft limit</span>
           <input
             v-model.number="tagSoftLimit"
             type="number"
@@ -363,8 +406,11 @@ function handleKeydown(event: KeyboardEvent) {
             max="999"
             class="limit-input"
             title="Warn when vocabulary exceeds this size"
-          />
-          <span class="field-help" style="margin: 0; white-space: nowrap;">Hard limit</span>
+          >
+          <span
+            class="field-help"
+            style="margin: 0; white-space: nowrap;"
+          >Hard limit</span>
           <input
             v-model.number="tagHardLimit"
             type="number"
@@ -372,16 +418,28 @@ function handleKeydown(event: KeyboardEvent) {
             max="999"
             class="limit-input"
             title="Block new tags when vocabulary exceeds this size"
-          />
-          <span class="field-help" style="margin: 0;">
+          >
+          <span
+            class="field-help"
+            style="margin: 0;"
+          >
             Dictionary: {{ tagStore.tagCount }} tag{{ tagStore.tagCount === 1 ? '' : 's' }}
           </span>
         </div>
       </div>
 
       <div class="button-row">
-        <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
-        <Button label="Save" icon="pi pi-check" @click="save" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          outlined
+          @click="emit('close')"
+        />
+        <Button
+          label="Save"
+          icon="pi pi-check"
+          @click="save"
+        />
       </div>
     </div>
   </div>

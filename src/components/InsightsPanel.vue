@@ -251,16 +251,31 @@ defineExpose({ open, toggle })
 </script>
 
 <template>
-  <div class="insights-panel" :class="{ 'is-open': isOpen }">
+  <div
+    class="insights-panel"
+    :class="{ 'is-open': isOpen }"
+  >
     <!-- ── Strip / header ────────────────────────────────────────── -->
-    <div class="insights-header" @click="toggle">
+    <div
+      class="insights-header"
+      @click="toggle"
+    >
       <div class="header-left">
         <i class="pi pi-sparkles header-icon" />
         <span class="header-label">Lens</span>
-        <span v-if="!isOpen" class="header-hint">Brief · Prior Art · Steelman · Gaps · Concept</span>
+        <span
+          v-if="!isOpen"
+          class="header-hint"
+        >Brief · Prior Art · Steelman · Gaps · Concept</span>
       </div>
-      <div class="header-right" @click.stop>
-        <div class="token-stats" title="Tokens used this session (LLM: in/out · Embeddings: in)">
+      <div
+        class="header-right"
+        @click.stop
+      >
+        <div
+          class="token-stats"
+          title="Tokens used this session (LLM: in/out · Embeddings: in)"
+        >
           <span class="token-group">
             <span class="token-label">LLM</span>
             <span class="token-value">{{ tokenStats.llm.input.toLocaleString() }} in · {{ tokenStats.llm.output.toLocaleString() }} out</span>
@@ -270,7 +285,11 @@ defineExpose({ open, toggle })
             <span class="token-label">Embed</span>
             <span class="token-value">{{ tokenStats.embeddings.input.toLocaleString() }} in</span>
           </span>
-          <button class="token-reset-btn" title="Reset token counters" @click="resetTokenStats">
+          <button
+            class="token-reset-btn"
+            title="Reset token counters"
+            @click="resetTokenStats"
+          >
             <i class="pi pi-refresh" />
           </button>
         </div>
@@ -284,7 +303,11 @@ defineExpose({ open, toggle })
         >
           {{ m.label }}
         </button>
-        <button class="close-btn" @click="isOpen = false" title="Close Lens">
+        <button
+          class="close-btn"
+          title="Close Lens"
+          @click="isOpen = false"
+        >
           <i class="pi pi-times" />
         </button>
       </div>
@@ -292,28 +315,54 @@ defineExpose({ open, toggle })
 
     <!-- ── Per-request token toast ──────────────────────────────── -->
     <Transition name="toast">
-      <div v-if="toast" class="token-toast" @click="toast = null">
+      <div
+        v-if="toast"
+        class="token-toast"
+        @click="toast = null"
+      >
         <i class="pi pi-microchip-ai toast-icon" />
         <div class="toast-body">
-          <div class="toast-model">{{ toast.model }}</div>
+          <div class="toast-model">
+            {{ toast.model }}
+          </div>
           <div class="toast-counts">
             <span v-if="toast.llmIn || toast.llmOut">
               LLM {{ toast.llmIn.toLocaleString() }}&thinsp;in · {{ toast.llmOut.toLocaleString() }}&thinsp;out
             </span>
-            <span v-if="(toast.llmIn || toast.llmOut) && toast.embedIn" class="toast-sep">·</span>
+            <span
+              v-if="(toast.llmIn || toast.llmOut) && toast.embedIn"
+              class="toast-sep"
+            >·</span>
             <span v-if="toast.embedIn">
               Embed {{ toast.embedIn.toLocaleString() }}&thinsp;in
             </span>
           </div>
         </div>
-        <button class="toast-copy" title="Copy to clipboard" @click.stop="copyToast(toast!)"><i class="pi pi-copy" /></button>
-        <button class="toast-close" title="Dismiss"><i class="pi pi-times" /></button>
+        <button
+          class="toast-copy"
+          title="Copy to clipboard"
+          @click.stop="copyToast(toast!)"
+        >
+          <i class="pi pi-copy" />
+        </button>
+        <button
+          class="toast-close"
+          title="Dismiss"
+        >
+          <i class="pi pi-times" />
+        </button>
       </div>
     </Transition>
 
     <!-- ── Body (only visible when open) ────────────────────────── -->
-    <div v-if="isOpen" class="insights-body">
-      <div class="input-row" ref="historyRef">
+    <div
+      v-if="isOpen"
+      class="insights-body"
+    >
+      <div
+        ref="historyRef"
+        class="input-row"
+      >
         <div class="input-wrap">
           <InputText
             ref="inputRef"
@@ -330,14 +379,25 @@ defineExpose({ open, toggle })
           >
             <i class="pi pi-history" />
           </button>
-          <div v-if="showHistory" class="history-dropdown">
+          <div
+            v-if="showHistory"
+            class="history-dropdown"
+          >
             <div
               v-for="entry in historyItems"
               :key="entry"
               class="history-item"
             >
-              <span class="history-text" @click="selectHistory(entry)" :title="entry">{{ entry }}</span>
-              <button class="history-delete" title="Remove" @click.stop="deleteHistoryEntry(entry)">
+              <span
+                class="history-text"
+                :title="entry"
+                @click="selectHistory(entry)"
+              >{{ entry }}</span>
+              <button
+                class="history-delete"
+                title="Remove"
+                @click.stop="deleteHistoryEntry(entry)"
+              >
                 <i class="pi pi-times" />
               </button>
             </div>
@@ -372,16 +432,29 @@ defineExpose({ open, toggle })
       </div>
 
       <div class="output-area">
-        <div v-if="isLoading" class="output-loading">
+        <div
+          v-if="isLoading"
+          class="output-loading"
+        >
           <i class="pi pi-spin pi-spinner" />
           <span>Thinking…</span>
         </div>
-        <div v-else-if="errorMessage" class="output-error">
+        <div
+          v-else-if="errorMessage"
+          class="output-error"
+        >
           <i class="pi pi-wifi output-error-icon" />
           <span>{{ errorMessage }}</span>
         </div>
-        <MarkdownRenderer v-else-if="output" :source="output" class="output-md" />
-        <p v-else class="output-placeholder">
+        <MarkdownRenderer
+          v-else-if="output"
+          :source="output"
+          class="output-md"
+        />
+        <p
+          v-else
+          class="output-placeholder"
+        >
           {{ MODES.find(m => m.value === activeMode)?.title }}
         </p>
       </div>

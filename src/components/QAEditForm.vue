@@ -168,12 +168,21 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="edit-form" @keydown="handleKeydown">
-    <h3 class="form-title">Edit QA</h3>
+  <div
+    class="edit-form"
+    @keydown="handleKeydown"
+  >
+    <h3 class="form-title">
+      Edit QA
+    </h3>
 
     <div class="field">
       <label>Title</label>
-      <InputText v-model="title" class="w-full" autofocus />
+      <InputText
+        v-model="title"
+        class="w-full"
+        autofocus
+      />
     </div>
 
     <div class="field-row">
@@ -182,8 +191,8 @@ onUnmounted(() => {
         <Select
           v-model="source"
           :options="sourceOptions"
-          optionLabel="label"
-          optionValue="value"
+          option-label="label"
+          option-value="value"
           placeholder="Select model"
           class="w-full"
         />
@@ -195,7 +204,10 @@ onUnmounted(() => {
           class="w-full" 
           :class="{ 'p-invalid': urlError }"
         />
-        <small v-if="urlError" class="field-error">{{ urlError }}</small>
+        <small
+          v-if="urlError"
+          class="field-error"
+        >{{ urlError }}</small>
       </div>
     </div>
 
@@ -205,37 +217,66 @@ onUnmounted(() => {
         ref="tagsAutoCompleteRef"
         v-model="tags"
         :suggestions="tagSuggestions"
-        @complete="searchTags"
         multiple
         placeholder="Type to add tags..."
         class="w-full"
+        @complete="searchTags"
       />
-      <small v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0" class="field-hint tag-new-hint">
+      <small
+        v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0"
+        class="field-hint tag-new-hint"
+      >
         New tags (will be added to dictionary): {{ newTagsInInput.join(', ') }}
       </small>
-      <small v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'" class="field-hint tag-new-hint">
+      <small
+        v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'"
+        class="field-hint tag-new-hint"
+      >
         Tag vocabulary is large ({{ tagStore.tagCount }} tags). Consider reusing existing tags.
       </small>
-      <small v-if="tagStore.effectiveEnforcement === 'strict'" class="field-hint">
+      <small
+        v-if="tagStore.effectiveEnforcement === 'strict'"
+        class="field-hint"
+      >
         Only dictionary tags allowed.
       </small>
     </div>
 
     <div class="field">
       <label>Question</label>
-      <Textarea v-model="question" rows="6" autoResize class="w-full" />
+      <Textarea
+        v-model="question"
+        rows="6"
+        auto-resize
+        class="w-full"
+      />
     </div>
 
     <div class="field">
       <label>Answer</label>
-      <Textarea v-model="answer" rows="12" autoResize class="w-full" />
+      <Textarea
+        v-model="answer"
+        rows="12"
+        auto-resize
+        class="w-full"
+      />
     </div>
 
     <div class="button-row">
       <small class="shortcut-hint">Ctrl/Cmd+S or Enter to save, Esc to cancel</small>
       <div class="button-group">
-        <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
-        <Button label="Save" icon="pi pi-check" @click="save" :disabled="!!urlError" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          outlined
+          @click="emit('cancel')"
+        />
+        <Button
+          label="Save"
+          icon="pi pi-check"
+          :disabled="!!urlError"
+          @click="save"
+        />
       </div>
     </div>
   </div>

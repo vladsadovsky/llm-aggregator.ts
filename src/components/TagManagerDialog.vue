@@ -177,9 +177,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="tag-manager-overlay" @click.self="emit('close')">
-    <div class="tag-manager" @keydown="handleKeydown">
-
+  <div
+    class="tag-manager-overlay"
+    @click.self="emit('close')"
+  >
+    <div
+      class="tag-manager"
+      @keydown="handleKeydown"
+    >
       <!-- Header -->
       <div class="tm-header">
         <h3 class="tm-title">
@@ -195,10 +200,15 @@ onMounted(async () => {
             outlined
             size="small"
             :loading="syncing"
-            @click="syncFromArchive"
             title="Add any archive tags not yet in dictionary"
+            @click="syncFromArchive"
           />
-          <Button icon="pi pi-times" text rounded @click="emit('close')" />
+          <Button
+            icon="pi pi-times"
+            text
+            rounded
+            @click="emit('close')"
+          />
         </div>
       </div>
 
@@ -260,7 +270,10 @@ onMounted(async () => {
 
       <!-- Tag list -->
       <div class="tm-list">
-        <div v-if="filteredTags.length === 0" class="tm-empty">
+        <div
+          v-if="filteredTags.length === 0"
+          class="tm-empty"
+        >
           {{ tagStore.tagCount === 0 ? 'No tags yet. Click "Sync from archive" to import existing tags.' : 'No tags match filter.' }}
         </div>
 
@@ -274,23 +287,36 @@ onMounted(async () => {
           <template v-if="editingTag !== tag">
             <div class="tm-row-main">
               <span class="tm-tag-name">{{ tag }}</span>
-              <span v-if="tagStore.tags[tag]?.aliases?.length" class="tm-aliases">
+              <span
+                v-if="tagStore.tags[tag]?.aliases?.length"
+                class="tm-aliases"
+              >
                 {{ tagStore.tags[tag].aliases.join(', ') }}
               </span>
             </div>
             <div class="tm-row-meta">
-              <span class="tm-usage-count" :title="`Used in ${tagCounts[tag] ?? 0} QA pair(s)`">
+              <span
+                class="tm-usage-count"
+                :title="`Used in ${tagCounts[tag] ?? 0} QA pair(s)`"
+              >
                 {{ tagCounts[tag] ?? 0 }}
               </span>
-              <Button icon="pi pi-pencil" text rounded size="small" @click="startEdit(tag)" title="Edit tag" />
+              <Button
+                icon="pi pi-pencil"
+                text
+                rounded
+                size="small"
+                title="Edit tag"
+                @click="startEdit(tag)"
+              />
               <Button
                 icon="pi pi-trash"
                 text
                 rounded
                 size="small"
                 severity="danger"
-                @click="requestDelete(tag)"
                 title="Remove from dictionary"
+                @click="requestDelete(tag)"
               />
             </div>
           </template>
@@ -298,19 +324,47 @@ onMounted(async () => {
           <!-- Edit mode -->
           <template v-else>
             <div class="tm-edit-fields">
-              <InputText v-model="editName" size="small" class="tm-edit-name" placeholder="Tag name" />
-              <InputText v-model="editAliases" size="small" class="tm-edit-aliases" placeholder="Aliases (comma-separated)" />
+              <InputText
+                v-model="editName"
+                size="small"
+                class="tm-edit-name"
+                placeholder="Tag name"
+              />
+              <InputText
+                v-model="editAliases"
+                size="small"
+                class="tm-edit-aliases"
+                placeholder="Aliases (comma-separated)"
+              />
             </div>
             <div class="tm-edit-actions">
-              <Button icon="pi pi-check" text rounded size="small" @click="saveEdit(tag)" title="Save" />
-              <Button icon="pi pi-times" text rounded size="small" severity="secondary" @click="cancelEdit" title="Cancel" />
+              <Button
+                icon="pi pi-check"
+                text
+                rounded
+                size="small"
+                title="Save"
+                @click="saveEdit(tag)"
+              />
+              <Button
+                icon="pi pi-times"
+                text
+                rounded
+                size="small"
+                severity="secondary"
+                title="Cancel"
+                @click="cancelEdit"
+              />
             </div>
           </template>
         </div>
       </div>
 
       <!-- Delete confirmation -->
-      <div v-if="confirmDeleteTag" class="tm-confirm-overlay">
+      <div
+        v-if="confirmDeleteTag"
+        class="tm-confirm-overlay"
+      >
         <div class="tm-confirm">
           <p>Remove <strong>"{{ confirmDeleteTag }}"</strong> from dictionary?</p>
           <p class="tm-confirm-sub">
@@ -320,12 +374,22 @@ onMounted(async () => {
             </span>
           </p>
           <div class="tm-confirm-actions">
-            <Button label="Cancel" severity="secondary" outlined size="small" @click="confirmDeleteTag = null" />
-            <Button label="Remove" severity="danger" size="small" @click="confirmDelete" />
+            <Button
+              label="Cancel"
+              severity="secondary"
+              outlined
+              size="small"
+              @click="confirmDeleteTag = null"
+            />
+            <Button
+              label="Remove"
+              severity="danger"
+              size="small"
+              @click="confirmDelete"
+            />
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </template>

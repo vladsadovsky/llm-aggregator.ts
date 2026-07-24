@@ -70,24 +70,42 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="health-overlay" @click.self="emit('close')" @keydown="handleKeydown">
+  <div
+    class="health-overlay"
+    @click.self="emit('close')"
+    @keydown="handleKeydown"
+  >
     <div class="health-dialog">
       <div class="dialog-header">
         <h3 class="dialog-title">
           <i class="pi pi-heart" />
           Archive Health
         </h3>
-        <Button icon="pi pi-times" text rounded size="small" @click="emit('close')" />
+        <Button
+          icon="pi pi-times"
+          text
+          rounded
+          size="small"
+          @click="emit('close')"
+        />
       </div>
 
       <!-- Idle state -->
-      <div v-if="phase === 'idle'" class="idle-state">
+      <div
+        v-if="phase === 'idle'"
+        class="idle-state"
+      >
         <p class="intro-text">
           Scans your archive for structural issues: orphaned entries, missing AI metadata,
           near-duplicate pairs, and unresolved dead-end notes.
           No content is modified.
         </p>
-        <p v-if="error" class="error-text">{{ error }}</p>
+        <p
+          v-if="error"
+          class="error-text"
+        >
+          {{ error }}
+        </p>
         <Button
           label="Run Health Check"
           icon="pi pi-search"
@@ -96,14 +114,19 @@ function handleKeydown(event: KeyboardEvent) {
       </div>
 
       <!-- Running state -->
-      <div v-else-if="phase === 'running'" class="running-state">
+      <div
+        v-else-if="phase === 'running'"
+        class="running-state"
+      >
         <i class="pi pi-spin pi-spinner spinner" />
         <p>Analysing archive…</p>
       </div>
 
       <!-- Done state -->
-      <div v-else-if="phase === 'done' && report" class="report">
-
+      <div
+        v-else-if="phase === 'done' && report"
+        class="report"
+      >
         <div class="summary-bar">
           <span class="summary-total">{{ report.totalPairs }} entries</span>
           <span class="summary-sep">·</span>
@@ -126,19 +149,33 @@ function handleKeydown(event: KeyboardEvent) {
 
         <!-- 1. Orphans -->
         <div class="section">
-          <button class="section-header" @click="toggle('orphans')">
+          <button
+            class="section-header"
+            @click="toggle('orphans')"
+          >
             <i :class="['pi', expanded === 'orphans' ? 'pi-chevron-down' : 'pi-chevron-right']" />
             <span class="section-title">Orphaned entries</span>
             <span :class="['badge', report.orphanIds.length > 0 ? 'badge-warn' : 'badge-ok']">
               {{ report.orphanIds.length }}
             </span>
           </button>
-          <div v-if="expanded === 'orphans'" class="section-body">
+          <div
+            v-if="expanded === 'orphans'"
+            class="section-body"
+          >
             <p class="section-help">
               Entries with no thread membership and no tags — at risk of being forgotten.
             </p>
-            <div v-if="report.orphanIds.length === 0" class="all-clear">All entries are in a thread or have tags.</div>
-            <div v-else class="entry-list">
+            <div
+              v-if="report.orphanIds.length === 0"
+              class="all-clear"
+            >
+              All entries are in a thread or have tags.
+            </div>
+            <div
+              v-else
+              class="entry-list"
+            >
               <div
                 v-for="id in report.orphanIds"
                 :key="id"
@@ -155,23 +192,42 @@ function handleKeydown(event: KeyboardEvent) {
 
         <!-- 2. Metadata gaps -->
         <div class="section">
-          <button class="section-header" @click="toggle('metadata')">
+          <button
+            class="section-header"
+            @click="toggle('metadata')"
+          >
             <i :class="['pi', expanded === 'metadata' ? 'pi-chevron-down' : 'pi-chevron-right']" />
             <span class="section-title">Metadata coverage</span>
             <span :class="['badge', metadataScore() < 100 ? 'badge-warn' : 'badge-ok']">
               {{ metadataScore() }}%
             </span>
           </button>
-          <div v-if="expanded === 'metadata'" class="section-body">
+          <div
+            v-if="expanded === 'metadata'"
+            class="section-body"
+          >
             <p class="section-help">
               Entries missing AI-generated fields have weaker retrieval quality in LLM Lens.
               Click "Generate metadata" in any entry's action menu to fill gaps.
             </p>
 
-            <div v-if="!hasMetadataGaps()" class="all-clear">All entries have full AI metadata.</div>
-            <div v-else class="metadata-gaps">
-              <div v-if="report.metadataGaps.missingTopic.length > 0" class="gap-group">
-                <div class="gap-label">Missing topic ({{ report.metadataGaps.missingTopic.length }})</div>
+            <div
+              v-if="!hasMetadataGaps()"
+              class="all-clear"
+            >
+              All entries have full AI metadata.
+            </div>
+            <div
+              v-else
+              class="metadata-gaps"
+            >
+              <div
+                v-if="report.metadataGaps.missingTopic.length > 0"
+                class="gap-group"
+              >
+                <div class="gap-label">
+                  Missing topic ({{ report.metadataGaps.missingTopic.length }})
+                </div>
                 <div class="entry-list">
                   <div
                     v-for="id in report.metadataGaps.missingTopic"
@@ -186,8 +242,13 @@ function handleKeydown(event: KeyboardEvent) {
                 </div>
               </div>
 
-              <div v-if="report.metadataGaps.missingSummary.length > 0" class="gap-group">
-                <div class="gap-label">Missing summary ({{ report.metadataGaps.missingSummary.length }})</div>
+              <div
+                v-if="report.metadataGaps.missingSummary.length > 0"
+                class="gap-group"
+              >
+                <div class="gap-label">
+                  Missing summary ({{ report.metadataGaps.missingSummary.length }})
+                </div>
                 <div class="entry-list">
                   <div
                     v-for="id in report.metadataGaps.missingSummary"
@@ -202,8 +263,13 @@ function handleKeydown(event: KeyboardEvent) {
                 </div>
               </div>
 
-              <div v-if="report.metadataGaps.missingConfidence.length > 0" class="gap-group">
-                <div class="gap-label">Missing confidence ({{ report.metadataGaps.missingConfidence.length }})</div>
+              <div
+                v-if="report.metadataGaps.missingConfidence.length > 0"
+                class="gap-group"
+              >
+                <div class="gap-label">
+                  Missing confidence ({{ report.metadataGaps.missingConfidence.length }})
+                </div>
                 <div class="entry-list">
                   <div
                     v-for="id in report.metadataGaps.missingConfidence"
@@ -223,32 +289,52 @@ function handleKeydown(event: KeyboardEvent) {
 
         <!-- 3. Near-duplicates -->
         <div class="section">
-          <button class="section-header" @click="toggle('duplicates')">
+          <button
+            class="section-header"
+            @click="toggle('duplicates')"
+          >
             <i :class="['pi', expanded === 'duplicates' ? 'pi-chevron-down' : 'pi-chevron-right']" />
             <span class="section-title">Near-duplicate candidates</span>
             <span :class="['badge', report.duplicateCandidates.length > 0 ? 'badge-warn' : 'badge-ok']">
               {{ report.duplicateCandidates.length }}
             </span>
           </button>
-          <div v-if="expanded === 'duplicates'" class="section-body">
+          <div
+            v-if="expanded === 'duplicates'"
+            class="section-body"
+          >
             <p class="section-help">
               Pairs with cosine similarity ≥ 0.88. They may overlap or be redundant.
               Review them manually and merge via the editor if needed.
               Note: requires embeddings to be generated first.
             </p>
-            <div v-if="report.duplicateCandidates.length === 0" class="all-clear">No near-duplicate pairs found.</div>
-            <div v-else class="entry-list">
+            <div
+              v-if="report.duplicateCandidates.length === 0"
+              class="all-clear"
+            >
+              No near-duplicate pairs found.
+            </div>
+            <div
+              v-else
+              class="entry-list"
+            >
               <div
                 v-for="dup in report.duplicateCandidates"
                 :key="dup.idA + dup.idB"
                 class="duplicate-row"
               >
                 <div class="dup-pair">
-                  <span class="dup-title clickable" @click="openEntry(dup.idA)">
+                  <span
+                    class="dup-title clickable"
+                    @click="openEntry(dup.idA)"
+                  >
                     {{ dup.titleA || dup.idA }}
                   </span>
                   <span class="dup-sim">{{ (dup.similarity * 100).toFixed(0) }}%</span>
-                  <span class="dup-title clickable" @click="openEntry(dup.idB)">
+                  <span
+                    class="dup-title clickable"
+                    @click="openEntry(dup.idB)"
+                  >
                     {{ dup.titleB || dup.idB }}
                   </span>
                 </div>
@@ -259,20 +345,34 @@ function handleKeydown(event: KeyboardEvent) {
 
         <!-- 4. Dead-end / open without closure -->
         <div class="section">
-          <button class="section-header" @click="toggle('deadend')">
+          <button
+            class="section-header"
+            @click="toggle('deadend')"
+          >
             <i :class="['pi', expanded === 'deadend' ? 'pi-chevron-down' : 'pi-chevron-right']" />
             <span class="section-title">Unresolved entries ({{ DEAD_END_AGE_MONTHS }}+ months old)</span>
             <span :class="['badge', report.deadEndCandidates.length > 0 ? 'badge-warn' : 'badge-ok']">
               {{ report.deadEndCandidates.length }}
             </span>
           </button>
-          <div v-if="expanded === 'deadend'" class="section-body">
+          <div
+            v-if="expanded === 'deadend'"
+            class="section-body"
+          >
             <p class="section-help">
               Entries with status <em>open</em> or <em>dead-end</em> that haven't been updated in
               {{ DEAD_END_AGE_MONTHS }}+ months. Worth revisiting to update status or close out.
             </p>
-            <div v-if="report.deadEndCandidates.length === 0" class="all-clear">No aged unresolved entries.</div>
-            <div v-else class="entry-list">
+            <div
+              v-if="report.deadEndCandidates.length === 0"
+              class="all-clear"
+            >
+              No aged unresolved entries.
+            </div>
+            <div
+              v-else
+              class="entry-list"
+            >
               <div
                 v-for="entry in report.deadEndCandidates"
                 :key="entry.id"
@@ -289,13 +389,25 @@ function handleKeydown(event: KeyboardEvent) {
         </div>
 
         <div class="rerun-row">
-          <Button label="Run Again" icon="pi pi-refresh" severity="secondary" outlined size="small" @click="runCheck" />
+          <Button
+            label="Run Again"
+            icon="pi pi-refresh"
+            severity="secondary"
+            outlined
+            size="small"
+            @click="runCheck"
+          />
         </div>
       </div>
 
       <!-- Close button -->
       <div class="footer-row">
-        <Button label="Close" severity="secondary" outlined @click="emit('close')" />
+        <Button
+          label="Close"
+          severity="secondary"
+          outlined
+          @click="emit('close')"
+        />
       </div>
     </div>
   </div>

@@ -139,16 +139,25 @@ function handleKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="annotation-overlay" @click.self="emit('close')" @keydown="handleKeydown" tabindex="-1">
+  <div
+    class="annotation-overlay"
+    tabindex="-1"
+    @click.self="emit('close')"
+    @keydown="handleKeydown"
+  >
     <div class="annotation-dialog">
-
       <!-- ── Title ──────────────────────────────────────────────── -->
       <div class="dialog-header">
         <div class="dialog-title">
           <i class="pi pi-check-circle" />
           Confidence Annotation Pass
         </div>
-        <button class="dialog-close" @click="emit('close')"><i class="pi pi-times" /></button>
+        <button
+          class="dialog-close"
+          @click="emit('close')"
+        >
+          <i class="pi pi-times" />
+        </button>
       </div>
 
       <!-- ── Idle ───────────────────────────────────────────────── -->
@@ -158,22 +167,43 @@ function handleKeydown(e: KeyboardEvent) {
           You review and confirm, override, or skip each proposal before anything is written.
         </p>
         <div class="confidence-legend">
-          <div v-for="opt in CONFIDENCE_OPTIONS" :key="opt.value" class="legend-row">
+          <div
+            v-for="opt in CONFIDENCE_OPTIONS"
+            :key="opt.value"
+            class="legend-row"
+          >
             <span :class="['conf-chip', `conf-${opt.value}`]">{{ opt.label }}</span>
             <span class="legend-desc">{{ CONFIDENCE_DESC[opt.value] }}</span>
           </div>
         </div>
-        <div v-if="errorMessage" class="error-msg">{{ errorMessage }}</div>
+        <div
+          v-if="errorMessage"
+          class="error-msg"
+        >
+          {{ errorMessage }}
+        </div>
         <div class="dialog-footer">
-          <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
-          <Button label="Generate proposals" icon="pi pi-play" @click="generate" />
+          <Button
+            label="Cancel"
+            severity="secondary"
+            outlined
+            @click="emit('close')"
+          />
+          <Button
+            label="Generate proposals"
+            icon="pi pi-play"
+            @click="generate"
+          />
         </div>
       </template>
 
       <!-- ── Generating ─────────────────────────────────────────── -->
       <template v-else-if="phase === 'generating'">
         <div class="generating-state">
-          <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: var(--primary-color)" />
+          <i
+            class="pi pi-spin pi-spinner"
+            style="font-size: 1.5rem; color: var(--primary-color)"
+          />
           <p>Sending QAs to the LLM in batches…<br><span class="muted">This may take a minute for large archives.</span></p>
         </div>
       </template>
@@ -181,20 +211,33 @@ function handleKeydown(e: KeyboardEvent) {
       <!-- ── Review ─────────────────────────────────────────────── -->
       <template v-else-if="phase === 'review' && current">
         <div class="progress-bar-wrap">
-          <div class="progress-bar" :style="{ width: `${(currentIndex / total) * 100}%` }" />
+          <div
+            class="progress-bar"
+            :style="{ width: `${(currentIndex / total) * 100}%` }"
+          />
         </div>
-        <div class="progress-label">{{ currentIndex + 1 }} of {{ total }}</div>
+        <div class="progress-label">
+          {{ currentIndex + 1 }} of {{ total }}
+        </div>
 
         <div class="qa-card">
-          <div class="qa-title">{{ current.title }}</div>
+          <div class="qa-title">
+            {{ current.title }}
+          </div>
 
           <div class="proposal-row">
             <div class="proposal-col">
               <span class="col-label">Current</span>
-              <span v-if="current.currentConfidence" :class="['conf-chip', `conf-${current.currentConfidence}`]">
+              <span
+                v-if="current.currentConfidence"
+                :class="['conf-chip', `conf-${current.currentConfidence}`]"
+              >
                 {{ current.currentConfidence }}
               </span>
-              <span v-else class="muted">none</span>
+              <span
+                v-else
+                class="muted"
+              >none</span>
             </div>
             <i class="pi pi-arrow-right proposal-arrow" />
             <div class="proposal-col">
@@ -205,7 +248,9 @@ function handleKeydown(e: KeyboardEvent) {
             </div>
           </div>
 
-          <p class="rationale">{{ current.rationale }}</p>
+          <p class="rationale">
+            {{ current.rationale }}
+          </p>
 
           <div class="override-row">
             <span class="col-label">Override:</span>
@@ -232,23 +277,49 @@ function handleKeydown(e: KeyboardEvent) {
             @click="goBack"
           />
           <div class="footer-actions">
-            <Button label="Skip  (S)" severity="secondary" outlined @click="skip" />
-            <Button label="Confirm  (Enter)" icon="pi pi-check" @click="confirm" />
+            <Button
+              label="Skip  (S)"
+              severity="secondary"
+              outlined
+              @click="skip"
+            />
+            <Button
+              label="Confirm  (Enter)"
+              icon="pi pi-check"
+              @click="confirm"
+            />
           </div>
         </div>
-        <p class="keyboard-hint">Enter = confirm · S = skip · ← = back</p>
+        <p class="keyboard-hint">
+          Enter = confirm · S = skip · ← = back
+        </p>
       </template>
 
       <!-- ── Done ───────────────────────────────────────────────── -->
       <template v-else-if="phase === 'done'">
         <div class="done-state">
-          <i class="pi pi-check-circle" style="font-size: 2rem; color: var(--green-500, #22c55e)" />
-          <p>Review complete. <strong>{{ confirmedCount }}</strong> annotations confirmed,
-            {{ total - confirmedCount }} skipped.</p>
-          <div v-if="errorMessage" class="error-msg">{{ errorMessage }}</div>
+          <i
+            class="pi pi-check-circle"
+            style="font-size: 2rem; color: var(--green-500, #22c55e)"
+          />
+          <p>
+            Review complete. <strong>{{ confirmedCount }}</strong> annotations confirmed,
+            {{ total - confirmedCount }} skipped.
+          </p>
+          <div
+            v-if="errorMessage"
+            class="error-msg"
+          >
+            {{ errorMessage }}
+          </div>
         </div>
         <div class="dialog-footer">
-          <Button label="Cancel" severity="secondary" outlined @click="emit('close')" />
+          <Button
+            label="Cancel"
+            severity="secondary"
+            outlined
+            @click="emit('close')"
+          />
           <Button
             :label="`Apply ${confirmedCount} annotation${confirmedCount !== 1 ? 's' : ''}`"
             icon="pi pi-save"
@@ -261,11 +332,13 @@ function handleKeydown(e: KeyboardEvent) {
       <!-- ── Applying ───────────────────────────────────────────── -->
       <template v-else-if="phase === 'applying'">
         <div class="generating-state">
-          <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: var(--primary-color)" />
+          <i
+            class="pi pi-spin pi-spinner"
+            style="font-size: 1.5rem; color: var(--primary-color)"
+          />
           <p>Writing annotations…</p>
         </div>
       </template>
-
     </div>
   </div>
 </template>
