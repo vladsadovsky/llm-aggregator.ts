@@ -66,6 +66,20 @@ function selectThread(tid: string) {
   }
 }
 
+/** Both inline editors require a non-empty name; surfaced as a disabled action. */
+const canCreateThread = computed(() => newThreadName.value.trim().length > 0)
+const canFinishRename = computed(() => editingName.value.trim().length > 0)
+
+function cancelNewThread() {
+  showNewThreadInput.value = false
+  newThreadName.value = ''
+  newThreadTags.value = ''
+}
+
+function cancelRename() {
+  editingThreadId.value = null
+}
+
 async function createThread() {
   const name = newThreadName.value.trim()
   if (!name) return
@@ -157,16 +171,12 @@ function showUnthreaded() {
 
 function onNewThreadKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') createThread()
-  if (e.key === 'Escape') {
-    showNewThreadInput.value = false
-    newThreadName.value = ''
-    newThreadTags.value = ''
-  }
+  if (e.key === 'Escape') cancelNewThread()
 }
 
 function onRenameKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') finishRename()
-  if (e.key === 'Escape') editingThreadId.value = null
+  if (e.key === 'Escape') cancelRename()
 }
 
 function onThreadListKeydown(e: KeyboardEvent) {
@@ -396,20 +406,42 @@ onUnmounted(() => {
           >
             <InputText
               v-model="editingName"
+              data-testid="rename-thread-name-input"
               class="edit-input"
               size="small"
               placeholder="Thread name"
               autofocus
               @keydown="onRenameKeydown"
-              @blur="finishRename"
             />
             <InputText
               v-model="editingTags"
+              data-testid="rename-thread-tags-input"
               class="edit-input"
               size="small"
               placeholder="Tags (comma-separated)"
               @keydown="onRenameKeydown"
             />
+            <!--
+              Explicit actions rather than commit-on-blur: blur fired when moving
+              to the tags field, closing the form before it could be edited.
+            -->
+            <div class="edit-actions">
+              <Button
+                label="Cancel"
+                severity="secondary"
+                text
+                size="small"
+                data-testid="rename-thread-cancel"
+                @click="cancelRename"
+              />
+              <Button
+                label="Save"
+                size="small"
+                data-testid="rename-thread-save"
+                :disabled="!canFinishRename"
+                @click="finishRename"
+              />
+            </div>
           </div>
         </template>
       </div>
@@ -460,11 +492,30 @@ onUnmounted(() => {
           class="w-full"
           @keydown="onNewThreadKeydown"
         />
+        <div class="edit-actions">
+          <Button
+            label="Cancel"
+            severity="secondary"
+            text
+            size="small"
+            data-testid="new-thread-cancel"
+            @click="cancelNewThread"
+          />
+          <Button
+            label="Create"
+            size="small"
+            data-testid="new-thread-create"
+            :disabled="!canCreateThread"
+            @click="createThread"
+          />
+        </div>
       </div>
+      <!-- Hidden while the form is open: as a toggle it silently discarded typing. -->
       <button
+        v-if="!showNewThreadInput"
         class="add-button"
         data-testid="add-thread-button"
-        @click="showNewThreadInput = !showNewThreadInput"
+        @click="showNewThreadInput = true"
       >
         <i class="pi pi-plus" />
         <span>Add thread</span>
@@ -693,6 +744,14 @@ onUnmounted(() => {
 
 .edit-input {
   width: 100%;
+}
+
+/* Shared by the inline "new thread" and "rename thread" forms. */
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
 }
 
 .empty-state {

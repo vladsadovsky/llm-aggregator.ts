@@ -96,6 +96,8 @@ Keyboard Shortcuts
     {
       label: 'File',
       submenu: [
+        // Creation verbs live together under File, per platform convention.
+        mi('New Thread', 'thread.new'),
         mi('New Q&A', 'qa.new', `${mod}+N`),
         { type: 'separator' },
         mi('Import from File…', 'io.importFile', `${mod}+O`),
@@ -141,7 +143,7 @@ Keyboard Shortcuts
     {
       label: 'Thread',
       submenu: [
-        mi('New Thread', 'thread.new'),
+        // "New Thread" now lives under File with the other creation verbs.
         mi('Rename Selected Thread', 'thread.rename', 'F2'),
         { type: 'separator' },
         mi('Show All Q&As', 'view.showAll'),
