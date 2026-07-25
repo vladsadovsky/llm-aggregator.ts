@@ -14,6 +14,29 @@ import HealthReportDialog from './HealthReportDialog.vue'
 import TagManagerDialog from './TagManagerDialog.vue'
 import { useTagStore } from '../stores/tagStore'
 
+interface ProviderDescriptor {
+  id: string
+  label: string
+  kind: 'openai' | 'anthropic' | 'openai-compatible'
+  enabled: boolean
+  comingSoon?: boolean
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  supportsModelDiscovery: boolean
+  notes?: string
+}
+
+interface ModelDescriptor {
+  id: string
+  label: string
+  providerId: string
+  qualityTier: 'budget' | 'balanced' | 'premium' | 'unknown'
+  costTier: 'budget' | 'balanced' | 'premium' | 'unknown'
+  latencyTier: 'fast' | 'medium' | 'slow' | 'unknown'
+  recommendedFor: string[]
+  notes?: string
+  rank?: number
+}
+
 const emit = defineEmits<{
   close: []
 }>()
@@ -25,15 +48,17 @@ const tagStore = useTagStore()
 const toast = useToast()
 
 const dataDirectory = ref('')
-const llmProvider = ref<'openai' | 'anthropic'>('openai')
+const llmProvider = ref('openai')
 const llmModel = ref('gpt-4o')
 const openaiApiKey = ref('')
 const anthropicApiKey = ref('')
 const testingConnection = ref(false)
 const generatingEmbeddings = ref(false)
+const loadingModelCatalog = ref(false)
 const showAnnotationDialog = ref(false)
 const showHealthDialog = ref(false)
 const showTagManager = ref(false)
+const modelCatalogWarning = ref('')
 
 const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
 const tagSoftLimit = ref(50)
@@ -46,31 +71,84 @@ const enforcementOptions = [
 ]
 const embeddingsResult = ref<{ total: number; generated: number; skipped: number } | null>(null)
 
-const providerOptions = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Anthropic (coming soon)', value: 'anthropic' },
-]
+const providers = ref<ProviderDescriptor[]>([])
+const modelsByProvider = ref<Record<string, ModelDescriptor[]>>({})
 
-const modelOptionsByProvider: Record<string, { label: string; value: string }[]> = {
-  openai: [
-    { label: 'GPT-4o', value: 'gpt-4o' },
-    { label: 'GPT-4o mini', value: 'gpt-4o-mini' },
-    { label: 'o3 mini', value: 'o3-mini' },
-    { label: 'o4 mini', value: 'o4-mini' },
-  ],
-  anthropic: [
-    { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
-    { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
-    { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5-20251001' },
-  ],
+const providerOptions = computed(() => providers.value.map(provider => ({
+  label: provider.comingSoon ? `${provider.label} (coming soon)` : provider.label,
+  value: provider.id,
+  disabled: !provider.enabled,
+})))
+
+const modelOptions = computed(() => {
+  const models = modelsByProvider.value[llmProvider.value] ?? []
+  return models.map(model => ({ label: model.label, value: model.id }))
+})
+
+const selectedProvider = computed(() => providers.value.find(provider => provider.id === llmProvider.value) ?? null)
+const selectedModel = computed(() => {
+  const models = modelsByProvider.value[llmProvider.value] ?? []
+  return models.find(model => model.id === llmModel.value) ?? null
+})
+
+const embeddingsSupportedForProvider = computed(() => llmProvider.value === 'openai')
+
+const providerKeyLabel = computed(() => {
+  if (llmProvider.value === 'openai') {
+    return 'OpenAI API key'
+  }
+  if (llmProvider.value === 'anthropic') {
+    return 'Anthropic API key'
+  }
+  return 'API key'
+})
+
+const modelHints = computed(() => {
+  if (!selectedModel.value) {
+    return [] as string[]
+  }
+  const hints: string[] = []
+  hints.push(`Quality: ${selectedModel.value.qualityTier}`)
+  hints.push(`Cost: ${selectedModel.value.costTier}`)
+  hints.push(`Latency: ${selectedModel.value.latencyTier}`)
+  if (selectedModel.value.recommendedFor.length > 0) {
+    hints.push(`Use for: ${selectedModel.value.recommendedFor.join(', ')}`)
+  }
+  return hints
+})
+
+async function loadModelCatalog(forceRefresh = false) {
+  loadingModelCatalog.value = true
+  modelCatalogWarning.value = ''
+  try {
+    const openaiKeyOverride = llmProvider.value === 'openai' ? openaiApiKey.value.trim() : undefined
+    const anthropicKeyOverride = llmProvider.value === 'anthropic' ? anthropicApiKey.value.trim() : undefined
+    const result = await window.api.aiListModels(llmProvider.value, forceRefresh, openaiKeyOverride, anthropicKeyOverride)
+    modelsByProvider.value = {
+      ...modelsByProvider.value,
+      [llmProvider.value]: result.models,
+    }
+    if (result.warning) {
+      modelCatalogWarning.value = result.warning
+    }
+    if (!result.models.find(model => model.id === llmModel.value) && result.models[0]) {
+      llmModel.value = result.models[0].id
+    }
+  } catch (err) {
+    modelCatalogWarning.value = (err as Error).message
+    toast.add({ severity: 'warn', summary: 'Model list unavailable', detail: modelCatalogWarning.value, life: 5000 })
+  } finally {
+    loadingModelCatalog.value = false
+  }
 }
 
-const modelOptions = computed(() => modelOptionsByProvider[llmProvider.value] ?? [])
-
 watch(llmProvider, (newProvider: string) => {
-  const options = modelOptionsByProvider[newProvider] ?? []
-  if (options.length > 0 && !options.find(o => o.value === llmModel.value)) {
-    llmModel.value = options[0].value
+  const options = modelsByProvider.value[newProvider] ?? []
+  if (options.length > 0 && !options.find(o => o.id === llmModel.value)) {
+    llmModel.value = options[0].id
+  }
+  if (!modelsByProvider.value[newProvider]) {
+    void loadModelCatalog(false)
   }
 })
 const rememberLastMetadataModel = computed({
@@ -79,18 +157,22 @@ const rememberLastMetadataModel = computed({
 })
 
 onMounted(async () => {
-  const [settings, secrets] = await Promise.all([
+  const [settings, secrets, discoveredProviders] = await Promise.all([
     window.api.settingsLoad(),
     window.api.secretsLoad(),
+    window.api.aiListProviders(),
   ])
+  providers.value = discoveredProviders
+  const hasSavedProvider = discoveredProviders.some(provider => provider.id === settings.llmProvider && provider.enabled)
   dataDirectory.value = settings.dataDirectory
-  llmProvider.value = settings.llmProvider ?? 'openai'
-  llmModel.value = settings.llmModel || (modelOptionsByProvider[llmProvider.value]?.[0]?.value ?? 'gpt-4o')
+  llmProvider.value = hasSavedProvider ? settings.llmProvider : 'openai'
+  llmModel.value = settings.llmModel || 'gpt-4o'
   openaiApiKey.value = secrets.openaiApiKey ?? ''
   anthropicApiKey.value = secrets.anthropicApiKey ?? ''
   tagEnforcement.value = settings.tagEnforcement ?? 'warn'
   tagSoftLimit.value = settings.tagSoftLimit ?? 50
   tagHardLimit.value = settings.tagHardLimit ?? 100
+  await loadModelCatalog(false)
 })
 
 async function pickDirectory() {
@@ -154,6 +236,9 @@ async function testConnection() {
   const result = await window.api.aiTestConnection()
   testingConnection.value = false
   if (result.ok) {
+    if (llmProvider.value === 'openai' || llmProvider.value === 'anthropic') {
+      await loadModelCatalog(true)
+    }
     toast.add({ severity: 'success', summary: 'Connection OK', detail: 'API key is valid', life: 3000 })
   } else {
     toast.add({ severity: 'error', summary: 'Connection failed', detail: result.error, life: 6000 })
@@ -265,6 +350,7 @@ function handleKeydown(event: KeyboardEvent) {
             :options="providerOptions"
             option-label="label"
             option-value="value"
+            option-disabled="disabled"
             class="provider-select"
           />
           <Select
@@ -273,8 +359,47 @@ function handleKeydown(event: KeyboardEvent) {
             option-label="label"
             option-value="value"
             class="model-select"
+            :loading="loadingModelCatalog"
+          />
+          <Button
+            label="Refresh"
+            icon="pi pi-refresh"
+            severity="secondary"
+            outlined
+            size="small"
+            :loading="loadingModelCatalog"
+            @click="loadModelCatalog(true)"
           />
         </div>
+        <p
+          v-if="selectedProvider?.notes"
+          class="field-help"
+          style="margin-top: 8px;"
+        >
+          {{ selectedProvider.notes }}
+        </p>
+        <p
+          v-if="modelCatalogWarning"
+          class="field-help"
+          style="margin-top: 8px;"
+        >
+          {{ modelCatalogWarning }}
+        </p>
+        <p
+          v-for="hint in modelHints"
+          :key="hint"
+          class="field-help"
+          style="margin-top: 4px; margin-bottom: 0;"
+        >
+          {{ hint }}
+        </p>
+        <p
+          v-if="selectedModel?.notes"
+          class="field-help"
+          style="margin-top: 4px;"
+        >
+          {{ selectedModel.notes }}
+        </p>
         <div
           class="ai-row"
           style="margin-top: 8px;"
@@ -282,7 +407,7 @@ function handleKeydown(event: KeyboardEvent) {
           <Password
             v-if="llmProvider === 'openai'"
             v-model="openaiApiKey"
-            placeholder="OpenAI API key (sk-...)"
+            :placeholder="`${providerKeyLabel} (sk-...)`"
             :feedback="false"
             toggle-mask
             class="api-key-input"
@@ -291,7 +416,7 @@ function handleKeydown(event: KeyboardEvent) {
           <Password
             v-else
             v-model="anthropicApiKey"
-            placeholder="Anthropic API key"
+            :placeholder="providerKeyLabel"
             :feedback="false"
             toggle-mask
             class="api-key-input"
@@ -317,6 +442,7 @@ function handleKeydown(event: KeyboardEvent) {
             outlined
             size="small"
             :loading="generatingEmbeddings"
+            :disabled="!embeddingsSupportedForProvider"
             @click="generateEmbeddings"
           />
           <span
@@ -326,6 +452,13 @@ function handleKeydown(event: KeyboardEvent) {
             {{ embeddingsResult.generated }} new, {{ embeddingsResult.skipped }} up to date
           </span>
         </div>
+        <p
+          v-if="!embeddingsSupportedForProvider"
+          class="field-help"
+          style="margin-top: 6px;"
+        >
+          Embedding generation and semantic search indexing currently require the OpenAI provider.
+        </p>
         <div
           class="ai-row"
           style="margin-top: 8px;"

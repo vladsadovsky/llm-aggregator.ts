@@ -2,11 +2,45 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 export interface AppSettings {
   dataDirectory: string
-  llmProvider: 'openai' | 'anthropic'
+  llmProvider: string
   llmModel: string
   tagEnforcement: 'off' | 'warn' | 'strict'
   tagSoftLimit: number
   tagHardLimit: number
+}
+
+export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
+export type LatencyTier = 'fast' | 'medium' | 'slow' | 'unknown'
+
+export interface ProviderDescriptor {
+  id: string
+  label: string
+  kind: 'openai' | 'anthropic' | 'openai-compatible'
+  enabled: boolean
+  comingSoon?: boolean
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  supportsModelDiscovery: boolean
+  notes?: string
+}
+
+export interface ModelDescriptor {
+  id: string
+  label: string
+  providerId: string
+  qualityTier: ModelTier
+  costTier: ModelTier
+  latencyTier: LatencyTier
+  recommendedFor: string[]
+  notes?: string
+  rank?: number
+}
+
+export interface ModelCatalogResult {
+  providerId: string
+  source: 'api' | 'cache' | 'static'
+  fetchedAt: string
+  warning?: string
+  models: ModelDescriptor[]
 }
 
 export interface TagEntry {
@@ -85,6 +119,13 @@ export interface ElectronAPI {
   aiGenerateEmbedding: (id: string) => Promise<void>
   aiGenerateAllEmbeddings: () => Promise<{ total: number; generated: number; skipped: number }>
   aiTestConnection: () => Promise<{ ok: boolean; error?: string }>
+  aiListProviders: () => Promise<ProviderDescriptor[]>
+  aiListModels: (
+    providerId: string,
+    forceRefresh?: boolean,
+    openaiApiKeyOverride?: string,
+    anthropicApiKeyOverride?: string,
+  ) => Promise<ModelCatalogResult>
   aiSessionBrief: (topic: string) => Promise<string>
   aiPriorArt: (query: string) => Promise<string>
   aiGetTokenStats: () => Promise<{ llm: { input: number; output: number }; embeddings: { input: number } }>
@@ -232,6 +273,9 @@ const api: ElectronAPI = {
   aiGenerateEmbedding: (id) => ipcRenderer.invoke('ai:generateEmbedding', id),
   aiGenerateAllEmbeddings: () => ipcRenderer.invoke('ai:generateAllEmbeddings'),
   aiTestConnection: () => ipcRenderer.invoke('ai:testConnection'),
+  aiListProviders: () => ipcRenderer.invoke('ai:listProviders'),
+  aiListModels: (providerId, forceRefresh, openaiApiKeyOverride, anthropicApiKeyOverride) =>
+    ipcRenderer.invoke('ai:listModels', providerId, Boolean(forceRefresh), openaiApiKeyOverride, anthropicApiKeyOverride),
   aiSessionBrief: (topic) => ipcRenderer.invoke('ai:sessionBrief', topic),
   aiPriorArt: (query) => ipcRenderer.invoke('ai:priorArt', query),
   aiGetTokenStats: () => ipcRenderer.invoke('ai:getTokenStats'),

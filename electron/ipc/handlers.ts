@@ -21,6 +21,7 @@ import { generateMetadata } from '../services/metadataService'
 import { generateEmbedding, generateAllEmbeddings, semanticSearch } from '../services/embeddingService'
 import { getProvider } from '../services/llm/providerFactory'
 import { getTokenStats, resetTokenStats, TokenStats } from '../services/llm/tokenTracker'
+import { listLlmProviders, listProviderModels } from '../services/llm/modelCatalogService'
 import { sessionBriefing, priorArtCheck, steelmanRetrieval, questionSeeding, conceptStateSummary } from '../services/insightsService'
 import { generateAnnotations, applyAnnotations } from '../services/annotationService'
 import type { AnnotationProposal, ConfidenceLevel } from '../services/annotationService'
@@ -158,6 +159,24 @@ export function registerIpcHandlers(): void {
       return { ok: false, error: (err as Error).message }
     }
   })
+
+  ipcMain.handle('ai:listProviders', async () => {
+    return listLlmProviders()
+  })
+
+  ipcMain.handle(
+    'ai:listModels',
+    async (
+      _event,
+      providerId: string,
+      forceRefresh?: boolean,
+      openaiApiKeyOverride?: string,
+      anthropicApiKeyOverride?: string,
+    ) => {
+    const secrets = loadSecrets()
+      return listProviderModels(providerId, secrets, Boolean(forceRefresh), { openaiApiKeyOverride, anthropicApiKeyOverride })
+    },
+  )
 
   ipcMain.handle('ai:sessionBrief', async (_event, topic: string): Promise<string> => {
     return sessionBriefing(topic)

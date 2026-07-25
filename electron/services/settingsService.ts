@@ -11,7 +11,7 @@ export interface AppSettings {
   /** Absolute path to the data directory containing archive/ and threads.json */
   dataDirectory: string
   /** LLM provider to use for AI features */
-  llmProvider: 'openai' | 'anthropic'
+  llmProvider: string
   /** Model to use for completions (provider-specific) */
   llmModel: string
   /** Tag vocabulary enforcement mode */

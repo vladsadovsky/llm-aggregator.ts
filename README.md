@@ -690,11 +690,23 @@ Why this format works well:
 ## LLM Lens Setup
 
 1. Open **Settings** → **AI** tab
-2. Enter your OpenAI API key
-3. Select a model (`gpt-4o` recommended; `gpt-4o-mini` for lower cost)
-4. Click **Test Connection**
-5. Click **Generate All Embeddings** to index your archive
-6. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+2. Select provider (**OpenAI** or **Anthropic**)
+3. Enter the matching provider API key
+4. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
+5. Select a model using the Quality / Cost / Latency hints shown below the picker
+6. Click **Test Connection**
+
+For OpenAI:
+
+7. Click **Generate All Embeddings** to index your archive
+8. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+
+For Anthropic:
+
+7. Metadata and analysis generation works with Claude models.
+8. Embedding generation and semantic indexing are currently OpenAI-only in this app.
+
+The model list is cached locally in Electron user data (`model-catalog-cache.json`) so selection still works when provider discovery is temporarily unavailable.
 
 Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
 
