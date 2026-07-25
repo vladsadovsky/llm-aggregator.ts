@@ -19,7 +19,10 @@ win:
   target:
     - nsis
     - portable
-  artifactName: "${productName}-${version}-win.${ext}"
+    - msi
+  # ${target} is required here: nsis and portable both emit .exe, so without it
+  # they render identical filenames and one silently overwrites the other.
+  artifactName: "${productName}-${version}-win-${target}.${ext}"
 linux:
   icon: public/icons/llm-aggregator.png
   target:
