@@ -8,7 +8,45 @@ export interface AppSettings {
   tagSoftLimit: number
   tagHardLimit: number
   allowDevEnvSecrets: boolean
-  devEnvSecretPrefix: string
+}
+
+export interface AppSecrets {
+  openaiApiKey: string
+  anthropicApiKey: string
+}
+
+export type SecretKey = keyof AppSecrets
+export type SecretSource = 'env' | 'safe-storage' | 'none'
+export type SecretBackendId = Exclude<SecretSource, 'none'>
+
+export type SecretErrorCode =
+  | 'ENV_DISABLED'
+  | 'ENV_IGNORED_PACKAGED'
+  | 'ENV_MALFORMED'
+  | 'SAFE_STORAGE_UNAVAILABLE'
+  | 'SAFE_STORAGE_READ_FAIL'
+  | 'SAFE_STORAGE_DECRYPT_FAIL'
+  | 'SAFE_STORAGE_WRITE_FAIL'
+  | 'LEGACY_FILE_ORPHANED'
+  | 'NO_SECRET_AVAILABLE'
+
+export interface SecretWarning {
+  code: SecretErrorCode
+  message: string
+}
+
+export interface SecretKeyStatus {
+  hasKey: boolean
+  maskedPreview: string
+  source: SecretSource
+  readOnly: boolean
+}
+
+/** Non-secret view of secret storage. Raw key values never reach the renderer. */
+export interface SecretsStatus {
+  keys: Record<SecretKey, SecretKeyStatus>
+  warnings: SecretWarning[]
+  backends: Array<{ id: SecretBackendId; available: boolean; writable: boolean }>
 }
 
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
@@ -97,9 +135,12 @@ export interface ElectronAPI {
   settingsSave: (settings: AppSettings) => Promise<void>
   settingsPickDirectory: () => Promise<string | null>
 
-  // Secrets
-  secretsLoad: () => Promise<AppSecrets>
-  secretsSave: (secrets: AppSecrets) => Promise<void>
+  // Secrets — write-only. Reads return status/metadata, never key values.
+  secretsLoad: () => Promise<SecretsStatus>
+  /** Send only the keys the user edited; omitted keys keep their stored value. */
+  secretsSave: (updates: Partial<AppSecrets>) => Promise<SecretsStatus>
+  secretsRecheck: () => Promise<SecretsStatus>
+  secretsDevEnvVarNames: () => Promise<string[]>
 
   // Threads
   threadsLoad: () => Promise<Record<string, { name: string; items: string[] }>>
@@ -122,11 +163,11 @@ export interface ElectronAPI {
   aiGenerateAllEmbeddings: () => Promise<{ total: number; generated: number; skipped: number }>
   aiTestConnection: () => Promise<{ ok: boolean; error?: string }>
   aiListProviders: () => Promise<ProviderDescriptor[]>
+  /** `apiKeyOverride` carries only a just-typed, unsaved key for the queried provider. */
   aiListModels: (
     providerId: string,
     forceRefresh?: boolean,
-    openaiApiKeyOverride?: string,
-    anthropicApiKeyOverride?: string,
+    apiKeyOverride?: string,
   ) => Promise<ModelCatalogResult>
   aiSessionBrief: (topic: string) => Promise<string>
   aiPriorArt: (query: string) => Promise<string>
@@ -206,11 +247,6 @@ export interface QAUpdateData {
   aiRelatedIds?: string[]
 }
 
-export interface AppSecrets {
-  openaiApiKey: string
-  anthropicApiKey: string
-}
-
 export type ConfidenceLevel = 'speculative' | 'working' | 'confident' | 'validated'
 
 export interface AnnotationProposal {
@@ -276,8 +312,8 @@ const api: ElectronAPI = {
   aiGenerateAllEmbeddings: () => ipcRenderer.invoke('ai:generateAllEmbeddings'),
   aiTestConnection: () => ipcRenderer.invoke('ai:testConnection'),
   aiListProviders: () => ipcRenderer.invoke('ai:listProviders'),
-  aiListModels: (providerId, forceRefresh, openaiApiKeyOverride, anthropicApiKeyOverride) =>
-    ipcRenderer.invoke('ai:listModels', providerId, Boolean(forceRefresh), openaiApiKeyOverride, anthropicApiKeyOverride),
+  aiListModels: (providerId, forceRefresh, apiKeyOverride) =>
+    ipcRenderer.invoke('ai:listModels', providerId, Boolean(forceRefresh), apiKeyOverride),
   aiSessionBrief: (topic) => ipcRenderer.invoke('ai:sessionBrief', topic),
   aiPriorArt: (query) => ipcRenderer.invoke('ai:priorArt', query),
   aiGetTokenStats: () => ipcRenderer.invoke('ai:getTokenStats'),
@@ -293,7 +329,9 @@ const api: ElectronAPI = {
 
   // Secrets
   secretsLoad: () => ipcRenderer.invoke('secrets:load'),
-  secretsSave: (secrets) => ipcRenderer.invoke('secrets:save', secrets),
+  secretsSave: (updates) => ipcRenderer.invoke('secrets:save', updates),
+  secretsRecheck: () => ipcRenderer.invoke('secrets:recheck'),
+  secretsDevEnvVarNames: () => ipcRenderer.invoke('secrets:devEnvVarNames'),
 
   // Tag Dictionary
   tagsLoad: () => ipcRenderer.invoke('tags:load'),

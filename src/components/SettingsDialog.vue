@@ -13,6 +13,7 @@ import AnnotationDialog from './AnnotationDialog.vue'
 import HealthReportDialog from './HealthReportDialog.vue'
 import TagManagerDialog from './TagManagerDialog.vue'
 import { useTagStore } from '../stores/tagStore'
+import type { AppSecrets, SecretKey, SecretsStatus, SecretSource } from '../global'
 
 interface ProviderDescriptor {
   id: string
@@ -50,8 +51,17 @@ const toast = useToast()
 const dataDirectory = ref('')
 const llmProvider = ref('openai')
 const llmModel = ref('gpt-4o')
-const openaiApiKey = ref('')
-const anthropicApiKey = ref('')
+
+/**
+ * Key values are write-only: the main process never sends them here. These hold
+ * only what the user types. An empty draft means "untouched" — that key is
+ * omitted from the save so the stored value survives.
+ */
+const keyDrafts = ref<Record<SecretKey, string>>({ openaiApiKey: '', anthropicApiKey: '' })
+const secretsStatus = ref<SecretsStatus | null>(null)
+const devEnvVarNames = ref<string[]>([])
+const recheckingStorage = ref(false)
+
 const testingConnection = ref(false)
 const generatingEmbeddings = ref(false)
 const loadingModelCatalog = ref(false)
@@ -65,7 +75,6 @@ const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
 const tagSoftLimit = ref(50)
 const tagHardLimit = ref(100)
 const allowDevEnvSecrets = ref(false)
-const devEnvSecretPrefix = ref('LLM_AGG_')
 
 const enforcementOptions = [
   { label: 'Off — free-form tags', value: 'off' },
@@ -106,6 +115,106 @@ const providerKeyLabel = computed(() => {
   return 'API key'
 })
 
+/** Which stored secret the currently selected provider uses. */
+const currentSecretKey = computed<SecretKey>(
+  () => selectedProvider.value?.apiKeyField ?? 'openaiApiKey',
+)
+
+const currentKeyStatus = computed(
+  () => secretsStatus.value?.keys[currentSecretKey.value] ?? null,
+)
+
+/** Draft text for the selected provider's key; empty means the field is untouched. */
+const currentKeyDraft = computed({
+  get: () => keyDrafts.value[currentSecretKey.value],
+  set: (value: string) => {
+    keyDrafts.value = { ...keyDrafts.value, [currentSecretKey.value]: value }
+  },
+})
+
+const SOURCE_LABELS: Record<SecretSource, string> = {
+  'env': 'development environment variable',
+  'safe-storage': 'encrypted local storage',
+  'none': 'not configured',
+}
+
+const currentKeyPlaceholder = computed(() => {
+  const status = currentKeyStatus.value
+  if (status?.readOnly) {
+    return `Supplied by ${SOURCE_LABELS.env} — not editable here`
+  }
+  if (status?.hasKey) {
+    return `Stored (${status.maskedPreview}) — type to replace`
+  }
+  return providerKeyLabel.value
+})
+
+/** Human-readable provenance line shown under the key field. */
+const currentKeySourceText = computed(() => {
+  const status = currentKeyStatus.value
+  if (!status || !status.hasKey) {
+    return 'No key stored for this provider.'
+  }
+  return `Key source: ${SOURCE_LABELS[status.source]} (${status.maskedPreview}).`
+})
+
+const secureStorageUnavailable = computed(() =>
+  secretsStatus.value?.backends.some(b => b.id === 'safe-storage' && !b.available) ?? false,
+)
+
+const storageWarnings = computed(() => secretsStatus.value?.warnings ?? [])
+
+/**
+ * Only the keys the user actually typed into. Untouched fields are omitted so the
+ * main process leaves their stored values alone.
+ */
+function pendingSecretUpdates(): Partial<AppSecrets> {
+  const updates: Partial<AppSecrets> = {}
+  for (const key of Object.keys(keyDrafts.value) as SecretKey[]) {
+    const draft = keyDrafts.value[key].trim()
+    if (draft) {
+      updates[key] = draft
+    }
+  }
+  return updates
+}
+
+/** Persists any typed keys and refreshes status. Safe to call when nothing changed. */
+async function flushSecretUpdates(): Promise<boolean> {
+  const updates = pendingSecretUpdates()
+  if (Object.keys(updates).length === 0) {
+    return true
+  }
+  try {
+    secretsStatus.value = await window.api.secretsSave(updates)
+    // Clear drafts once stored: the field falls back to showing the masked value.
+    keyDrafts.value = { openaiApiKey: '', anthropicApiKey: '' }
+    return true
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'API key not saved',
+      detail: (err as Error).message,
+      life: 8000,
+    })
+    return false
+  }
+}
+
+async function recheckStorage() {
+  recheckingStorage.value = true
+  try {
+    secretsStatus.value = await window.api.secretsRecheck()
+    toast.add({
+      severity: secureStorageUnavailable.value ? 'warn' : 'success',
+      summary: secureStorageUnavailable.value ? 'Secure storage still unavailable' : 'Secure storage available',
+      life: 4000,
+    })
+  } finally {
+    recheckingStorage.value = false
+  }
+}
+
 const modelHints = computed(() => {
   if (!selectedModel.value) {
     return [] as string[]
@@ -124,9 +233,10 @@ async function loadModelCatalog(forceRefresh = false) {
   loadingModelCatalog.value = true
   modelCatalogWarning.value = ''
   try {
-    const openaiKeyOverride = llmProvider.value === 'openai' ? openaiApiKey.value.trim() : undefined
-    const anthropicKeyOverride = llmProvider.value === 'anthropic' ? anthropicApiKey.value.trim() : undefined
-    const result = await window.api.aiListModels(llmProvider.value, forceRefresh, openaiKeyOverride, anthropicKeyOverride)
+    // Only pass a key the user has just typed and not yet saved; otherwise the
+    // main process resolves the stored key itself.
+    const override = currentKeyDraft.value.trim() || undefined
+    const result = await window.api.aiListModels(llmProvider.value, forceRefresh, override)
     modelsByProvider.value = {
       ...modelsByProvider.value,
       [llmProvider.value]: result.models,
@@ -160,23 +270,23 @@ const rememberLastMetadataModel = computed({
 })
 
 onMounted(async () => {
-  const [settings, secrets, discoveredProviders] = await Promise.all([
+  const [settings, status, discoveredProviders, envVarNames] = await Promise.all([
     window.api.settingsLoad(),
     window.api.secretsLoad(),
     window.api.aiListProviders(),
+    window.api.secretsDevEnvVarNames(),
   ])
+  secretsStatus.value = status
+  devEnvVarNames.value = envVarNames
   providers.value = discoveredProviders
   const hasSavedProvider = discoveredProviders.some(provider => provider.id === settings.llmProvider && provider.enabled)
   dataDirectory.value = settings.dataDirectory
   llmProvider.value = hasSavedProvider ? settings.llmProvider : 'openai'
   llmModel.value = settings.llmModel || 'gpt-4o'
-  openaiApiKey.value = secrets.openaiApiKey ?? ''
-  anthropicApiKey.value = secrets.anthropicApiKey ?? ''
   tagEnforcement.value = settings.tagEnforcement ?? 'warn'
   tagSoftLimit.value = settings.tagSoftLimit ?? 50
   tagHardLimit.value = settings.tagHardLimit ?? 100
   allowDevEnvSecrets.value = settings.allowDevEnvSecrets ?? false
-  devEnvSecretPrefix.value = settings.devEnvSecretPrefix || 'LLM_AGG_'
   await loadModelCatalog(false)
 })
 
@@ -188,19 +298,23 @@ async function pickDirectory() {
 }
 
 async function save() {
-  await Promise.all([
-    window.api.settingsSave({
-      dataDirectory: dataDirectory.value,
-      llmProvider: llmProvider.value,
-      llmModel: llmModel.value,
-      tagEnforcement: tagEnforcement.value,
-      tagSoftLimit: tagSoftLimit.value,
-      tagHardLimit: tagHardLimit.value,
-      allowDevEnvSecrets: allowDevEnvSecrets.value,
-      devEnvSecretPrefix: devEnvSecretPrefix.value.trim() || 'LLM_AGG_',
-    }),
-    window.api.secretsSave({ openaiApiKey: openaiApiKey.value, anthropicApiKey: anthropicApiKey.value }),
-  ])
+  await window.api.settingsSave({
+    dataDirectory: dataDirectory.value,
+    llmProvider: llmProvider.value,
+    llmModel: llmModel.value,
+    tagEnforcement: tagEnforcement.value,
+    tagSoftLimit: tagSoftLimit.value,
+    tagHardLimit: tagHardLimit.value,
+    allowDevEnvSecrets: allowDevEnvSecrets.value,
+  })
+
+  // Keys are saved separately and can fail independently (secure storage may be
+  // unavailable). Keep the dialog open in that case so the typed key is not lost.
+  const secretsSaved = await flushSecretUpdates()
+  if (!secretsSaved) {
+    return
+  }
+
   // Reload data from the new directory
   await Promise.all([
     threadStore.loadThreads(),
@@ -219,7 +333,10 @@ function clearRememberedMetadata() {
 async function generateEmbeddings() {
   generatingEmbeddings.value = true
   embeddingsResult.value = null
-  await window.api.secretsSave({ openaiApiKey: openaiApiKey.value, anthropicApiKey: anthropicApiKey.value })
+  if (!await flushSecretUpdates()) {
+    generatingEmbeddings.value = false
+    return
+  }
   try {
     const result = await window.api.aiGenerateAllEmbeddings()
     embeddingsResult.value = result
@@ -238,8 +355,11 @@ async function generateEmbeddings() {
 
 async function testConnection() {
   testingConnection.value = true
-  // Save secrets first so the main process has the latest key
-  await window.api.secretsSave({ openaiApiKey: openaiApiKey.value, anthropicApiKey: anthropicApiKey.value })
+  // Persist any typed key first so the main process tests the key the user sees.
+  if (!await flushSecretUpdates()) {
+    testingConnection.value = false
+    return
+  }
   const result = await window.api.aiTestConnection()
   testingConnection.value = false
   if (result.ok) {
@@ -349,8 +469,24 @@ function handleKeydown(event: KeyboardEvent) {
         <label>AI / LLM</label>
         <p class="field-help">
           Used for metadata generation, embeddings, and future analysis features.
-          API keys are stored locally and never committed to git.
+          API keys are encrypted with your operating system's secure storage and never committed to git.
         </p>
+
+        <div
+          v-for="warning in storageWarnings"
+          :key="warning.code"
+          class="storage-warning"
+        >
+          {{ warning.message }}
+        </div>
+
+        <div
+          v-if="secureStorageUnavailable"
+          class="storage-warning storage-warning--blocking"
+        >
+          Secure storage is unavailable on this machine, so API keys cannot be saved.
+        </div>
+
         <div
           v-if="isDevMode"
           class="dev-env-section"
@@ -366,24 +502,13 @@ function handleKeydown(event: KeyboardEvent) {
               class="checkbox-label"
             >Use development environment variables for API keys</label>
           </div>
-          <div
-            v-if="allowDevEnvSecrets"
-            class="dev-env-row"
-          >
-            <span class="field-help">Variable prefix</span>
-            <InputText
-              v-model="devEnvSecretPrefix"
-              class="prefix-input"
-              placeholder="LLM_AGG_"
-            />
-          </div>
           <p
             v-if="allowDevEnvSecrets"
             class="field-help"
             style="margin-top: 6px;"
           >
-            Expected keys: {{ devEnvSecretPrefix || 'LLM_AGG_' }}OPENAI_API_KEY and {{ devEnvSecretPrefix || 'LLM_AGG_' }}ANTHROPIC_API_KEY.
-            This development-only override will be ignored in packaged production builds.
+            Reads {{ devEnvVarNames.join(' and ') }}.
+            These take precedence over stored keys. Development only — ignored in packaged builds.
           </p>
         </div>
         <div class="ai-row">
@@ -446,19 +571,16 @@ function handleKeydown(event: KeyboardEvent) {
           class="ai-row"
           style="margin-top: 8px;"
         >
+          <!--
+            One field per selected provider. It is always empty on open: the
+            stored key never leaves the main process, so the masked preview is
+            shown as placeholder text instead. Typing replaces the stored key;
+            leaving it blank keeps the stored key untouched.
+          -->
           <Password
-            v-if="llmProvider === 'openai'"
-            v-model="openaiApiKey"
-            :placeholder="`${providerKeyLabel} (sk-...)`"
-            :feedback="false"
-            toggle-mask
-            class="api-key-input"
-            input-class="api-key-input-inner"
-          />
-          <Password
-            v-else
-            v-model="anthropicApiKey"
-            :placeholder="providerKeyLabel"
+            v-model="currentKeyDraft"
+            :placeholder="currentKeyPlaceholder"
+            :disabled="currentKeyStatus?.readOnly"
             :feedback="false"
             toggle-mask
             class="api-key-input"
@@ -471,6 +593,18 @@ function handleKeydown(event: KeyboardEvent) {
             size="small"
             :loading="testingConnection"
             @click="testConnection"
+          />
+        </div>
+        <div class="storage-status-row">
+          <span class="field-help">{{ currentKeySourceText }}</span>
+          <Button
+            label="Re-check secure storage"
+            icon="pi pi-shield"
+            severity="secondary"
+            text
+            size="small"
+            :loading="recheckingStorage"
+            @click="recheckStorage"
           />
         </div>
         <div
@@ -714,15 +848,28 @@ function handleKeydown(event: KeyboardEvent) {
   background: var(--surface-50);
 }
 
-.dev-env-row {
+.storage-status-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-.prefix-input {
-  width: 180px;
+.storage-warning {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--yellow-300, #f3d19e);
+  background: var(--yellow-50, #fff8e6);
+  color: var(--text-color, inherit);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.storage-warning--blocking {
+  border-color: var(--red-300, #f0a9a7);
+  background: var(--red-50, #fff5f5);
 }
 
 .provider-select {

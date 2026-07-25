@@ -563,15 +563,52 @@ Example:
 ```json
 {
   "dataDirectory": "/path/to/your/data",
-  "allowDevEnvSecrets": false,
-  "devEnvSecretPrefix": "LLM_AGG_"
+  "allowDevEnvSecrets": false
 }
 ```
 
-In development builds, you can optionally enable **Use development environment variables for API keys**
-in Settings. When enabled, the app checks prefixed environment variables first (for example,
-`LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`) before local secret storage.
-This override is intended for development only and is ignored in packaged production builds.
+### API key storage
+
+API keys are **never stored in `settings.json`** and are never written in clear text.
+They are encrypted with your operating system's secure storage — DPAPI on Windows,
+Keychain on macOS, libsecret/kwallet on Linux — and written to `secrets.enc.json`
+in the same application-data directory. Because the encryption key belongs to your
+OS user account, the file cannot be read by another user or on another machine.
+
+Keys are also **write-only from the app's point of view**: the Settings window can
+store a key and show a masked preview of it (`sk-…a1b2`), but never displays or
+receives the full value back. Leaving the key field blank keeps the stored key as-is.
+
+Keys resolve in a fixed order, with the first source that supplies a value winning:
+
+| Order | Source | Notes |
+|---|---|---|
+| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Development only — see below. Read-only. |
+| 2 | `secrets.enc.json` (OS-encrypted) | Where Settings writes. |
+
+Settings shows which source the active key came from, and warns if OS-backed
+encryption is unavailable on the machine (in which case keys cannot be saved).
+
+#### Development environment overrides
+
+In development builds only, Settings offers **Use development environment variables
+for API keys**. When enabled, `LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`
+take precedence over stored keys. The variable names are fixed and not configurable.
+
+The override requires **both** the setting to be on and the build to be unpackaged.
+Enabling it and then running a packaged build has no effect — `settings.json` travels
+with your user profile, so the packaged check is what prevents it from silently
+applying to a production install.
+
+An env-supplied key is a read-only overlay: the Settings field is disabled while one
+is active, and saving other settings never copies the env value into stored secrets.
+
+#### Upgrading from a previous version
+
+Earlier versions stored keys in clear text in `secrets.json`. That file is **no longer
+read**. On first launch it is renamed to `secrets.json.orphaned.bak` and you will need
+to re-enter your API key in Settings. The renamed file still contains your old key in
+clear text — delete it once you have re-entered the key.
 
 ### Default data directory on Windows
 
@@ -698,8 +735,11 @@ Why this format works well:
 
 1. Open **Settings** → **AI** tab
 2. Select provider (**OpenAI** or **Anthropic**)
-3. Enter the matching provider API key
-4. Optional (development only): enable **Use development environment variables for API keys** and set the prefix if you want env-based key override behavior.
+3. Enter the matching provider API key. It is encrypted with OS secure storage on save;
+   afterwards the field shows a masked preview and stays blank unless you type a replacement.
+   See [API key storage](#api-key-storage).
+4. Optional (development only): enable **Use development environment variables for API keys**
+   to have `LLM_AGG_*` variables override the stored key.
 5. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
 6. Select a model using the Quality / Cost / Latency hints shown below the picker
 7. Click **Test Connection**

@@ -1,4 +1,17 @@
-import type { ElectronAPI, QAPairData, AppSettings, TagDictionary } from '../electron/preload'
+import type { ElectronAPI, QAPairData, AppSettings, TagDictionary, SecretsStatus } from '../electron/preload'
+
+/** Browser-mode stand-in: no keys stored, secure storage reported as usable. */
+function mockSecretsStatus(): SecretsStatus {
+    const emptyKey = { hasKey: false, maskedPreview: '', source: 'none' as const, readOnly: false }
+    return {
+        keys: { openaiApiKey: { ...emptyKey }, anthropicApiKey: { ...emptyKey } },
+        warnings: [],
+        backends: [
+            { id: 'env', available: false, writable: false },
+            { id: 'safe-storage', available: true, writable: true },
+        ],
+    }
+}
 
 export const mockApi: ElectronAPI = {
     settingsLoad: async () => ({
@@ -9,7 +22,6 @@ export const mockApi: ElectronAPI = {
         tagSoftLimit: 50,
         tagHardLimit: 100,
         allowDevEnvSecrets: false,
-        devEnvSecretPrefix: 'LLM_AGG_',
     }),
     settingsSave: async (settings: AppSettings) => {
         console.log('Mock: Saving settings', settings)
@@ -117,8 +129,10 @@ export const mockApi: ElectronAPI = {
     }),
     onMenuAction: () => () => {},
 
-    secretsLoad: async () => ({ openaiApiKey: '', anthropicApiKey: '' }),
-    secretsSave: async () => {},
+    secretsLoad: async () => mockSecretsStatus(),
+    secretsSave: async () => mockSecretsStatus(),
+    secretsRecheck: async () => mockSecretsStatus(),
+    secretsDevEnvVarNames: async () => ['LLM_AGG_OPENAI_API_KEY', 'LLM_AGG_ANTHROPIC_API_KEY'],
 
     searchSemantic: async () => [],
 
@@ -148,8 +162,7 @@ export const mockApi: ElectronAPI = {
     aiListModels: async (
         providerId: string,
         _forceRefresh?: boolean,
-        _openaiApiKeyOverride?: string,
-        _anthropicApiKeyOverride?: string,
+        _apiKeyOverride?: string,
     ) => ({
         providerId,
         source: 'static' as const,

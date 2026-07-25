@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { app } from 'electron'
 import OpenAI from 'openai'
 import type { AppSecrets } from '../secretsService'
@@ -44,8 +44,12 @@ interface CatalogCache {
 }
 
 export interface ModelCatalogOptions {
-  openaiApiKeyOverride?: string
-  anthropicApiKeyOverride?: string
+  /**
+   * A key the user has typed in Settings but not yet saved, scoped to the
+   * provider being queried. Lets model discovery work before Save without the
+   * renderer having to hold or resend stored keys.
+   */
+  apiKeyOverride?: string
 }
 
 const CATALOG_CACHE_FILENAME = 'model-catalog-cache.json'
@@ -191,13 +195,21 @@ function loadCatalogCache(): CatalogCache {
   }
 }
 
+/**
+ * Best-effort cache write. A failure here must not surface as "model list
+ * unavailable" when the API call itself succeeded, so it is logged and swallowed.
+ */
 function saveCatalogCache(cache: CatalogCache): void {
-  const cachePath = getCatalogCachePath()
-  const dir = join(cachePath, '..')
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+  try {
+    const cachePath = getCatalogCachePath()
+    const dir = dirname(cachePath)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf-8')
+  } catch (err) {
+    debugError('modelCatalogService', 'Failed to persist model catalog cache:', err)
   }
-  writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf-8')
 }
 
 function makeOpenAIStaticCatalog(): ModelCatalogResult {
@@ -418,7 +430,7 @@ export async function listProviderModels(
   }
 
   if (providerId === 'openai') {
-    const openaiApiKey = (options.openaiApiKeyOverride ?? secrets.openaiApiKey ?? '').trim()
+    const openaiApiKey = (options.apiKeyOverride ?? secrets.openaiApiKey ?? '').trim()
     if (!openaiApiKey) {
       const fallback = cache[providerId] ?? makeOpenAIStaticCatalog()
       return {
@@ -452,7 +464,7 @@ export async function listProviderModels(
   }
 
   if (providerId === 'anthropic') {
-    const anthropicApiKey = (options.anthropicApiKeyOverride ?? secrets.anthropicApiKey ?? '').trim()
+    const anthropicApiKey = (options.apiKeyOverride ?? secrets.anthropicApiKey ?? '').trim()
     if (!anthropicApiKey) {
       const fallback = cache[providerId] ?? {
         providerId,
@@ -492,12 +504,14 @@ export async function listProviderModels(
     }
   }
 
+  // Providers with no discovery implementation (e.g. future openai-compatible
+  // gateways). The openai/anthropic branches above have already returned.
   const staticResult: ModelCatalogResult = {
     providerId,
     source: 'static',
     fetchedAt: new Date().toISOString(),
     warning: provider.notes,
-    models: providerId === 'anthropic' ? ANTHROPIC_STATIC : [],
+    models: [],
   }
   cache[providerId] = staticResult
   saveCatalogCache(cache)

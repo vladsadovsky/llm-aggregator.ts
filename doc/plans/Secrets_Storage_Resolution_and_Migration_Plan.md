@@ -1,5 +1,23 @@
 # Secrets Storage Resolution and Migration Plan
 
+> **Status (2026-07-25): V1 Steps 1–5 implemented; Step 6 deferred.**
+> This document is the original plan and is kept for intent and rationale. It is
+> **not** an accurate description of the shipped code — several decisions changed
+> during implementation. For what actually exists, read
+> [`Secrets_Storage_Design_and_Implementation.md`](./Secrets_Storage_Design_and_Implementation.md),
+> which is the maintained specification.
+>
+> Decisions that diverged from this plan:
+>
+> | This plan says | What shipped | Why |
+> |---|---|---|
+> | Separate `keychain` and `encrypted-file` backends, keytar-style | One `safe-storage` backend using Electron `safeStorage` | keytar is archived; `safeStorage` needs no native module, survives MSI packaging, and is synchronous |
+> | Async `SecretBackend` interface | Synchronous | `safeStorage` and `process.env` are both sync; keeps `loadSecrets()` sync and leaves 11 `getProvider()` call sites untouched |
+> | Encrypted file records `nonce/iv` + KDF metadata | Records `algorithm` only | `safeStorage` owns key derivation and IV internally and exposes only opaque ciphertext |
+> | `devEnvSecretPrefix` configurable setting (Step 1) | Removed; prefix fixed at `LLM_AGG_` | A free-form prefix feeds a `process.env` lookup and needs validation to stay a legal variable name, for no benefit over a constant |
+> | Legacy plaintext read during migration (Step 6) | Never read; renamed to `.orphaned.bak` on startup | Explicit product decision; users re-enter keys once |
+> | `secretsLoad()` returns secrets, optionally with metadata (Step 4) | Returns metadata **only** — raw values never reach the renderer | Encrypting at rest is undone if the values round-trip through the Chromium process |
+
 ## Objective
 
 Implement a deterministic secret resolution chain for API keys:

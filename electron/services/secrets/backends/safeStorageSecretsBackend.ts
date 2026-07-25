@@ -1,0 +1,155 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { dirname } from 'path'
+import type {
+  AppSecrets,
+  SecretBackend,
+  SecretWarning,
+} from '../secretBackendTypes'
+import { debugError } from '../../logger'
+
+/** Bump when the on-disk envelope shape changes. */
+const ENVELOPE_VERSION = 1
+
+interface SecretsEnvelope {
+  version: number
+  /** Informational: which mechanism produced `ciphertext`. */
+  algorithm: 'electron-safeStorage'
+  /** base64 of the safeStorage-encrypted JSON payload. */
+  ciphertext: string
+  updatedAt: string
+}
+
+/**
+ * Minimal slice of Electron's `safeStorage` that this backend needs.
+ * Injected so the backend is testable without an Electron runtime.
+ */
+export interface SafeStorageCrypto {
+  isEncryptionAvailable(): boolean
+  encryptString(plainText: string): Buffer
+  decryptString(encrypted: Buffer): string
+}
+
+export interface SafeStorageBackendOptions {
+  /** Absolute path to the encrypted secrets file. */
+  filePath: string
+  crypto: SafeStorageCrypto
+}
+
+function isEnvelope(value: unknown): value is SecretsEnvelope {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const candidate = value as Partial<SecretsEnvelope>
+  return typeof candidate.ciphertext === 'string' && typeof candidate.version === 'number'
+}
+
+/**
+ * Primary read/write backend. Secrets are stored as a single JSON blob encrypted
+ * with Electron's `safeStorage`, which is backed by DPAPI on Windows, the
+ * Keychain on macOS, and libsecret/kwallet on Linux — so the encryption key is
+ * held by the OS rather than by this app.
+ *
+ * Note on the file format: the migration plan specified `nonce/iv` and KDF
+ * metadata fields. Those do not apply here — `safeStorage` owns key derivation
+ * and IV handling internally and exposes only opaque ciphertext, so the envelope
+ * records the algorithm instead of parameters we do not control.
+ */
+export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptions): SecretBackend {
+  const { filePath, crypto } = options
+
+  // Local rather than `this.isAvailable()` so the backend keeps working if a
+  // caller destructures its methods.
+  const available = (): boolean => {
+    try {
+      return crypto.isEncryptionAvailable()
+    } catch (err) {
+      debugError('safeStorageSecrets', 'isEncryptionAvailable threw:', err)
+      return false
+    }
+  }
+
+  return {
+    id: 'safe-storage',
+    writable: true,
+
+    isAvailable: available,
+
+    load() {
+      const warnings: SecretWarning[] = []
+
+      if (!available()) {
+        warnings.push({
+          code: 'SAFE_STORAGE_UNAVAILABLE',
+          message: 'OS-backed secure storage is unavailable on this machine, so saved API keys cannot be read.',
+        })
+        return { secrets: {}, warnings }
+      }
+
+      if (!existsSync(filePath)) {
+        return { secrets: {}, warnings }
+      }
+
+      let raw: string
+      try {
+        raw = readFileSync(filePath, 'utf-8')
+      } catch (err) {
+        debugError('safeStorageSecrets', 'Failed to read secrets file:', err)
+        warnings.push({
+          code: 'SAFE_STORAGE_READ_FAIL',
+          message: 'The stored API key file could not be read. Re-enter your keys in Settings.',
+        })
+        return { secrets: {}, warnings }
+      }
+
+      try {
+        const parsed: unknown = JSON.parse(raw)
+        if (!isEnvelope(parsed)) {
+          throw new Error('Unrecognized secrets envelope shape.')
+        }
+        const plain = crypto.decryptString(Buffer.from(parsed.ciphertext, 'base64'))
+        const decoded: unknown = JSON.parse(plain)
+        if (typeof decoded !== 'object' || decoded === null) {
+          throw new Error('Decrypted payload was not an object.')
+        }
+
+        // Copy only known keys with string values; never trust the file's shape.
+        const source = decoded as Partial<Record<keyof AppSecrets, unknown>>
+        const secrets: Partial<AppSecrets> = {}
+        if (typeof source.openaiApiKey === 'string' && source.openaiApiKey.trim()) {
+          secrets.openaiApiKey = source.openaiApiKey.trim()
+        }
+        if (typeof source.anthropicApiKey === 'string' && source.anthropicApiKey.trim()) {
+          secrets.anthropicApiKey = source.anthropicApiKey.trim()
+        }
+        return { secrets, warnings }
+      } catch (err) {
+        // Do not log `raw` — it is ciphertext, but the failure mode is unknown.
+        debugError('safeStorageSecrets', 'Failed to decrypt secrets file:', err)
+        warnings.push({
+          code: 'SAFE_STORAGE_DECRYPT_FAIL',
+          message: 'Stored API keys could not be decrypted. This usually means the file was copied from another machine or user account. Re-enter your keys in Settings.',
+        })
+        return { secrets: {}, warnings }
+      }
+    },
+
+    save(secrets: AppSecrets) {
+      if (!available()) {
+        throw new Error('Secure storage is unavailable on this machine, so API keys cannot be saved.')
+      }
+
+      const envelope: SecretsEnvelope = {
+        version: ENVELOPE_VERSION,
+        algorithm: 'electron-safeStorage',
+        ciphertext: crypto.encryptString(JSON.stringify(secrets)).toString('base64'),
+        updatedAt: new Date().toISOString(),
+      }
+
+      const dir = dirname(filePath)
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true })
+      }
+      writeFileSync(filePath, JSON.stringify(envelope, null, 2), 'utf-8')
+    },
+  }
+}

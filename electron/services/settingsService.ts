@@ -20,10 +20,12 @@ export interface AppSettings {
   tagSoftLimit: number
   /** Vocabulary size at which new tags are blocked entirely (strict mode) */
   tagHardLimit: number
-  /** Allow development-only environment variables to override local secret storage. */
+  /**
+   * Allow development-only environment variables to override stored secrets.
+   * Honoured only in unpackaged builds; see `secrets/backends/envSecretsBackend.ts`.
+   * The variable prefix is the fixed constant `LLM_AGG_`.
+   */
   allowDevEnvSecrets: boolean
-  /** Prefix used for development environment secret variable names. */
-  devEnvSecretPrefix: string
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -51,7 +53,6 @@ export function loadSettings(): AppSettings {
     tagSoftLimit: 50,
     tagHardLimit: 100,
     allowDevEnvSecrets: false,
-    devEnvSecretPrefix: 'LLM_AGG_',
   }
 
   if (!existsSync(filepath)) {
@@ -66,13 +67,11 @@ export function loadSettings(): AppSettings {
       ...defaults,
       ...parsed,
     }
-    const normalizedPrefix = typeof merged.devEnvSecretPrefix === 'string'
-      ? merged.devEnvSecretPrefix.trim()
-      : ''
     return {
       ...merged,
-      allowDevEnvSecrets: Boolean(merged.allowDevEnvSecrets),
-      devEnvSecretPrefix: normalizedPrefix || defaults.devEnvSecretPrefix,
+      // Coerce explicitly: this flag gates a security-relevant code path, so a
+      // truthy-but-not-boolean value in the file must not enable it by accident.
+      allowDevEnvSecrets: merged.allowDevEnvSecrets === true,
     }
   } catch (err) {
     debugError('settingsService', 'Failed to load settings, using defaults:', err)

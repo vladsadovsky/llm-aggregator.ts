@@ -16,7 +16,15 @@ import { importFromFile } from '../services/fileImportService'
 import type { ImportResult } from '../services/qaImportFormatService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
 import type { SharedImportResult } from '../services/import/types'
-import { loadSecrets, saveSecrets, AppSecrets } from '../services/secretsService'
+import {
+  devEnvSecretVarNames,
+  getSecretsStatus,
+  loadSecrets,
+  recheckSecretsStorage,
+  saveSecrets,
+  type AppSecrets,
+  type SecretsStatus,
+} from '../services/secretsService'
 import { generateMetadata } from '../services/metadataService'
 import { generateEmbedding, generateAllEmbeddings, semanticSearch } from '../services/embeddingService'
 import { getProvider } from '../services/llm/providerFactory'
@@ -129,12 +137,25 @@ export function registerIpcHandlers(): void {
   })
 
   // ─── Secrets ───────────────────────────────────────────────
-  ipcMain.handle('secrets:load', async (): Promise<AppSecrets> => {
-    return loadSecrets()
+  // Raw key values never cross to the renderer. `secrets:load` returns presence,
+  // a masked preview, and provenance only.
+  ipcMain.handle('secrets:load', async (): Promise<SecretsStatus> => {
+    return getSecretsStatus()
   })
 
-  ipcMain.handle('secrets:save', async (_event, secrets: AppSecrets): Promise<void> => {
-    saveSecrets(secrets)
+  // Accepts a partial update: only the fields the user actually edited. Omitted
+  // keys keep their stored value.
+  ipcMain.handle('secrets:save', async (_event, updates: Partial<AppSecrets>): Promise<SecretsStatus> => {
+    saveSecrets(updates ?? {})
+    return getSecretsStatus()
+  })
+
+  ipcMain.handle('secrets:recheck', async (): Promise<SecretsStatus> => {
+    return recheckSecretsStorage()
+  })
+
+  ipcMain.handle('secrets:devEnvVarNames', async (): Promise<string[]> => {
+    return devEnvSecretVarNames()
   })
 
   // ─── AI / LLM ──────────────────────────────────────────────
@@ -166,15 +187,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'ai:listModels',
-    async (
-      _event,
-      providerId: string,
-      forceRefresh?: boolean,
-      openaiApiKeyOverride?: string,
-      anthropicApiKeyOverride?: string,
-    ) => {
-    const secrets = loadSecrets()
-      return listProviderModels(providerId, secrets, Boolean(forceRefresh), { openaiApiKeyOverride, anthropicApiKeyOverride })
+    async (_event, providerId: string, forceRefresh?: boolean, apiKeyOverride?: string) => {
+      // `apiKeyOverride` only ever carries a key the user has just typed into the
+      // Settings field, so discovery works before Save. When the field is
+      // untouched the renderer sends nothing and the key is resolved here.
+      const secrets = loadSecrets()
+      return listProviderModels(providerId, secrets, Boolean(forceRefresh), { apiKeyOverride })
     },
   )
 

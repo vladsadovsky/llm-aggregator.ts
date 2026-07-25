@@ -1,5 +1,30 @@
 # Export Targets Feasibility Research
 
+> **Superseded (2026-07-25).** Merged into
+> [`Export_And_Interchange_Master_Spec.md`](./Export_And_Interchange_Master_Spec.md)
+> Chapter 6, which is the maintained source of truth.
+>
+> Retained for provenance. The per-target findings and sources below stand; four
+> framing problems were corrected in the merge (master spec §6.1):
+>
+> 1. **Averaged verdicts removed.** "Gemini Notebook: medium feasibility overall"
+>    contradicted this document's own matrix (Low direct / High indirect) and hid the
+>    actual answer. Verdicts are now stated per mode.
+> 2. **Feasibility is now product-relative.** Apple Notes was rated "low to medium"
+>    without noting that this app is Windows-first; it is *not applicable* on the
+>    primary platform, which is a different statement.
+> 3. **Auth burden and blocking prerequisites added.** OneNote and Notion were rated
+>    "high feasibility" without accounting for OAuth setup and token storage — the
+>    latter being blocked on unfinished secrets work.
+> 4. **Effort re-expressed against the existing code seam.** This document did not
+>    reference the shipped format/transport split, so it read as greenfield research.
+>    The recommended Gemini Notebook path is largely the existing file exporter aimed
+>    at an ingestion point, which materially changes its cost.
+>
+> The master spec also adds what this document lacked: an explicit recommendation and
+> phasing, and a re-verification trigger for findings that depend on fast-moving
+> external products.
+
 Date: 2026-07-24
 Scope: research only (no design or implementation)
 Focus: feasibility of exporting archive content to OneNote, Apple Notes, Notion, and Gemini Notebook (formerly NotebookLM), with priority on Gemini Notebook.

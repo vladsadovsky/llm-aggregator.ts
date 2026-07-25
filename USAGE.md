@@ -8,7 +8,7 @@ LLM Aggregator is a personal research archive. You capture Q&A pairs from your A
 
 1. **Start the app.** On first run it opens with an empty archive in the current working directory.
 2. **Set your data folder.** Click the **gear icon** (top-left) → Settings → pick a directory. This is where your `archive/` folder and `threads.json` will live.
-3. **Optional: connect LLM Lens.** In Settings → AI tab, enter your OpenAI API key, choose a model, and click **Test Connection**.
+3. **Optional: connect LLM Lens.** In Settings → AI tab, pick a provider (OpenAI or Anthropic), enter that provider's API key, choose a model, and click **Test Connection**.
 
 ---
 
@@ -155,11 +155,25 @@ Use this to review and update confidence levels across many QA pairs at once.
 
 | Setting | Description |
 |---------|-------------|
-| Provider | AI provider (currently OpenAI; Anthropic coming) |
-| Model | `gpt-4o` (best quality), `gpt-4o-mini` (lower cost), `o3-mini` (reasoning) |
-| OpenAI API Key | Your API key — stored in OS user-data, never in the data directory |
+| Provider | **OpenAI** or **Anthropic**. Both support metadata generation and analysis; embeddings are OpenAI-only. |
+| Model | Fetched from the provider when a key is present, otherwise a cached/curated list. Each option shows Quality / Cost / Latency hints. |
+| Refresh | Re-fetch the model list from the provider |
+| API Key | The key for the selected provider. Encrypted with OS secure storage; never written to the data directory. |
 | Test Connection | Verify the API key works |
-| Generate All Embeddings | Index your archive for semantic search and LLM Lens |
+| Re-check secure storage | Re-probe OS secure storage if it was unavailable |
+| Generate All Embeddings | Index your archive for semantic search and LLM Lens (OpenAI only) |
+
+**About the API key field.** After you save a key, the field goes blank and shows a
+masked preview (`sk-…a1b2`) as placeholder text — the app never reads the stored key
+back out of secure storage into the window. Leave it blank to keep the current key;
+type a new value to replace it.
+
+**Upgrading?** Keys saved by earlier versions lived in a clear-text `secrets.json` and
+are no longer read. That file is renamed to `secrets.json.orphaned.bak` on first launch;
+re-enter your key in Settings, then delete the renamed file.
+
+**Anthropic note.** Embedding generation and semantic indexing require OpenAI; the
+button is disabled when Anthropic is selected.
 
 ---
 

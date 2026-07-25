@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
+import { initSecretsStorage } from './services/secretsService'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -276,6 +277,9 @@ function createWindow() {
 app.setName('LLM Aggregator');
 
 app.whenReady().then(() => {
+  // Must run before any secrets read: moves a legacy plaintext secrets.json aside
+  // so live keys are not left sitting in clear text with nothing to clean them up.
+  initSecretsStorage()
   createApplicationMenu()
   registerIpcHandlers()
   createWindow()
