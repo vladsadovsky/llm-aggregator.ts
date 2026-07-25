@@ -20,6 +20,10 @@ export interface AppSettings {
   tagSoftLimit: number
   /** Vocabulary size at which new tags are blocked entirely (strict mode) */
   tagHardLimit: number
+  /** Allow development-only environment variables to override local secret storage. */
+  allowDevEnvSecrets: boolean
+  /** Prefix used for development environment secret variable names. */
+  devEnvSecretPrefix: string
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -46,6 +50,8 @@ export function loadSettings(): AppSettings {
     tagEnforcement: 'warn',
     tagSoftLimit: 50,
     tagHardLimit: 100,
+    allowDevEnvSecrets: false,
+    devEnvSecretPrefix: 'LLM_AGG_',
   }
 
   if (!existsSync(filepath)) {
@@ -56,9 +62,17 @@ export function loadSettings(): AppSettings {
   try {
     const content = readFileSync(filepath, 'utf-8')
     const parsed = JSON.parse(content) as Partial<AppSettings>
-    return {
+    const merged = {
       ...defaults,
       ...parsed,
+    }
+    const normalizedPrefix = typeof merged.devEnvSecretPrefix === 'string'
+      ? merged.devEnvSecretPrefix.trim()
+      : ''
+    return {
+      ...merged,
+      allowDevEnvSecrets: Boolean(merged.allowDevEnvSecrets),
+      devEnvSecretPrefix: normalizedPrefix || defaults.devEnvSecretPrefix,
     }
   } catch (err) {
     debugError('settingsService', 'Failed to load settings, using defaults:', err)

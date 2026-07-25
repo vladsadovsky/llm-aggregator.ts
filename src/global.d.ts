@@ -8,6 +8,8 @@ export interface AppSettings {
   tagEnforcement: 'off' | 'warn' | 'strict'
   tagSoftLimit: number
   tagHardLimit: number
+  allowDevEnvSecrets: boolean
+  devEnvSecretPrefix: string
 }
 
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'

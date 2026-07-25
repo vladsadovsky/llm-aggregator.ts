@@ -562,9 +562,16 @@ Example:
 
 ```json
 {
-  "dataDirectory": "/path/to/your/data"
+  "dataDirectory": "/path/to/your/data",
+  "allowDevEnvSecrets": false,
+  "devEnvSecretPrefix": "LLM_AGG_"
 }
 ```
+
+In development builds, you can optionally enable **Use development environment variables for API keys**
+in Settings. When enabled, the app checks prefixed environment variables first (for example,
+`LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`) before local secret storage.
+This override is intended for development only and is ignored in packaged production builds.
 
 ### Default data directory on Windows
 
@@ -692,19 +699,20 @@ Why this format works well:
 1. Open **Settings** → **AI** tab
 2. Select provider (**OpenAI** or **Anthropic**)
 3. Enter the matching provider API key
-4. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
-5. Select a model using the Quality / Cost / Latency hints shown below the picker
-6. Click **Test Connection**
+4. Optional (development only): enable **Use development environment variables for API keys** and set the prefix if you want env-based key override behavior.
+5. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
+6. Select a model using the Quality / Cost / Latency hints shown below the picker
+7. Click **Test Connection**
 
 For OpenAI:
 
-7. Click **Generate All Embeddings** to index your archive
-8. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+8. Click **Generate All Embeddings** to index your archive
+9. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
 
 For Anthropic:
 
-7. Metadata and analysis generation works with Claude models.
-8. Embedding generation and semantic indexing are currently OpenAI-only in this app.
+8. Metadata and analysis generation works with Claude models.
+9. Embedding generation and semantic indexing are currently OpenAI-only in this app.
 
 The model list is cached locally in Electron user data (`model-catalog-cache.json`) so selection still works when provider discovery is temporarily unavailable.
 

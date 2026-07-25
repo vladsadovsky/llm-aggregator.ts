@@ -59,10 +59,13 @@ const showAnnotationDialog = ref(false)
 const showHealthDialog = ref(false)
 const showTagManager = ref(false)
 const modelCatalogWarning = ref('')
+const isDevMode = import.meta.env.DEV
 
 const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
 const tagSoftLimit = ref(50)
 const tagHardLimit = ref(100)
+const allowDevEnvSecrets = ref(false)
+const devEnvSecretPrefix = ref('LLM_AGG_')
 
 const enforcementOptions = [
   { label: 'Off — free-form tags', value: 'off' },
@@ -172,6 +175,8 @@ onMounted(async () => {
   tagEnforcement.value = settings.tagEnforcement ?? 'warn'
   tagSoftLimit.value = settings.tagSoftLimit ?? 50
   tagHardLimit.value = settings.tagHardLimit ?? 100
+  allowDevEnvSecrets.value = settings.allowDevEnvSecrets ?? false
+  devEnvSecretPrefix.value = settings.devEnvSecretPrefix || 'LLM_AGG_'
   await loadModelCatalog(false)
 })
 
@@ -191,6 +196,8 @@ async function save() {
       tagEnforcement: tagEnforcement.value,
       tagSoftLimit: tagSoftLimit.value,
       tagHardLimit: tagHardLimit.value,
+      allowDevEnvSecrets: allowDevEnvSecrets.value,
+      devEnvSecretPrefix: devEnvSecretPrefix.value.trim() || 'LLM_AGG_',
     }),
     window.api.secretsSave({ openaiApiKey: openaiApiKey.value, anthropicApiKey: anthropicApiKey.value }),
   ])
@@ -342,8 +349,43 @@ function handleKeydown(event: KeyboardEvent) {
         <label>AI / LLM</label>
         <p class="field-help">
           Used for metadata generation, embeddings, and future analysis features.
-          API keys are stored locally in <code>secrets.json</code> and never committed to git.
+          API keys are stored locally and never committed to git.
         </p>
+        <div
+          v-if="isDevMode"
+          class="dev-env-section"
+        >
+          <div class="checkbox-field">
+            <Checkbox
+              v-model="allowDevEnvSecrets"
+              input-id="allowDevEnvSecrets"
+              binary
+            />
+            <label
+              for="allowDevEnvSecrets"
+              class="checkbox-label"
+            >Use development environment variables for API keys</label>
+          </div>
+          <div
+            v-if="allowDevEnvSecrets"
+            class="dev-env-row"
+          >
+            <span class="field-help">Variable prefix</span>
+            <InputText
+              v-model="devEnvSecretPrefix"
+              class="prefix-input"
+              placeholder="LLM_AGG_"
+            />
+          </div>
+          <p
+            v-if="allowDevEnvSecrets"
+            class="field-help"
+            style="margin-top: 6px;"
+          >
+            Expected keys: {{ devEnvSecretPrefix || 'LLM_AGG_' }}OPENAI_API_KEY and {{ devEnvSecretPrefix || 'LLM_AGG_' }}ANTHROPIC_API_KEY.
+            This development-only override will be ignored in packaged production builds.
+          </p>
+        </div>
         <div class="ai-row">
           <Select
             v-model="llmProvider"
@@ -662,6 +704,25 @@ function handleKeydown(event: KeyboardEvent) {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.dev-env-section {
+  margin: 8px 0 10px;
+  padding: 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  background: var(--surface-50);
+}
+
+.dev-env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.prefix-input {
+  width: 180px;
 }
 
 .provider-select {

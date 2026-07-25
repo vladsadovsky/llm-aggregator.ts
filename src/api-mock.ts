@@ -8,6 +8,8 @@ export const mockApi: ElectronAPI = {
         tagEnforcement: 'warn' as const,
         tagSoftLimit: 50,
         tagHardLimit: 100,
+        allowDevEnvSecrets: false,
+        devEnvSecretPrefix: 'LLM_AGG_',
     }),
     settingsSave: async (settings: AppSettings) => {
         console.log('Mock: Saving settings', settings)
