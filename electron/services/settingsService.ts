@@ -11,7 +11,7 @@ export interface AppSettings {
   /** Absolute path to the data directory containing archive/ and threads.json */
   dataDirectory: string
   /** LLM provider to use for AI features */
-  llmProvider: 'openai' | 'anthropic'
+  llmProvider: string
   /** Model to use for completions (provider-specific) */
   llmModel: string
   /** Tag vocabulary enforcement mode */
@@ -20,6 +20,12 @@ export interface AppSettings {
   tagSoftLimit: number
   /** Vocabulary size at which new tags are blocked entirely (strict mode) */
   tagHardLimit: number
+  /**
+   * Allow development-only environment variables to override stored secrets.
+   * Honoured only in unpackaged builds; see `secrets/backends/envSecretsBackend.ts`.
+   * The variable prefix is the fixed constant `LLM_AGG_`.
+   */
+  allowDevEnvSecrets: boolean
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -46,6 +52,7 @@ export function loadSettings(): AppSettings {
     tagEnforcement: 'warn',
     tagSoftLimit: 50,
     tagHardLimit: 100,
+    allowDevEnvSecrets: false,
   }
 
   if (!existsSync(filepath)) {
@@ -56,9 +63,15 @@ export function loadSettings(): AppSettings {
   try {
     const content = readFileSync(filepath, 'utf-8')
     const parsed = JSON.parse(content) as Partial<AppSettings>
-    return {
+    const merged = {
       ...defaults,
       ...parsed,
+    }
+    return {
+      ...merged,
+      // Coerce explicitly: this flag gates a security-relevant code path, so a
+      // truthy-but-not-boolean value in the file must not enable it by accident.
+      allowDevEnvSecrets: merged.allowDevEnvSecrets === true,
     }
   } catch (err) {
     debugError('settingsService', 'Failed to load settings, using defaults:', err)

@@ -477,9 +477,18 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="qa-editor-overlay" @click.self="emit('cancel')">
-    <div class="qa-editor" v-focustrap @keydown="handleKeydown">
-      <h3 class="editor-title">New QA</h3>
+  <div
+    class="qa-editor-overlay"
+    @click.self="emit('cancel')"
+  >
+    <div
+      v-focustrap
+      class="qa-editor"
+      @keydown="handleKeydown"
+    >
+      <h3 class="editor-title">
+        New QA
+      </h3>
 
       <div class="field">
         <label>Title</label>
@@ -489,7 +498,10 @@ function handleKeydown(event: KeyboardEvent) {
           class="w-full" 
           autofocus
         />
-        <small v-if="autoTitle && !title" class="field-hint">
+        <small
+          v-if="autoTitle && !title"
+          class="field-hint"
+        >
           Will use: "{{ autoTitle }}"
         </small>
       </div>
@@ -500,8 +512,8 @@ function handleKeydown(event: KeyboardEvent) {
           <Select
             v-model="source"
             :options="sourceOptions"
-            optionLabel="label"
-            optionValue="value"
+            option-label="label"
+            option-value="value"
             placeholder="Select model"
             class="w-full"
           />
@@ -514,7 +526,10 @@ function handleKeydown(event: KeyboardEvent) {
             class="w-full"
             :class="{ 'p-invalid': urlError }"
           />
-          <small v-if="urlError" class="field-error">{{ urlError }}</small>
+          <small
+            v-if="urlError"
+            class="field-error"
+          >{{ urlError }}</small>
         </div>
       </div>
 
@@ -524,18 +539,27 @@ function handleKeydown(event: KeyboardEvent) {
           ref="tagsAutoCompleteRef"
           v-model="tags"
           :suggestions="tagSuggestions"
-          @complete="searchTags"
           multiple
           placeholder="Type to add tags..."
           class="w-full"
+          @complete="searchTags"
         />
-        <small v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0" class="field-hint tag-new-hint">
+        <small
+          v-if="tagStore.effectiveEnforcement === 'warn' && newTagsInInput.length > 0"
+          class="field-hint tag-new-hint"
+        >
           New tags (will be added to dictionary): {{ newTagsInInput.join(', ') }}
         </small>
-        <small v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'" class="field-hint tag-new-hint">
+        <small
+          v-if="tagStore.atSoftLimit && tagStore.effectiveEnforcement === 'warn'"
+          class="field-hint tag-new-hint"
+        >
           Tag vocabulary is large ({{ tagStore.tagCount }} tags). Consider reusing existing tags.
         </small>
-        <small v-if="tagStore.effectiveEnforcement === 'strict'" class="field-hint">
+        <small
+          v-if="tagStore.effectiveEnforcement === 'strict'"
+          class="field-hint"
+        >
           Only dictionary tags allowed.
         </small>
       </div>
@@ -546,14 +570,17 @@ function handleKeydown(event: KeyboardEvent) {
           v-model="targetThreadId"
           data-testid="target-thread-select"
           :options="threadOptions"
-          optionLabel="label"
-          optionValue="value"
+          option-label="label"
+          option-value="value"
           placeholder="Select thread"
           class="w-full"
         />
       </div>
 
-      <div v-if="needsNewThreadName" class="field">
+      <div
+        v-if="needsNewThreadName"
+        class="field"
+      >
         <label>New Thread Name</label>
         <InputText
           v-model="newThreadName"
@@ -568,7 +595,7 @@ function handleKeydown(event: KeyboardEvent) {
           ref="questionRef"
           v-model="question"
           rows="4"
-          autoResize
+          auto-resize
           placeholder="Enter question..."
           class="w-full"
           @paste="handleStructuredPaste"
@@ -580,42 +607,50 @@ function handleKeydown(event: KeyboardEvent) {
         <Textarea
           v-model="answer"
           rows="8"
-          autoResize
+          auto-resize
           placeholder="Enter answer..."
           class="w-full"
         />
       </div>
 
-      <div v-if="pendingBatchEntries.length > 0" class="field-hint batch-hint">
+      <div
+        v-if="pendingBatchEntries.length > 0"
+        class="field-hint batch-hint"
+      >
         Detected {{ pendingBatchEntries.length + 1 }} QA entries in pasted text.
       </div>
 
       <div class="button-row">
         <small class="shortcut-hint">Ctrl/Cmd+Enter create, Ctrl/Cmd+Shift+Enter create & add another, Alt+1..5 source, Esc cancel</small>
         <div class="button-group">
-          <Button label="Cancel" severity="secondary" outlined @click="emit('cancel')" />
+          <Button
+            label="Cancel"
+            severity="secondary"
+            outlined
+            @click="emit('cancel')"
+          />
           <Button
             v-if="pendingBatchEntries.length > 0"
             :label="`Create Parsed Batch (${pendingBatchEntries.length + 1})`"
             icon="pi pi-list-check"
             severity="secondary"
             outlined
-            @click="() => createParsedBatch()"
             :disabled="!canCreateBatch"
+            @click="() => createParsedBatch()"
           />
           <Button
             label="Create & Add Another"
             icon="pi pi-plus"
             severity="secondary"
             outlined
-            @click="() => create(true)"
             :disabled="!canCreate"
+            @click="() => create(true)"
           />
           <Button 
             label="Create QA" 
             icon="pi pi-check" 
-            @click="() => create()"
             :disabled="!canCreate"
+            @click="() => create()"
           />
         </div>
       </div>

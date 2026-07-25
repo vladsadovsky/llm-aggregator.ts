@@ -11,12 +11,13 @@ import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import InsightsPanel from './components/InsightsPanel.vue'
+import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { useTagStore } from './stores/tagStore'
-import { debugError } from './utils/logger'
-import type { ImportResult } from './global'
+import { debugError, debugLog } from './utils/logger'
+import type { ImportResult, SharedImportResult } from './global'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
@@ -31,23 +32,63 @@ const commandQuery = ref('')
 const isLoading = ref(true)
 const showImportSummary = ref(false)
 const importSummaryResult = ref<ImportResult | null>(null)
+const showSharedLinkImport = ref(false)
+const sharedImportBusy = ref(false)
+const sharedImportResult = ref<SharedImportResult | null>(null)
+const sharedImportError = ref('')
+let disposeMenuListener: (() => void) | null = null
 
 const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
 
+// ─── Central command registry ───────────────────────────────────────────────
+// Single source of truth for every end-user action. Both the command palette
+// and the native application menu (via the `menu-action` IPC channel) drive
+// these. Keyboard shortcuts remain owned by handleGlobalKeydown; `shortcut`
+// here is a display hint only.
+interface AppCommand {
+  id: string
+  label: string
+  shortcut: string
+  run: () => void
+}
+
+const appCommands: AppCommand[] = [
+  { id: 'search.focus', label: 'Focus Search', shortcut: `${modKeyLabel}+F`, run: focusSearch },
+  { id: 'qa.new', label: 'New Q&A', shortcut: `${modKeyLabel}+N`, run: openQAEditor },
+  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: 'E', run: requestEditSelectedQA },
+  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: 'D', run: requestDuplicateSelectedQA },
+  { id: 'qa.delete', label: 'Delete Selected Q&A', shortcut: 'Delete', run: requestDeleteSelectedQA },
+  { id: 'qa.save', label: 'Save Changes', shortcut: `${modKeyLabel}+S`, run: requestSaveCurrentEdit },
+  { id: 'qa.moveUp', label: 'Move Q&A Up in Thread', shortcut: 'Alt+Up', run: () => void moveSelectedQA(-1) },
+  { id: 'qa.moveDown', label: 'Move Q&A Down in Thread', shortcut: 'Alt+Down', run: () => void moveSelectedQA(1) },
+  { id: 'io.export', label: 'Export Selected Q&A / Thread', shortcut: 'X', run: requestExportSelected },
+  { id: 'io.importFile', label: 'Import from File', shortcut: `${modKeyLabel}+O`, run: () => void importFile() },
+  { id: 'io.importSharedLink', label: 'Import from Shared Link', shortcut: `${modKeyLabel}+Shift+O`, run: openSharedLinkImport },
+  { id: 'thread.new', label: 'New Thread', shortcut: '', run: requestNewThread },
+  { id: 'thread.rename', label: 'Rename Selected Thread', shortcut: 'F2', run: requestRenameSelectedThread },
+  { id: 'view.showAll', label: 'Show All Q&As', shortcut: '', run: requestShowAllQAs },
+  { id: 'view.showUnthreaded', label: 'Show Unthreaded Q&As', shortcut: '', run: requestShowUnthreaded },
+  { id: 'view.toggleThreads', label: 'Toggle Threads Panel', shortcut: '', run: toggleThreadsPanel },
+  { id: 'view.toggleList', label: 'Toggle List Panel', shortcut: '', run: toggleListPanel },
+  { id: 'view.zoomIn', label: 'Zoom Content In', shortcut: '', run: () => uiStore.zoomIn() },
+  { id: 'view.zoomOut', label: 'Zoom Content Out', shortcut: '', run: () => uiStore.zoomOut() },
+  { id: 'view.zoomReset', label: 'Reset Content Zoom', shortcut: '', run: () => uiStore.zoomReset() },
+  { id: 'view.darkMode', label: 'Toggle Dark Mode', shortcut: '', run: () => uiStore.toggleDarkMode() },
+  { id: 'view.lens', label: 'Toggle LLM Lens', shortcut: '', run: () => insightsPanelRef.value?.toggle() },
+  { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
+  { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
+  { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
+]
+
+function handleMenuAction(action: string) {
+  const command = appCommands.find((c) => c.id === action)
+  command?.run()
+}
+
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase()
-  const commands = [
-    { label: 'Focus Search', shortcut: `${modKeyLabel}+F`, action: focusSearch },
-    { label: 'Create New QA', shortcut: `${modKeyLabel}+N`, action: openQAEditor },
-    { label: 'Edit Selected QA', shortcut: 'E', action: requestEditSelectedQA },
-    { label: 'Delete Selected QA', shortcut: 'Delete', action: requestDeleteSelectedQA },
-    { label: 'Duplicate Selected QA', shortcut: 'D', action: requestDuplicateSelectedQA },
-    { label: 'Export Selected QA / Thread', shortcut: 'X', action: requestExportSelected },
-    { label: 'Import from File', shortcut: `${modKeyLabel}+O`, action: () => void importFile() },
-    { label: 'Open Settings', shortcut: `${modKeyLabel}+,`, action: openSettings },
-    { label: 'Show Shortcuts', shortcut: '?', action: openShortcutsHelp },
-  ]
-
+  // Exclude "Open Command Palette" — you're already in it here.
+  const commands = appCommands.filter((c) => c.id !== 'app.commandPalette')
   if (!query) return commands
   return commands.filter((command) => {
     return (
@@ -88,7 +129,20 @@ onMounted(async () => {
 
   // Add global keyboard event listener
   window.addEventListener('keydown', handleGlobalKeydown)
+  // Import actions dispatched from the Threads-panel Import menu
+  window.addEventListener('llm:import-file', handleImportFileEvent)
+  window.addEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
+  // Native application-menu items route here
+  disposeMenuListener = window.api.onMenuAction?.(handleMenuAction) ?? null
 })
+
+function handleImportFileEvent() {
+  void importFile()
+}
+
+function handleImportSharedLinkEvent() {
+  openSharedLinkImport()
+}
 
 onErrorCaptured((err: any) => {
   debugError('App', 'Unhandled error:', err)
@@ -98,6 +152,9 @@ onErrorCaptured((err: any) => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('llm:import-file', handleImportFileEvent)
+  window.removeEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
+  disposeMenuListener?.()
 })
 
 function isInputTarget(target: HTMLElement): boolean {
@@ -156,6 +213,18 @@ function requestRenameSelectedThread() {
   window.dispatchEvent(new Event('llm:rename-selected-thread'))
 }
 
+function requestNewThread() {
+  window.dispatchEvent(new Event('llm:new-thread'))
+}
+
+function requestShowAllQAs() {
+  window.dispatchEvent(new Event('llm:show-all-qas'))
+}
+
+function requestShowUnthreaded() {
+  window.dispatchEvent(new Event('llm:show-unthreaded'))
+}
+
 function requestEditSelectedQA() {
   window.dispatchEvent(new Event('llm:edit-selected-qa'))
 }
@@ -181,7 +250,7 @@ async function exportSelectedThread() {
   if (!threadStore.selectedThreadId) return
   const result = await window.api.exportThread(threadStore.selectedThreadId)
   if (result) {
-    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    const filename = result.savedPath.split(/[/\\]/).pop() ?? result.savedPath
     toast?.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
   }
 }
@@ -225,6 +294,137 @@ async function importFile() {
   if (hasWarnings) {
     importSummaryResult.value = result
     showImportSummary.value = true
+  }
+}
+
+function openSharedLinkImport() {
+  debugLog('sharedImportTrace', 'opening shared-link import dialog')
+  sharedImportResult.value = null
+  sharedImportError.value = ''
+  sharedImportBusy.value = false
+  showSharedLinkImport.value = true
+}
+
+async function handleSharedLinkImport(url: string) {
+  debugLog('sharedImportTrace', 'submit start', {
+    url,
+    selectedThreadId: threadStore.selectedThreadId,
+  })
+  sharedImportBusy.value = true
+  sharedImportError.value = ''
+  try {
+    const result = await window.api.importSharedLink(url)
+    debugLog('sharedImportTrace', 'provider result received', {
+      provider: result.provider,
+      model: result.model,
+      threadName: result.threadName,
+      titleWasDerived: result.titleWasDerived,
+      tags: result.tags,
+      items: result.items.length,
+      warnings: result.warnings.length,
+      firstItem: result.items[0]
+        ? {
+            title: result.items[0].data.title,
+            source: result.items[0].data.source,
+            questionLength: result.items[0].data.question.length,
+            answerLength: result.items[0].data.answer.length,
+            warnings: result.items[0].warnings,
+          }
+        : null,
+    })
+
+    // Create every QA pair, preserving conversation order.
+    const createdIds: string[] = []
+    for (const item of result.items) {
+      debugLog('sharedImportTrace', 'creating QA from imported item', {
+        title: item.data.title,
+        source: item.data.source,
+        tags: item.data.tags,
+        questionLength: item.data.question.length,
+        answerLength: item.data.answer.length,
+        warnings: item.warnings,
+      })
+      try {
+        const created = await qaStore.createPair(item.data)
+        createdIds.push(created.id)
+        debugLog('sharedImportTrace', 'createPair success', {
+          createdId: created.id,
+          title: created.title,
+          createdCount: createdIds.length,
+        })
+      } catch (err) {
+        debugError('App', 'handleSharedLinkImport: createPair failed for', item.data.title, err)
+      }
+    }
+
+    debugLog('sharedImportTrace', 'createPair phase completed', {
+      importedItems: result.items.length,
+      createdIds,
+      failedCreates: result.items.length - createdIds.length,
+    })
+
+    // Create the thread, tag it with provider/model, and add pairs in order.
+    if (createdIds.length > 0) {
+      debugLog('sharedImportTrace', 'creating thread for imported QAs', {
+        threadName: result.threadName,
+        createdIds,
+      })
+      const tid = await threadStore.createThread(result.threadName)
+      debugLog('sharedImportTrace', 'thread created', {
+        threadId: tid,
+        initialItems: threadStore.threads[tid]?.items ?? null,
+      })
+      if (result.tags.length > 0) {
+        await threadStore.updateThread(tid, result.threadName, result.tags)
+        debugLog('sharedImportTrace', 'thread tags applied', {
+          threadId: tid,
+          tags: result.tags,
+        })
+      }
+      for (const id of createdIds) {
+        debugLog('sharedImportTrace', 'addToThread start', { threadId: tid, pairId: id })
+        await threadStore.addToThread(tid, id)
+        debugLog('sharedImportTrace', 'addToThread completed', {
+          threadId: tid,
+          pairId: id,
+          currentItems: threadStore.threads[tid]?.items ?? null,
+        })
+      }
+      await qaStore.loadAllPairs()
+      await threadStore.loadThreads()
+      debugLog('sharedImportTrace', 'post-reload thread snapshot', {
+        threadId: tid,
+        exists: Boolean(threadStore.threads[tid]),
+        itemCount: threadStore.threads[tid]?.items?.length ?? 0,
+        items: threadStore.threads[tid]?.items ?? [],
+      })
+
+      // Ensure we exit virtual/archive views so the imported thread is shown directly.
+      uiStore.showAllQAs = false
+      uiStore.showUnthreaded = false
+      uiStore.showGlobalSearchResults = false
+      uiStore.globalSearchResultIds = null
+      uiStore.searchScope = 'thread'
+
+      threadStore.selectThread(tid)
+      if (createdIds.length > 0) {
+        qaStore.selectPair(createdIds[0])
+      }
+    }
+
+    sharedImportResult.value = result
+
+    const detail = `${createdIds.length} QA${createdIds.length !== 1 ? 's' : ''} imported from ${result.model}`
+    if (result.titleWasDerived) {
+      toast?.add({ severity: 'warn', summary: 'Imported — please rename the thread', detail, life: 6000 })
+    } else {
+      toast?.add({ severity: 'success', summary: 'Import successful', detail, life: 4000 })
+    }
+  } catch (err) {
+    sharedImportError.value = (err as Error).message || 'Import failed.'
+    debugError('App', 'handleSharedLinkImport failed', err)
+  } finally {
+    sharedImportBusy.value = false
   }
 }
 
@@ -353,8 +553,15 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
+  // Ctrl/Cmd + Shift + O: Import from shared link
+  if (isMod && event.shiftKey && key === 'o') {
+    event.preventDefault()
+    openSharedLinkImport()
+    return
+  }
+
   // Ctrl/Cmd + O: Import from file
-  if (isMod && key === 'o') {
+  if (isMod && !event.shiftKey && key === 'o') {
     event.preventDefault()
     void importFile()
     return
@@ -378,7 +585,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 <template>
   <Toast position="bottom-right" />
   <ConfirmDialog />
-  <SettingsDialog v-if="showSettings" @close="showSettings = false" />
+  <SettingsDialog
+    v-if="showSettings"
+    @close="showSettings = false"
+  />
   <div
     v-if="showCommandPalette"
     class="overlay"
@@ -395,12 +605,15 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           v-for="command in filteredCommands"
           :key="command.label"
           class="command-item"
-          @click="runCommand(command.action)"
+          @click="runCommand(command.run)"
         >
           <span>{{ command.label }}</span>
-          <kbd>{{ command.shortcut }}</kbd>
+          <kbd v-if="command.shortcut">{{ command.shortcut }}</kbd>
         </button>
-        <p v-if="filteredCommands.length === 0" class="command-empty">
+        <p
+          v-if="filteredCommands.length === 0"
+          class="command-empty"
+        >
           No commands match.
         </p>
       </div>
@@ -428,6 +641,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
           <tr><td>X</td><td>Export selected QA or thread to file</td></tr>
           <tr><td>{{ modKeyLabel }}+O</td><td>Import from file</td></tr>
+          <tr><td>{{ modKeyLabel }}+Shift+O</td><td>Import from shared link</td></tr>
           <tr><td>?</td><td>Show this help</td></tr>
           <tr><td>{{ modKeyLabel }}+Enter</td><td>Submit QA form</td></tr>
         </tbody>
@@ -445,32 +659,82 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     data-testid="import-summary-dialog"
   >
     <div v-if="importSummaryResult">
-      <p v-if="importSummaryResult.fileWarnings.length > 0" class="import-section-label">File warnings</p>
-      <ul v-if="importSummaryResult.fileWarnings.length > 0" class="import-warnings-list">
-        <li v-for="(w, i) in importSummaryResult.fileWarnings" :key="'fw-' + i">{{ w }}</li>
+      <p
+        v-if="importSummaryResult.fileWarnings.length > 0"
+        class="import-section-label"
+      >
+        File warnings
+      </p>
+      <ul
+        v-if="importSummaryResult.fileWarnings.length > 0"
+        class="import-warnings-list"
+      >
+        <li
+          v-for="(w, i) in importSummaryResult.fileWarnings"
+          :key="'fw-' + i"
+        >
+          {{ w }}
+        </li>
       </ul>
-      <p v-if="importSummaryResult.items.some(it => it.warnings.length > 0)" class="import-section-label">Item warnings</p>
+      <p
+        v-if="importSummaryResult.items.some(it => it.warnings.length > 0)"
+        class="import-section-label"
+      >
+        Item warnings
+      </p>
       <ul class="import-warnings-list">
-        <template v-for="(item, idx) in importSummaryResult.items" :key="idx">
-          <li v-for="(w, wi) in item.warnings" :key="idx + '-' + wi">{{ w }}</li>
+        <template
+          v-for="(item, idx) in importSummaryResult.items"
+          :key="idx"
+        >
+          <li
+            v-for="(w, wi) in item.warnings"
+            :key="idx + '-' + wi"
+          >
+            {{ w }}
+          </li>
         </template>
       </ul>
     </div>
     <template #footer>
-      <Button label="Close" @click="showImportSummary = false" />
+      <Button
+        label="Close"
+        @click="showImportSummary = false"
+      />
     </template>
   </Dialog>
 
+  <!-- Shared-link import dialog -->
+  <SharedLinkImportDialog
+    v-model:visible="showSharedLinkImport"
+    :busy="sharedImportBusy"
+    :result="sharedImportResult"
+    :error="sharedImportError"
+    @submit="handleSharedLinkImport"
+  />
+
   <!-- Loading screen -->
-  <div v-if="isLoading" class="loading-screen">
+  <div
+    v-if="isLoading"
+    class="loading-screen"
+  >
     <div class="loading-content">
-      <i class="pi pi-spin pi-spinner" style="font-size: 2rem; color: var(--primary-color)"></i>
+      <i
+        class="pi pi-spin pi-spinner"
+        style="font-size: 2rem; color: var(--primary-color)"
+      />
       <p>Loading LLM Aggregator...</p>
     </div>
   </div>
 
-  <div v-else class="app-container">
-    <div class="panel-wrap" :class="{ collapsed: uiStore.threadsCollapsed }">
+  <div
+    v-else
+    class="app-container"
+  >
+    <div
+      class="panel-wrap"
+      :class="{ collapsed: uiStore.threadsCollapsed }"
+    >
       <div class="panel-content panel-content--threads">
         <div class="app-toolbar">
           <span class="app-brand">LLM Aggregator</span>
@@ -487,7 +751,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       </button>
     </div>
 
-    <div class="panel-wrap panel-wrap--list" :class="{ collapsed: uiStore.listCollapsed }">
+    <div
+      class="panel-wrap panel-wrap--list"
+      :class="{ collapsed: uiStore.listCollapsed }"
+    >
       <div class="panel-content panel-content--list">
         <QAListPanel />
       </div>
@@ -503,49 +770,58 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
     <div class="content-wrap">
       <div class="content-header-toolbar">
-         <div class="spacer breadcrumb">
-           <template v-if="uiStore.showAllQAs">
-             <span class="bc-item" @click="uiStore.showAllQAs = true">All QAs</span>
-           </template>
-           <template v-else-if="threadStore.selectedThreadId">
-             <span class="bc-item" @click="uiStore.showAllQAs = false">Threads</span>
-             <i class="pi pi-angle-right bc-separator"></i>
-             <span class="bc-item bc-active">{{ threadStore.selectedThread?.name }}</span>
-           </template>
-           <template v-else-if="uiStore.showUnthreaded">
-             <span class="bc-item">Unthreaded</span>
-           </template>
-           <template v-if="qaStore.selectedPair()">
-             <i class="pi pi-angle-right bc-separator"></i>
-             <span class="bc-item bc-active qa-title" :title="qaStore.selectedPair()!.title">{{ qaStore.selectedPair()!.title }}</span>
-           </template>
-         </div>
-         <div class="toolbar-buttons px-2 py-1">
-            <Button
-              icon="pi pi-sparkles"
-              text
-              rounded
-              size="small"
-              title="Lens — Session Brief / Prior Art"
-              @click="insightsPanelRef?.toggle()"
-            />
-            <Button
-              :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
-              text
-              rounded
-              size="small"
-              :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
-              @click="uiStore.toggleDarkMode()"
-            />
-            <Button
-              icon="pi pi-cog"
-              text
-              rounded
-              size="small"
-              :title="`Settings (${modKeyLabel}+,)`"
-              @click="showSettings = true"
-            />
-         </div>
+        <div class="spacer breadcrumb">
+          <template v-if="uiStore.showAllQAs">
+            <span
+              class="bc-item"
+              @click="uiStore.showAllQAs = true"
+            >All QAs</span>
+          </template>
+          <template v-else-if="threadStore.selectedThreadId">
+            <span
+              class="bc-item"
+              @click="uiStore.showAllQAs = false"
+            >Threads</span>
+            <i class="pi pi-angle-right bc-separator" />
+            <span class="bc-item bc-active">{{ threadStore.selectedThread?.name }}</span>
+          </template>
+          <template v-else-if="uiStore.showUnthreaded">
+            <span class="bc-item">Unthreaded</span>
+          </template>
+          <template v-if="qaStore.selectedPair()">
+            <i class="pi pi-angle-right bc-separator" />
+            <span
+              class="bc-item bc-active qa-title"
+              :title="qaStore.selectedPair()!.title"
+            >{{ qaStore.selectedPair()!.title }}</span>
+          </template>
+        </div>
+        <div class="toolbar-buttons px-2 py-1">
+          <Button
+            icon="pi pi-sparkles"
+            text
+            rounded
+            size="small"
+            title="Lens — Session Brief / Prior Art"
+            @click="insightsPanelRef?.toggle()"
+          />
+          <Button
+            :icon="uiStore.darkMode ? 'pi pi-sun' : 'pi pi-moon'"
+            text
+            rounded
+            size="small"
+            :title="uiStore.darkMode ? 'Light mode' : 'Dark mode'"
+            @click="uiStore.toggleDarkMode()"
+          />
+          <Button
+            icon="pi pi-cog"
+            text
+            rounded
+            size="small"
+            :title="`Settings (${modKeyLabel}+,)`"
+            @click="showSettings = true"
+          />
+        </div>
       </div>
       <QAContentPanel />
     </div>

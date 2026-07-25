@@ -1,12 +1,86 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
 export interface AppSettings {
   dataDirectory: string
-  llmProvider: 'openai' | 'anthropic'
+  llmProvider: string
   llmModel: string
   tagEnforcement: 'off' | 'warn' | 'strict'
   tagSoftLimit: number
   tagHardLimit: number
+  allowDevEnvSecrets: boolean
+}
+
+export interface AppSecrets {
+  openaiApiKey: string
+  anthropicApiKey: string
+}
+
+export type SecretKey = keyof AppSecrets
+export type SecretSource = 'env' | 'safe-storage' | 'none'
+export type SecretBackendId = Exclude<SecretSource, 'none'>
+
+export type SecretErrorCode =
+  | 'ENV_DISABLED'
+  | 'ENV_IGNORED_PACKAGED'
+  | 'ENV_MALFORMED'
+  | 'SAFE_STORAGE_UNAVAILABLE'
+  | 'SAFE_STORAGE_READ_FAIL'
+  | 'SAFE_STORAGE_DECRYPT_FAIL'
+  | 'SAFE_STORAGE_WRITE_FAIL'
+  | 'LEGACY_FILE_ORPHANED'
+  | 'NO_SECRET_AVAILABLE'
+
+export interface SecretWarning {
+  code: SecretErrorCode
+  message: string
+}
+
+export interface SecretKeyStatus {
+  hasKey: boolean
+  maskedPreview: string
+  source: SecretSource
+  readOnly: boolean
+}
+
+/** Non-secret view of secret storage. Raw key values never reach the renderer. */
+export interface SecretsStatus {
+  keys: Record<SecretKey, SecretKeyStatus>
+  warnings: SecretWarning[]
+  backends: Array<{ id: SecretBackendId; available: boolean; writable: boolean }>
+}
+
+export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
+export type LatencyTier = 'fast' | 'medium' | 'slow' | 'unknown'
+
+export interface ProviderDescriptor {
+  id: string
+  label: string
+  kind: 'openai' | 'anthropic' | 'openai-compatible'
+  enabled: boolean
+  comingSoon?: boolean
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  supportsModelDiscovery: boolean
+  notes?: string
+}
+
+export interface ModelDescriptor {
+  id: string
+  label: string
+  providerId: string
+  qualityTier: ModelTier
+  costTier: ModelTier
+  latencyTier: LatencyTier
+  recommendedFor: string[]
+  notes?: string
+  rank?: number
+}
+
+export interface ModelCatalogResult {
+  providerId: string
+  source: 'api' | 'cache' | 'static'
+  fetchedAt: string
+  warning?: string
+  models: ModelDescriptor[]
 }
 
 export interface TagEntry {
@@ -37,15 +111,36 @@ export interface ExportResult {
   savedPath: string
 }
 
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+
+export interface SharedImportQA {
+  data: QACreateData
+  warnings: string[]
+}
+
+export interface SharedImportResult {
+  provider: ProviderId
+  url: string
+  model: string
+  threadName: string
+  titleWasDerived: boolean
+  tags: string[]
+  items: SharedImportQA[]
+  warnings: string[]
+}
+
 export interface ElectronAPI {
   // Settings
   settingsLoad: () => Promise<AppSettings>
   settingsSave: (settings: AppSettings) => Promise<void>
   settingsPickDirectory: () => Promise<string | null>
 
-  // Secrets
-  secretsLoad: () => Promise<AppSecrets>
-  secretsSave: (secrets: AppSecrets) => Promise<void>
+  // Secrets — write-only. Reads return status/metadata, never key values.
+  secretsLoad: () => Promise<SecretsStatus>
+  /** Send only the keys the user edited; omitted keys keep their stored value. */
+  secretsSave: (updates: Partial<AppSecrets>) => Promise<SecretsStatus>
+  secretsRecheck: () => Promise<SecretsStatus>
+  secretsDevEnvVarNames: () => Promise<string[]>
 
   // Threads
   threadsLoad: () => Promise<Record<string, { name: string; items: string[] }>>
@@ -67,6 +162,13 @@ export interface ElectronAPI {
   aiGenerateEmbedding: (id: string) => Promise<void>
   aiGenerateAllEmbeddings: () => Promise<{ total: number; generated: number; skipped: number }>
   aiTestConnection: () => Promise<{ ok: boolean; error?: string }>
+  aiListProviders: () => Promise<ProviderDescriptor[]>
+  /** `apiKeyOverride` carries only a just-typed, unsaved key for the queried provider. */
+  aiListModels: (
+    providerId: string,
+    forceRefresh?: boolean,
+    apiKeyOverride?: string,
+  ) => Promise<ModelCatalogResult>
   aiSessionBrief: (topic: string) => Promise<string>
   aiPriorArt: (query: string) => Promise<string>
   aiGetTokenStats: () => Promise<{ llm: { input: number; output: number }; embeddings: { input: number } }>
@@ -95,6 +197,10 @@ export interface ElectronAPI {
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
   importFromFile: () => Promise<ImportResult | null>
+  importSharedLink: (url: string) => Promise<SharedImportResult>
+
+  // Native application menu → renderer. Returns an unsubscribe function.
+  onMenuAction: (callback: (action: string) => void) => () => void
 }
 
 export interface QAPairData {
@@ -139,11 +245,6 @@ export interface QAUpdateData {
   aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
   aiSummary?: string
   aiRelatedIds?: string[]
-}
-
-export interface AppSecrets {
-  openaiApiKey: string
-  anthropicApiKey: string
 }
 
 export type ConfidenceLevel = 'speculative' | 'working' | 'confident' | 'validated'
@@ -210,6 +311,9 @@ const api: ElectronAPI = {
   aiGenerateEmbedding: (id) => ipcRenderer.invoke('ai:generateEmbedding', id),
   aiGenerateAllEmbeddings: () => ipcRenderer.invoke('ai:generateAllEmbeddings'),
   aiTestConnection: () => ipcRenderer.invoke('ai:testConnection'),
+  aiListProviders: () => ipcRenderer.invoke('ai:listProviders'),
+  aiListModels: (providerId, forceRefresh, apiKeyOverride) =>
+    ipcRenderer.invoke('ai:listModels', providerId, Boolean(forceRefresh), apiKeyOverride),
   aiSessionBrief: (topic) => ipcRenderer.invoke('ai:sessionBrief', topic),
   aiPriorArt: (query) => ipcRenderer.invoke('ai:priorArt', query),
   aiGetTokenStats: () => ipcRenderer.invoke('ai:getTokenStats'),
@@ -225,7 +329,9 @@ const api: ElectronAPI = {
 
   // Secrets
   secretsLoad: () => ipcRenderer.invoke('secrets:load'),
-  secretsSave: (secrets) => ipcRenderer.invoke('secrets:save', secrets),
+  secretsSave: (updates) => ipcRenderer.invoke('secrets:save', updates),
+  secretsRecheck: () => ipcRenderer.invoke('secrets:recheck'),
+  secretsDevEnvVarNames: () => ipcRenderer.invoke('secrets:devEnvVarNames'),
 
   // Tag Dictionary
   tagsLoad: () => ipcRenderer.invoke('tags:load'),
@@ -242,6 +348,13 @@ const api: ElectronAPI = {
   exportQA: (id) => ipcRenderer.invoke('export:qa', id),
   exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
   importFromFile: () => ipcRenderer.invoke('import:file'),
+  importSharedLink: (url) => ipcRenderer.invoke('import:sharedLink', url),
+
+  onMenuAction: (callback) => {
+    const handler = (_event: IpcRendererEvent, action: string) => callback(action)
+    ipcRenderer.on('menu-action', handler)
+    return () => ipcRenderer.removeListener('menu-action', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

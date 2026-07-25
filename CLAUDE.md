@@ -35,7 +35,16 @@ src/                                 electron/
 | `electron/services/qaPairService.ts` | Archive `.md` file CRUD |
 | `electron/services/threadService.ts` | `threads.json` CRUD |
 | `electron/services/searchService.ts` | Full-text and tag search |
+| `electron/services/import/` | Shared-link conversation import (ChatGPT/Gemini/Copilot) |
 | `electron/services/settingsService.ts` | `settings.json` load/save |
+| `electron/services/secretsService.ts` | API key storage entry point (chain wiring, startup sweep) |
+| `electron/services/secrets/secretResolver.ts` | Precedence chain, partial save, status projection |
+| `electron/services/secrets/secretBackendTypes.ts` | `SecretBackend` contract, error taxonomy, masking |
+| `electron/services/secrets/backends/` | `env` (dev override) and `safe-storage` (OS-encrypted) backends |
+| `electron/services/secrets/legacyCleanup.ts` | Renames legacy plaintext `secrets.json` aside on startup |
+| `electron/services/llm/providerRegistry.ts` | Provider catalog (id, kind, capabilities) |
+| `electron/services/llm/modelCatalogService.ts` | Model discovery + cache + curated fallbacks |
+| `electron/services/llm/anthropicProvider.ts` | Anthropic completions provider |
 | `electron/services/pathResolver.ts` | Data directory resolution |
 | `electron/services/logger.ts` | Dev-only logging (Electron side) |
 | `src/App.vue` | Root component, layout, app-level events |
@@ -43,6 +52,7 @@ src/                                 electron/
 | `src/components/QAListPanel.vue` | Middle column — QA list with search |
 | `src/components/QAContentPanel.vue` | Right column — QA viewer/editor |
 | `src/components/QAEditor.vue` | Modal dialog for creating new QA |
+| `src/components/SharedLinkImportDialog.vue` | Modal dialog for importing a shared conversation link |
 | `src/components/QAEditForm.vue` | Inline form for editing existing QA |
 | `src/components/QAMetadataBar.vue` | Metadata display (source, tags, date) |
 | `src/components/MarkdownRenderer.vue` | Markdown + syntax highlighting |
@@ -124,6 +134,45 @@ All renderer↔main communication uses `ipcRenderer.invoke()` / `ipcMain.handle(
 | `qaUpdate(id, data)` | `QAPairData` | Update .md file, increment version |
 | `qaDelete(id)` | `void` | Delete .md file |
 | `searchQuery(q, type)` | `string[]` | Full-text or tag search, returns IDs |
+| `secretsLoad()` | `SecretsStatus` | Key **presence, masked preview, provenance** — never key values |
+| `secretsSave(updates)` | `SecretsStatus` | Save a **partial** update; omitted keys keep stored values |
+| `secretsRecheck()` | `SecretsStatus` | Re-probe backend availability |
+| `secretsDevEnvVarNames()` | `string[]` | Env var names the dev override reads |
+| `aiListProviders()` | `ProviderDescriptor[]` | Available LLM providers and their capabilities |
+| `aiListModels(id, force?, keyOverride?)` | `ModelCatalogResult` | Model catalog (api / cache / static) |
+| `importSharedLink(url)` | `SharedImportResult` | Import a shared LLM conversation (ChatGPT/Gemini/Copilot) as QA pairs |
+| `onMenuAction(cb)` | `() => void` | Subscribe to native-menu clicks (main → renderer `menu-action`); returns an unsubscribe fn |
+
+## Command Exposure (palette + menu)
+
+Every end-user action lives in one registry: **`appCommands`** in `src/App.vue`
+(`{ id, label, shortcut, run }`). It feeds both the **command palette** and the native
+**application menu**:
+
+- The menu is built in `electron/main.ts` (`createApplicationMenu`). App-specific items call
+  `mainWindow.webContents.send('menu-action', '<id>')` — they carry **no accelerators** (the
+  shortcut is a display hint only), so keyboard handling stays solely in `handleGlobalKeydown`.
+- `preload.ts` exposes `onMenuAction`; `App.vue` maps the incoming id back to `appCommands[].run`.
+- Cross-component actions use the existing `llm:*` window-event pattern (e.g. `llm:new-thread`,
+  `llm:show-all-qas`, `llm:import-shared-link`), with listeners in the owning component.
+
+**When adding a user action:** add it to `appCommands` (palette + menu-dispatch), add a menu item
+in `main.ts`, and — only for high-traffic actions — a toolbar/context button.
+
+## Shared-Link Import
+
+`electron/services/import/` turns a **shared conversation URL** into QA pairs + a thread.
+The renderer (`SharedLinkImportDialog.vue` → `App.vue`) creates the pairs and thread from the
+returned `SharedImportResult`, mirroring the file-import flow.
+
+- **ChatGPT** — JSON from `chatgpt.com/backend-api/share/<id>` (walks the `mapping` tree).
+- **Copilot** — JSON from `copilot.microsoft.com/c/api/conversations/shares/<id>` (sorted by `createdAt`).
+- **Gemini** — no server JSON; rendered in a hidden `BrowserWindow` and extracted from the DOM.
+
+Transport uses Electron's `net` module (Chromium stack — Node `fetch` overflows on Google's
+headers). Provider parsers are **pure** (no Electron/FS) and unit-tested. The thread + every QA
+are tagged with the provider and model name; if no title is found, the thread name is derived
+from the first question and the UI reminds the user to rename it.
 
 ## Tech Stack
 
@@ -182,6 +231,11 @@ Per the project owner's stated roadmap:
 - Better LLM integration (auto-import from chats)
 - Thread hierarchies / nesting
 - Better search (vector indexing, semantic search)
-- Anthropic provider implementation
 - Enhanced markdown editor
 - Import/export formats
+
+Sequenced work in flight (see `doc/plans/`):
+1. Secrets storage V1 Step 6 — migrate legacy keys instead of only orphaning them
+2. Replace the hand-rolled Anthropic `fetch` client with `@anthropic-ai/sdk`
+   (fixes `max_tokens`/`stop_reason` handling, timeouts, and token tracking)
+3. Secrets storage V2 — key lifecycle controls, guided recovery, multi-provider namespace

@@ -29,7 +29,10 @@ const rendered = computed(() => {
 </script>
 
 <template>
-  <div class="markdown-body" v-html="rendered" />
+  <div
+    class="markdown-body"
+    v-html="rendered"
+  />
 </template>
 
 <style>

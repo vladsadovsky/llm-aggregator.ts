@@ -17,21 +17,22 @@ Built with Vue 3, TypeScript, Electron, and PrimeVue.
 5. [Core User Workflows](#core-user-workflows)
 6. [Structured Paste and Batch Creation](#structured-paste-and-batch-creation)
 7. [Export and Import](#export-and-import)
-8. [Keyboard Shortcuts](#keyboard-shortcuts)
-9. [Getting Started](#getting-started)
-10. [Build, Test, and Script Reference](#build-test-and-script-reference)
-11. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
-12. [Debugging in VS Code](#debugging-in-vs-code)
-13. [Building Native Installers](#building-native-installers)
-14. [Runtime Configuration](#runtime-configuration)
-15. [Data Model and File Format](#data-model-and-file-format)
-16. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
-17. [Project Structure](#project-structure)
-18. [Technology Stack](#technology-stack)
-19. [Generative AI Usage](#generative-ai-usage)
-20. [Contributing](#contributing)
-21. [Credits](#credits)
-22. [License](#license)
+8. [Command Palette and Menus](#command-palette-and-menus)
+9. [Keyboard Shortcuts](#keyboard-shortcuts)
+10. [Getting Started](#getting-started)
+11. [Build, Test, and Script Reference](#build-test-and-script-reference)
+12. [UI Testing Guide (Playwright)](#ui-testing-guide-playwright)
+13. [Debugging in VS Code](#debugging-in-vs-code)
+14. [Building Native Installers](#building-native-installers)
+15. [Runtime Configuration](#runtime-configuration)
+16. [Data Model and File Format](#data-model-and-file-format)
+17. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
+18. [Project Structure](#project-structure)
+19. [Technology Stack](#technology-stack)
+20. [Generative AI Usage](#generative-ai-usage)
+21. [Contributing](#contributing)
+22. [Credits](#credits)
+23. [License](#license)
 
 ---
 
@@ -133,6 +134,13 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 - Thread imports reconstruct the thread and item order automatically.
 - Import always creates new records; existing content is never overwritten.
 - Version mismatches are handled with best-effort parsing and a per-item warning summary.
+
+#### Import from a shared conversation link
+- Paste a public share link from **ChatGPT**, **Gemini**, or **Copilot** to import a whole
+  conversation at once — it is split into Q&A pairs and grouped into a new thread.
+- The thread and every imported QA are tagged with the provider and model name.
+- If a conversation title is found it becomes the thread name; otherwise a name is derived from
+  the first question and the app reminds you to rename it.
 
 #### Export  to a note
 Same as a to a file, but targeting one note or section in a note repository app (OneNote or Apple Notes)
@@ -257,6 +265,66 @@ Files without a YAML header are accepted. The parser uses the same flexible rule
 
 Missing fields are filled with safe defaults and listed in the import summary.
 
+### Importing from a shared conversation link
+
+Import an entire shared conversation from a public link. Choose **Import → Shared link** (command
+palette or the Import menu) and paste a URL of one of these forms:
+
+- `https://chatgpt.com/share/…`
+- `https://gemini.google.com/share/…`
+- `https://copilot.microsoft.com/shares/…`
+
+The conversation is fetched, split into ordered Q&A pairs, and grouped into a new thread. The
+thread and each QA are tagged with the provider and model name (for example `gemini` +
+`gemini-3.6-flash`). When a title is present it becomes the thread name; otherwise a name is
+derived from the first question and a reminder to rename it is shown.
+
+How each provider is read:
+
+| Provider | Source | Fidelity |
+|----------|--------|----------|
+| ChatGPT  | `backend-api/share/<id>` JSON (conversation tree) | Full Markdown |
+| Copilot  | `c/api/conversations/shares/<id>` JSON | Full Markdown |
+| Gemini   | Rendered in a hidden Electron `BrowserWindow`; answer HTML is converted back to Markdown with Turndown | Markdown recovered from rendered HTML |
+
+> **Testing note — Gemini requires the Electron runtime.** ChatGPT and Copilot parsing is pure
+> and covered by the Vitest unit suite (including real-response fixtures). Gemini has no
+> server-provided JSON, so its importer loads the real share page in a hidden `BrowserWindow`
+> and scrapes the DOM. That path **cannot be exercised by the Node unit tests** — verify it
+> end-to-end by running `npm run dev` and importing a Gemini share link, and re-check after any
+> change to the Gemini extractor or when Gemini alters its share-page markup.
+
+---
+
+## Command Palette and Menus
+
+Every end-user action is reachable from two **complete** surfaces, so no feature is hidden behind
+a single button:
+
+- **Command Palette** (`Ctrl/Cmd+K`) — a searchable list of every command. Type to filter, `Enter`
+  to run. Each entry shows its keyboard shortcut, if any.
+- **Application menu bar** — the same commands, grouped into menus:
+  - **File** — New Q&A, Import from File, Import from Shared Link, Export Selected, Settings.
+  - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
+  - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
+  - **View** — Focus Search, Toggle Dark Mode, Toggle LLM Lens, Toggle Threads / List panels,
+    plus standard reload / zoom / full-screen / dev-tools.
+  - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
+
+  Menu items show their keyboard shortcut as a hint in parentheses.
+
+An in-app **Usage Information** guide (overview, layout, import options, LLM Lens, and the full
+shortcut list) is always available from **Help → Usage Information** in the menu bar.
+
+The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
+in the Threads panel; LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
+where relevant, right-click context menus. Toolbars and context menus deliberately carry only
+high-traffic actions — the Command Palette and menu bar are the complete reference.
+
+> Keyboard shortcuts are handled by the app itself (not by the OS menu), so context-sensitive keys
+> like `E` / `D` / `X` only fire when a Q&A is selected and you are not typing in a field. The menu
+> lists them as hints; clicking the menu item always runs the action regardless of focus.
+
 ---
 
 ## Keyboard Shortcuts
@@ -275,6 +343,7 @@ Missing fields are filled with safe defaults and listed in the import summary.
 | D | Duplicate selected QA into new form | Global |
 | X | Export selected QA or thread to file | Global |
 | Ctrl/Cmd+O | Import from file | Global |
+| Ctrl/Cmd+Shift+O | Import from shared link | Global |
 | Ctrl/Cmd+K | Open command palette | Global |
 | ? | Show keyboard help | Global |
 | Ctrl/Cmd+Enter | Submit form | QA editor |
@@ -344,6 +413,18 @@ bash scripts/playwright-electron.sh --grep "supports collapse controls"
 
 ---
 
+## Bumping up version
+Run:
+npm version patch --no-git-tag-version
+(or minor/major as needed)
+This updates package.json and package-lock together.
+Run:
+npm run build
+For Windows release validation:
+npm run electron:build:msi
+
+---
+
 ## UI Testing Guide (Playwright)
 
 Use these scripts from package.json for the standard UI testing workflow:
@@ -397,6 +478,9 @@ Notes:
 - Electron tests are isolated from your real archive data via a temp fixture.
 
 ---
+
+
+
 
 ## Debugging in VS Code
 
@@ -460,7 +544,7 @@ intentionally deferred to a later release.
 Run clean install/uninstall validation inside a disposable Windows VM with:
 
 ```powershell
-.\scripts\validate-msi-lifecycle.ps1 -CurrentMsi '.\dist\LLM Aggregator-1.0.2-win.msi'
+.\scripts\validate-msi-lifecycle.ps1 -CurrentMsi '.\dist\LLM Aggregator-<version>-win.msi'
 ```
 
 To exercise a major upgrade, also pass `-PreviousMsi` pointing to an older MSI. The script
@@ -478,9 +562,53 @@ Example:
 
 ```json
 {
-  "dataDirectory": "/path/to/your/data"
+  "dataDirectory": "/path/to/your/data",
+  "allowDevEnvSecrets": false
 }
 ```
+
+### API key storage
+
+API keys are **never stored in `settings.json`** and are never written in clear text.
+They are encrypted with your operating system's secure storage — DPAPI on Windows,
+Keychain on macOS, libsecret/kwallet on Linux — and written to `secrets.enc.json`
+in the same application-data directory. Because the encryption key belongs to your
+OS user account, the file cannot be read by another user or on another machine.
+
+Keys are also **write-only from the app's point of view**: the Settings window can
+store a key and show a masked preview of it (`sk-…a1b2`), but never displays or
+receives the full value back. Leaving the key field blank keeps the stored key as-is.
+
+Keys resolve in a fixed order, with the first source that supplies a value winning:
+
+| Order | Source | Notes |
+|---|---|---|
+| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Development only — see below. Read-only. |
+| 2 | `secrets.enc.json` (OS-encrypted) | Where Settings writes. |
+
+Settings shows which source the active key came from, and warns if OS-backed
+encryption is unavailable on the machine (in which case keys cannot be saved).
+
+#### Development environment overrides
+
+In development builds only, Settings offers **Use development environment variables
+for API keys**. When enabled, `LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`
+take precedence over stored keys. The variable names are fixed and not configurable.
+
+The override requires **both** the setting to be on and the build to be unpackaged.
+Enabling it and then running a packaged build has no effect — `settings.json` travels
+with your user profile, so the packaged check is what prevents it from silently
+applying to a production install.
+
+An env-supplied key is a read-only overlay: the Settings field is disabled while one
+is active, and saving other settings never copies the env value into stored secrets.
+
+#### Upgrading from a previous version
+
+Earlier versions stored keys in clear text in `secrets.json`. That file is **no longer
+read**. On first launch it is renamed to `secrets.json.orphaned.bak` and you will need
+to re-enter your API key in Settings. The renamed file still contains your old key in
+clear text — delete it once you have re-entered the key.
 
 ### Default data directory on Windows
 
@@ -606,11 +734,27 @@ Why this format works well:
 ## LLM Lens Setup
 
 1. Open **Settings** → **AI** tab
-2. Enter your OpenAI API key
-3. Select a model (`gpt-4o` recommended; `gpt-4o-mini` for lower cost)
-4. Click **Test Connection**
-5. Click **Generate All Embeddings** to index your archive
-6. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+2. Select provider (**OpenAI** or **Anthropic**)
+3. Enter the matching provider API key. It is encrypted with OS secure storage on save;
+   afterwards the field shows a masked preview and stays blank unless you type a replacement.
+   See [API key storage](#api-key-storage).
+4. Optional (development only): enable **Use development environment variables for API keys**
+   to have `LLM_AGG_*` variables override the stored key.
+5. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
+6. Select a model using the Quality / Cost / Latency hints shown below the picker
+7. Click **Test Connection**
+
+For OpenAI:
+
+8. Click **Generate All Embeddings** to index your archive
+9. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+
+For Anthropic:
+
+8. Metadata and analysis generation works with Claude models.
+9. Embedding generation and semantic indexing are currently OpenAI-only in this app.
+
+The model list is cached locally in Electron user data (`model-catalog-cache.json`) so selection still works when provider discovery is temporarily unavailable.
 
 Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
 
@@ -666,6 +810,7 @@ Current status: manual setup, planned future automation.
 | State Management | Pinia |
 | Component Library | PrimeVue 4 |
 | Markdown Rendering | markdown-it + highlight.js |
+| HTML → Markdown (shared-link import) | Turndown + turndown-plugin-gfm |
 | Frontmatter Parsing | gray-matter |
 | Testing | Vitest + Playwright |
 | Packaging | electron-builder |
@@ -697,8 +842,8 @@ npm run test
 
 ## Credits
 
-- Developer and maintainer: sadovskyvlad@gmail.com
-- Original idea and conceptual model: eveselov@hotmail.com
+- Developer, concepts and feature defintions beyond basic, maintainer: sadovskyvlad@gmail.com
+- Original idea and first demonstration of AI feature set: eveselov@hotmail.com
 
 ---
 

@@ -1,4 +1,17 @@
-import type { ElectronAPI, QAPairData, AppSettings, TagDictionary } from '../electron/preload'
+import type { ElectronAPI, QAPairData, AppSettings, TagDictionary, SecretsStatus } from '../electron/preload'
+
+/** Browser-mode stand-in: no keys stored, secure storage reported as usable. */
+function mockSecretsStatus(): SecretsStatus {
+    const emptyKey = { hasKey: false, maskedPreview: '', source: 'none' as const, readOnly: false }
+    return {
+        keys: { openaiApiKey: { ...emptyKey }, anthropicApiKey: { ...emptyKey } },
+        warnings: [],
+        backends: [
+            { id: 'env', available: false, writable: false },
+            { id: 'safe-storage', available: true, writable: true },
+        ],
+    }
+}
 
 export const mockApi: ElectronAPI = {
     settingsLoad: async () => ({
@@ -8,6 +21,7 @@ export const mockApi: ElectronAPI = {
         tagEnforcement: 'warn' as const,
         tagSoftLimit: 50,
         tagHardLimit: 100,
+        allowDevEnvSecrets: false,
     }),
     settingsSave: async (settings: AppSettings) => {
         console.log('Mock: Saving settings', settings)
@@ -91,9 +105,34 @@ export const mockApi: ElectronAPI = {
     exportQA: async (_id) => null,
     exportThread: async (_threadId) => null,
     importFromFile: async () => null,
+    importSharedLink: async (url: string) => ({
+        provider: 'chatgpt' as const,
+        url,
+        model: 'gpt-4o',
+        threadName: 'Mock Imported Conversation',
+        titleWasDerived: false,
+        tags: ['chatgpt', 'gpt-4o'],
+        items: [
+            {
+                data: {
+                    title: 'Mock question',
+                    source: 'chatgpt',
+                    url,
+                    tags: ['chatgpt', 'gpt-4o'],
+                    question: 'What is this?',
+                    answer: 'A mocked imported answer.',
+                },
+                warnings: [],
+            },
+        ],
+        warnings: [],
+    }),
+    onMenuAction: () => () => {},
 
-    secretsLoad: async () => ({ openaiApiKey: '', anthropicApiKey: '' }),
-    secretsSave: async () => {},
+    secretsLoad: async () => mockSecretsStatus(),
+    secretsSave: async () => mockSecretsStatus(),
+    secretsRecheck: async () => mockSecretsStatus(),
+    secretsDevEnvVarNames: async () => ['LLM_AGG_OPENAI_API_KEY', 'LLM_AGG_ANTHROPIC_API_KEY'],
 
     searchSemantic: async () => [],
 
@@ -101,6 +140,58 @@ export const mockApi: ElectronAPI = {
     aiGenerateEmbedding: async () => {},
     aiGenerateAllEmbeddings: async () => ({ total: 0, generated: 0, skipped: 0 }),
     aiTestConnection: async () => ({ ok: false, error: 'Mock mode' }),
+    aiListProviders: async () => ([
+        {
+            id: 'openai',
+            label: 'OpenAI',
+            kind: 'openai',
+            enabled: true,
+            supportsModelDiscovery: true,
+            apiKeyField: 'openaiApiKey',
+        },
+        {
+            id: 'anthropic',
+            label: 'Anthropic',
+            kind: 'anthropic',
+            enabled: true,
+            supportsModelDiscovery: true,
+            apiKeyField: 'anthropicApiKey',
+            notes: 'Claude model support enabled. Embeddings are not available via Anthropic API.',
+        },
+    ]),
+    aiListModels: async (
+        providerId: string,
+        _forceRefresh?: boolean,
+        _apiKeyOverride?: string,
+    ) => ({
+        providerId,
+        source: 'static' as const,
+        fetchedAt: new Date().toISOString(),
+        warning: providerId === 'openai' ? undefined : 'Provider runtime is not implemented yet.',
+        models: providerId === 'openai' ? [
+            {
+                id: 'gpt-5.6-terra',
+                label: 'GPT-5.6 Terra',
+                providerId: 'openai',
+                qualityTier: 'balanced' as const,
+                costTier: 'balanced' as const,
+                latencyTier: 'medium' as const,
+                recommendedFor: ['balanced default'],
+                notes: 'Balanced quality and cost.',
+                rank: 2,
+            },
+            {
+                id: 'gpt-4o',
+                label: 'GPT-4o',
+                providerId: 'openai',
+                qualityTier: 'balanced' as const,
+                costTier: 'balanced' as const,
+                latencyTier: 'medium' as const,
+                recommendedFor: ['stable general-purpose use'],
+                rank: 20,
+            },
+        ] : [],
+    }),
     aiSessionBrief: async () => '',
     aiPriorArt: async () => '',
     aiGetTokenStats: async () => ({ llm: { input: 0, output: 0 }, embeddings: { input: 0 } }),

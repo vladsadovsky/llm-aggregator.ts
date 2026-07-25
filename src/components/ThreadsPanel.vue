@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -7,12 +7,35 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Menu from 'primevue/menu'
+import type { MenuItem } from 'primevue/menuitem'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
 const confirm = useConfirm()
 const toast = useToast()
+
+// Import sources — a cascading popup menu on the header's Import button. Each item
+// dispatches a window event that App.vue handles (same decoupled pattern as the
+// other `llm:*` app actions). Keyboard shortcuts for each source live in App.vue.
+const importMenu = ref<InstanceType<typeof Menu> | null>(null)
+const importItems: MenuItem[] = [
+  {
+    label: 'From file (.md)…',
+    icon: 'pi pi-file',
+    command: () => window.dispatchEvent(new Event('llm:import-file')),
+  },
+  {
+    label: 'From shared link…',
+    icon: 'pi pi-link',
+    command: () => window.dispatchEvent(new Event('llm:import-shared-link')),
+  },
+]
+
+function toggleImportMenu(event: Event) {
+  importMenu.value?.toggle(event)
+}
 
 const newThreadName = ref('')
 const newThreadTags = ref('')
@@ -41,6 +64,20 @@ function selectThread(tid: string) {
   } else {
     qaStore.selectedPairId = null
   }
+}
+
+/** Both inline editors require a non-empty name; surfaced as a disabled action. */
+const canCreateThread = computed(() => newThreadName.value.trim().length > 0)
+const canFinishRename = computed(() => editingName.value.trim().length > 0)
+
+function cancelNewThread() {
+  showNewThreadInput.value = false
+  newThreadName.value = ''
+  newThreadTags.value = ''
+}
+
+function cancelRename() {
+  editingThreadId.value = null
 }
 
 async function createThread() {
@@ -93,7 +130,7 @@ function confirmDelete(tid: string) {
 async function exportThread(tid: string) {
   const result = await window.api.exportThread(tid)
   if (result) {
-    const filename = result.savedPath.split(/[\/\\]/).pop() ?? result.savedPath
+    const filename = result.savedPath.split(/[/\\]/).pop() ?? result.savedPath
     toast.add({ severity: 'success', summary: 'Thread exported', detail: `Saved to ${filename}`, life: 3000 })
   }
 }
@@ -134,16 +171,12 @@ function showUnthreaded() {
 
 function onNewThreadKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') createThread()
-  if (e.key === 'Escape') {
-    showNewThreadInput.value = false
-    newThreadName.value = ''
-    newThreadTags.value = ''
-  }
+  if (e.key === 'Escape') cancelNewThread()
 }
 
 function onRenameKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') finishRename()
-  if (e.key === 'Escape') editingThreadId.value = null
+  if (e.key === 'Escape') cancelRename()
 }
 
 function onThreadListKeydown(e: KeyboardEvent) {
@@ -169,12 +202,28 @@ function onRenameSelectedThreadRequest() {
   startRename(threadStore.selectedThreadId)
 }
 
+function onNewThreadRequest() {
+  showNewThreadInput.value = true
+  void nextTick(() => {
+    const input = document.querySelector(
+      '[data-testid="new-thread-name-input"]',
+    ) as HTMLInputElement | null
+    input?.focus()
+  })
+}
+
 onMounted(() => {
   window.addEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+  window.addEventListener('llm:new-thread', onNewThreadRequest)
+  window.addEventListener('llm:show-all-qas', showAllQAs)
+  window.addEventListener('llm:show-unthreaded', showUnthreaded)
 })
 
 onUnmounted(() => {
   window.removeEventListener('llm:rename-selected-thread', onRenameSelectedThreadRequest)
+  window.removeEventListener('llm:new-thread', onNewThreadRequest)
+  window.removeEventListener('llm:show-all-qas', showAllQAs)
+  window.removeEventListener('llm:show-unthreaded', showUnthreaded)
 })
 </script>
 
@@ -184,6 +233,21 @@ onUnmounted(() => {
     <div class="panel-header">
       <span class="panel-title">Threads</span>
       <div class="header-actions">
+        <Button
+          icon="pi pi-file-import"
+          text
+          rounded
+          size="small"
+          data-testid="import-menu-button"
+          title="Import…"
+          aria-haspopup="true"
+          @click="toggleImportMenu"
+        />
+        <Menu
+          ref="importMenu"
+          :model="importItems"
+          :popup="true"
+        />
         <Button
           icon="pi pi-inbox"
           text
@@ -205,24 +269,36 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="threadStore.allThreadTags.length > 0" class="tag-filter-bar">
+    <div
+      v-if="threadStore.allThreadTags.length > 0"
+      class="tag-filter-bar"
+    >
       <button
         v-for="tag in threadStore.allThreadTags"
         :key="tag"
         class="tag-filter-chip"
         :class="{ active: threadStore.activeTagFilters.includes(tag) }"
         @click="threadStore.toggleTagFilter(tag)"
-      >{{ tag }}</button>
+      >
+        {{ tag }}
+      </button>
       <button
         v-if="hasFilters"
         class="tag-filter-clear"
         title="Clear all filters"
         @click="threadStore.clearTagFilters()"
-      >×</button>
+      >
+        ×
+      </button>
     </div>
 
     <!-- Thread list -->
-    <div class="thread-list" data-testid="thread-list" tabindex="0" @keydown="onThreadListKeydown">
+    <div
+      class="thread-list"
+      data-testid="thread-list"
+      tabindex="0"
+      @keydown="onThreadListKeydown"
+    >
       <!-- Global search results pseudo-entry -->
       <div
         v-if="uiStore.isGlobalSearchActive"
@@ -251,7 +327,10 @@ onUnmounted(() => {
             <span>Unthreaded</span>
           </div>
         </div>
-        <span v-if="threadStore.unthreadedPairIds.length > 0" class="virtual-count">
+        <span
+          v-if="threadStore.unthreadedPairIds.length > 0"
+          class="virtual-count"
+        >
           {{ threadStore.unthreadedPairIds.length }}
         </span>
       </div>
@@ -270,7 +349,10 @@ onUnmounted(() => {
               <i class="pi pi-folder" />
               <span>{{ threadStore.threads[tid].name }}</span>
             </div>
-            <div v-if="threadStore.threads[tid].tags?.length" class="thread-tags">
+            <div
+              v-if="threadStore.threads[tid].tags?.length"
+              class="thread-tags"
+            >
               <span
                 v-for="tag in threadStore.threads[tid].tags"
                 :key="tag"
@@ -291,8 +373,8 @@ onUnmounted(() => {
                 text
                 rounded
                 size="small"
-                @click.stop="startRename(tid)"
                 title="Rename"
+                @click.stop="startRename(tid)"
               />
               <Button
                 icon="pi pi-download"
@@ -300,8 +382,8 @@ onUnmounted(() => {
                 rounded
                 size="small"
                 data-testid="export-thread-button"
-                @click.stop="exportThread(tid)"
                 title="Export thread to file"
+                @click.stop="exportThread(tid)"
               />
               <Button
                 icon="pi pi-trash"
@@ -309,8 +391,8 @@ onUnmounted(() => {
                 rounded
                 size="small"
                 severity="danger"
-                @click.stop="confirmDelete(tid)"
                 title="Delete"
+                @click.stop="confirmDelete(tid)"
               />
             </div>
           </div>
@@ -318,23 +400,48 @@ onUnmounted(() => {
 
         <!-- Editing name -->
         <template v-else>
-          <div class="edit-form" @click.stop>
+          <div
+            class="edit-form"
+            @click.stop
+          >
             <InputText
               v-model="editingName"
+              data-testid="rename-thread-name-input"
               class="edit-input"
               size="small"
               placeholder="Thread name"
               autofocus
               @keydown="onRenameKeydown"
-              @blur="finishRename"
             />
             <InputText
               v-model="editingTags"
+              data-testid="rename-thread-tags-input"
               class="edit-input"
               size="small"
               placeholder="Tags (comma-separated)"
               @keydown="onRenameKeydown"
             />
+            <!--
+              Explicit actions rather than commit-on-blur: blur fired when moving
+              to the tags field, closing the form before it could be edited.
+            -->
+            <div class="edit-actions">
+              <Button
+                label="Cancel"
+                severity="secondary"
+                text
+                size="small"
+                data-testid="rename-thread-cancel"
+                @click="cancelRename"
+              />
+              <Button
+                label="Save"
+                size="small"
+                data-testid="rename-thread-save"
+                :disabled="!canFinishRename"
+                @click="finishRename"
+              />
+            </div>
           </div>
         </template>
       </div>
@@ -345,10 +452,18 @@ onUnmounted(() => {
       >
         <i class="pi pi-filter-slash" />
         <p>No threads match</p>
-        <button class="clear-link" @click="threadStore.clearTagFilters()">Clear filter</button>
+        <button
+          class="clear-link"
+          @click="threadStore.clearTagFilters()"
+        >
+          Clear filter
+        </button>
       </div>
 
-      <div v-else-if="threadStore.sortedThreadIds.length === 0" class="empty-state">
+      <div
+        v-else-if="threadStore.sortedThreadIds.length === 0"
+        class="empty-state"
+      >
         <i class="pi pi-inbox" />
         <p>No threads yet</p>
       </div>
@@ -356,10 +471,13 @@ onUnmounted(() => {
 
     <!-- Bottom: Add thread (OneNote-style) -->
     <div class="panel-footer">
-      <div v-if="showNewThreadInput" class="new-thread-inputs">
+      <div
+        v-if="showNewThreadInput"
+        class="new-thread-inputs"
+      >
         <InputText
           v-model="newThreadName"
-            data-testid="new-thread-name-input"
+          data-testid="new-thread-name-input"
           placeholder="Thread name..."
           size="small"
           class="w-full"
@@ -374,8 +492,31 @@ onUnmounted(() => {
           class="w-full"
           @keydown="onNewThreadKeydown"
         />
+        <div class="edit-actions">
+          <Button
+            label="Cancel"
+            severity="secondary"
+            text
+            size="small"
+            data-testid="new-thread-cancel"
+            @click="cancelNewThread"
+          />
+          <Button
+            label="Create"
+            size="small"
+            data-testid="new-thread-create"
+            :disabled="!canCreateThread"
+            @click="createThread"
+          />
+        </div>
       </div>
-      <button class="add-button" data-testid="add-thread-button" @click="showNewThreadInput = !showNewThreadInput">
+      <!-- Hidden while the form is open: as a toggle it silently discarded typing. -->
+      <button
+        v-if="!showNewThreadInput"
+        class="add-button"
+        data-testid="add-thread-button"
+        @click="showNewThreadInput = true"
+      >
         <i class="pi pi-plus" />
         <span>Add thread</span>
       </button>
@@ -603,6 +744,14 @@ onUnmounted(() => {
 
 .edit-input {
   width: 100%;
+}
+
+/* Shared by the inline "new thread" and "rename thread" forms. */
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
 }
 
 .empty-state {

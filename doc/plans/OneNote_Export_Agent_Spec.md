@@ -1,5 +1,21 @@
 # OneNote Export Agent — Specification
 
+> **Superseded (2026-07-25).** Merged into
+> [`Export_And_Interchange_Master_Spec.md`](./Export_And_Interchange_Master_Spec.md),
+> which is the maintained source of truth.
+>
+> This document is retained for provenance. It was **split along its seam** during the
+> merge, because it fused two separable concerns: the OneNote transport (OAuth, Graph
+> API, HTML constraints) now lives in master spec §6.5, and the autonomous agent
+> (history, scoring, learned preferences) in Chapter 7 — generalised so it can drive
+> any export target rather than OneNote alone. The export-history schema was
+> correspondingly generalised: `oneNoteNotebook` / `oneNoteSection` / `oneNotePageId`
+> became `targetId` / `targetLocator` / `remoteId`.
+>
+> Note also that this document's assumption of token storage via Electron `safeStorage`
+> was correct but is **blocked**: the shipped secrets chain is a fixed two-field
+> interface with no room for OAuth tokens. See master spec Chapter 8.
+
 ## Overview
 
 An intelligent export agent that analyzes the QA archive, learns from the user's

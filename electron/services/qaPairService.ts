@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
-import { join, extname } from 'path'
+import { join, extname, basename } from 'path'
 import matter from 'gray-matter'
 import yaml from 'js-yaml'
 import { getDataDir } from './pathResolver'
@@ -7,8 +7,24 @@ import { debugLog } from './logger'
 
 /** Serialize a metadata object + answer body into a .md file string. */
 function serializeQAFile(frontmatter: Record<string, unknown>, answer: string): string {
-  const yamlStr = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true, quotingType: '"' })
+  let yamlStr = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true, quotingType: '"' })
+
+  // Keep id as an explicit string in YAML so values like 20260724_163232_733
+  // are not coerced to numbers on read (which drops underscores / precision).
+  if (typeof frontmatter.id === 'string' && frontmatter.id.length > 0) {
+    const escaped = frontmatter.id.replace(/'/g, "''")
+    yamlStr = yamlStr.replace(/^id:\s*.*$/m, `id: '${escaped}'`)
+  }
+
   return `---\n${yamlStr}---\n\n${answer.trim()}\n`
+}
+
+function extractIdFromFilename(filepath: string): string | null {
+  const name = basename(filepath, '.md')
+  const marker = '_00_'
+  const idx = name.indexOf(marker)
+  if (idx <= 0) return null
+  return name.slice(0, idx)
 }
 
 export interface QAPairData {
@@ -83,8 +99,11 @@ function parseQAFile(filepath: string): QAPairData | null {
       answer = aMatch ? aMatch[1].trim() : body.trim()
     }
 
+    const filenameId = extractIdFromFilename(filepath)
+    const parsedId = metadata.id !== undefined && metadata.id !== null ? String(metadata.id) : ''
+
     return {
-      id: metadata.id || filepath.replace(/\.md$/, ''),
+      id: filenameId || parsedId || filepath.replace(/\.md$/, ''),
       filepath,
       title: metadata.title || 'Untitled',
       source: metadata.source || 'unknown',

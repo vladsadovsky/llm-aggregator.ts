@@ -26,11 +26,12 @@ function sourceIcon(source: string): string {
   const icons: Record<string, string> = {
     claude: 'pi pi-bolt',
     chatGPT: 'pi pi-comments',
+    chatgpt: 'pi pi-comments',
     gemini: 'pi pi-star',
     copilot: 'pi pi-microsoft',
     deepseek: 'pi pi-search',
   }
-  return icons[source] || 'pi pi-question-circle'
+  return icons[source.toLowerCase()] || icons[source] || 'pi pi-question-circle'
 }
 </script>
 
@@ -38,12 +39,17 @@ function sourceIcon(source: string): string {
   <div class="metadata-bar">
     <div class="meta-row">
       <!-- Title -->
-      <h2 class="qa-title">{{ pair.title }}</h2>
+      <h2 class="qa-title">
+        {{ pair.title }}
+      </h2>
     </div>
 
     <div class="meta-row meta-details">
       <!-- Source/Model -->
-      <span class="meta-item" v-if="pair.source">
+      <span
+        v-if="pair.source"
+        class="meta-item"
+      >
         <i :class="sourceIcon(pair.source)" />
         <span class="meta-value">{{ pair.source }}</span>
       </span>
@@ -55,9 +61,15 @@ function sourceIcon(source: string): string {
       </span>
 
       <!-- URL -->
-      <span class="meta-item" v-if="pair.url">
+      <span
+        v-if="pair.url"
+        class="meta-item"
+      >
         <i class="pi pi-link" />
-        <span class="meta-value meta-url" :title="pair.url">{{ pair.url }}</span>
+        <span
+          class="meta-value meta-url"
+          :title="pair.url"
+        >{{ pair.url }}</span>
       </span>
 
       <!-- Version -->
@@ -68,7 +80,10 @@ function sourceIcon(source: string): string {
     </div>
 
     <!-- Tags -->
-    <div class="meta-row" v-if="pair.tags && pair.tags.length > 0">
+    <div
+      v-if="pair.tags && pair.tags.length > 0"
+      class="meta-row"
+    >
       <i class="pi pi-tag meta-icon" />
       <Chip
         v-for="tag in pair.tags"
@@ -79,9 +94,19 @@ function sourceIcon(source: string): string {
     </div>
 
     <!-- AI metadata row -->
-    <div class="meta-row ai-meta-row" v-if="pair.aiTopic || pair.aiStatus || pair.aiConfidence">
-      <i class="pi pi-sparkles meta-icon ai-icon" title="AI-generated metadata" />
-      <span v-if="pair.aiTopic" class="meta-item ai-topic" :title="pair.aiSummary">
+    <div
+      v-if="pair.aiTopic || pair.aiStatus || pair.aiConfidence"
+      class="meta-row ai-meta-row"
+    >
+      <i
+        class="pi pi-sparkles meta-icon ai-icon"
+        title="AI-generated metadata"
+      />
+      <span
+        v-if="pair.aiTopic"
+        class="meta-item ai-topic"
+        :title="pair.aiSummary"
+      >
         {{ pair.aiTopic }}
       </span>
       <Chip

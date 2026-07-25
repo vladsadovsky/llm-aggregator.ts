@@ -85,8 +85,10 @@ export const useThreadStore = defineStore('threads', () => {
     const s = String(now.getSeconds()).padStart(2, '0')
     const tid = `thread_${y}${mo}${d}_${h}${mi}${s}`
 
+    debugLog('threadStore', 'createThread start', { tid, name })
     threads.value[tid] = { name, items: [] }
     await save()
+    debugLog('threadStore', 'createThread completed', { tid, thread: threads.value[tid] })
     return tid
   }
 
@@ -99,9 +101,11 @@ export const useThreadStore = defineStore('threads', () => {
 
   async function updateThread(tid: string, name: string, tags: string[]) {
     if (threads.value[tid]) {
+      debugLog('threadStore', 'updateThread start', { tid, name, tags })
       threads.value[tid].name = name
       threads.value[tid].tags = tags.length > 0 ? tags : undefined
       await save()
+      debugLog('threadStore', 'updateThread completed', { tid, thread: threads.value[tid] })
     }
   }
 
@@ -122,10 +126,23 @@ export const useThreadStore = defineStore('threads', () => {
   async function addToThread(tid: string, pairId: string) {
     if (threads.value[tid]) {
       const items = threads.value[tid].items
+      debugLog('threadStore', 'addToThread attempt', {
+        tid,
+        pairId,
+        itemCountBefore: items.length,
+        alreadyPresent: items.includes(pairId),
+      })
       if (!items.includes(pairId)) {
         items.push(pairId)
         await save()
+        debugLog('threadStore', 'addToThread completed', {
+          tid,
+          pairId,
+          itemCountAfter: items.length,
+        })
       }
+    } else {
+      debugError('threadStore', 'addToThread: thread not found', { tid, pairId })
     }
   }
 

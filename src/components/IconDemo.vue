@@ -23,7 +23,10 @@ const handleAction = (action: string) => {
   <div class="icon-demo">
     <div class="demo-header">
       <h1>
-        <Sparkles :size="28" color="#667eea" />
+        <Sparkles
+          :size="28"
+          color="#667eea"
+        />
         Icon Usage Examples
       </h1>
       <p>Demonstrating lucide-vue-next icons in LLM Aggregator</p>
@@ -42,7 +45,10 @@ const handleAction = (action: string) => {
     </div>
 
     <!-- Basic Icons -->
-    <section v-if="activeTab === 'basic'" class="demo-section">
+    <section
+      v-if="activeTab === 'basic'"
+      class="demo-section"
+    >
       <h2>Basic Icons</h2>
       
       <div class="icon-grid">
@@ -98,28 +104,46 @@ const handleAction = (action: string) => {
     </section>
 
     <!-- Colored Icons -->
-    <section v-if="activeTab === 'colors'" class="demo-section">
+    <section
+      v-if="activeTab === 'colors'"
+      class="demo-section"
+    >
       <h2>Custom Colors</h2>
       
       <div class="color-examples">
         <div class="color-box">
-          <Check :size="32" color="#10b981" />
+          <Check
+            :size="32"
+            color="#10b981"
+          />
           <span>Success</span>
         </div>
         <div class="color-box">
-          <X :size="32" color="#ef4444" />
+          <X
+            :size="32"
+            color="#ef4444"
+          />
           <span>Error</span>
         </div>
         <div class="color-box">
-          <AlertCircle :size="32" color="#f59e0b" />
+          <AlertCircle
+            :size="32"
+            color="#f59e0b"
+          />
           <span>Warning</span>
         </div>
         <div class="color-box">
-          <Info :size="32" color="#3b82f6" />
+          <Info
+            :size="32"
+            color="#3b82f6"
+          />
           <span>Info</span>
         </div>
         <div class="color-box">
-          <Database :size="32" color="#8b5cf6" />
+          <Database
+            :size="32"
+            color="#8b5cf6"
+          />
           <span>Database</span>
         </div>
       </div>
@@ -130,7 +154,10 @@ const handleAction = (action: string) => {
     </section>
 
     <!-- Different Sizes -->
-    <section v-if="activeTab === 'sizes'" class="demo-section">
+    <section
+      v-if="activeTab === 'sizes'"
+      class="demo-section"
+    >
       <h2>Icon Sizes</h2>
       
       <div class="size-examples">
@@ -163,55 +190,91 @@ const handleAction = (action: string) => {
       <h3>Stroke Width</h3>
       <div class="stroke-examples">
         <div class="stroke-item">
-          <Edit3 :size="32" :stroke-width="1" />
+          <Edit3
+            :size="32"
+            :stroke-width="1"
+          />
           <span>Thin (1)</span>
         </div>
         <div class="stroke-item">
-          <Edit3 :size="32" :stroke-width="2" />
+          <Edit3
+            :size="32"
+            :stroke-width="2"
+          />
           <span>Normal (2)</span>
         </div>
         <div class="stroke-item">
-          <Edit3 :size="32" :stroke-width="3" />
+          <Edit3
+            :size="32"
+            :stroke-width="3"
+          />
           <span>Bold (3)</span>
         </div>
       </div>
     </section>
 
     <!-- Interactive Icons -->
-    <section v-if="activeTab === 'interactive'" class="demo-section">
+    <section
+      v-if="activeTab === 'interactive'"
+      class="demo-section"
+    >
       <h2>Interactive Buttons</h2>
       
       <div class="button-group">
-        <button class="icon-btn primary" @click="handleAction('search')">
+        <button
+          class="icon-btn primary"
+          @click="handleAction('search')"
+        >
           <Search :size="18" />
           Search
         </button>
-        <button class="icon-btn success" @click="handleAction('save')">
+        <button
+          class="icon-btn success"
+          @click="handleAction('save')"
+        >
           <Save :size="18" />
           Save
         </button>
-        <button class="icon-btn danger" @click="handleAction('delete')">
+        <button
+          class="icon-btn danger"
+          @click="handleAction('delete')"
+        >
           <Trash2 :size="18" />
           Delete
         </button>
-        <button class="icon-btn secondary" @click="handleAction('edit')">
+        <button
+          class="icon-btn secondary"
+          @click="handleAction('edit')"
+        >
           <Edit3 :size="18" />
           Edit
         </button>
       </div>
 
-      <div v-if="status === 'success'" class="status-message success">
+      <div
+        v-if="status === 'success'"
+        class="status-message success"
+      >
         <Check :size="20" />
         Action completed successfully!
       </div>
 
       <h3>Expandable Section</h3>
       <div class="expandable">
-        <button class="expand-btn" @click="isExpanded = !isExpanded">
-          <component :is="isExpanded ? ChevronUp : ChevronDown" :size="20" />
+        <button
+          class="expand-btn"
+          @click="isExpanded = !isExpanded"
+        >
+          <component
+            :is="isExpanded ? ChevronUp : ChevronDown"
+            :size="20"
+          />
           {{ isExpanded ? 'Collapse' : 'Expand' }} Details
         </button>
-        <div v-if="isExpanded" class="expand-content">
+        <div
+          v-if="isExpanded"
+          class="expand-content"
+        >
           <p>This content uses dynamic icon toggling based on state.</p>
           <p>The ChevronDown/ChevronUp icons switch when you click the button.</p>
         </div>
@@ -219,16 +282,28 @@ const handleAction = (action: string) => {
 
       <h3>Icon-Only Buttons</h3>
       <div class="icon-only-buttons">
-        <button class="icon-only-btn" title="More options">
+        <button
+          class="icon-only-btn"
+          title="More options"
+        >
           <MoreVertical :size="20" />
         </button>
-        <button class="icon-only-btn" title="Download">
+        <button
+          class="icon-only-btn"
+          title="Download"
+        >
           <Download :size="20" />
         </button>
-        <button class="icon-only-btn" title="Upload">
+        <button
+          class="icon-only-btn"
+          title="Upload"
+        >
           <Upload :size="20" />
         </button>
-        <button class="icon-only-btn" title="Archive">
+        <button
+          class="icon-only-btn"
+          title="Archive"
+        >
           <Archive :size="20" />
         </button>
       </div>

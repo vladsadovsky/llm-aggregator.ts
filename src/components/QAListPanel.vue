@@ -181,6 +181,8 @@ watch(() => uiStore.searchQuery, (newQuery) => {
   
   if (!newQuery.trim()) {
     searchResults.value = null
+    uiStore.globalSearchResultIds = null
+    uiStore.showGlobalSearchResults = false
     isSearching.value = false
     return
   }
@@ -339,7 +341,10 @@ function onQAListKeydown(e: KeyboardEvent) {
       </div>
     </div>
     <!-- Save as thread inline input -->
-    <div v-if="showSaveAsThread" class="save-as-thread-bar">
+    <div
+      v-if="showSaveAsThread"
+      class="save-as-thread-bar"
+    >
       <input
         v-model="saveAsThreadName"
         class="save-as-thread-input"
@@ -347,9 +352,18 @@ function onQAListKeydown(e: KeyboardEvent) {
         autofocus
         @keydown.enter="saveSearchAsThread"
         @keydown.escape="showSaveAsThread = false; saveAsThreadName = ''"
+      >
+      <Button
+        size="small"
+        label="Save"
+        @click="saveSearchAsThread"
       />
-      <Button size="small" label="Save" @click="saveSearchAsThread" />
-      <Button size="small" text label="Cancel" @click="showSaveAsThread = false; saveAsThreadName = ''" />
+      <Button
+        size="small"
+        text
+        label="Cancel"
+        @click="showSaveAsThread = false; saveAsThreadName = ''"
+      />
     </div>
 
     <!-- Search bar -->
@@ -363,7 +377,10 @@ function onQAListKeydown(e: KeyboardEvent) {
           class="search-input"
           @keydown.enter="doSearch"
         />
-        <i v-if="isSearching" class="pi pi-spin pi-spinner search-spinner" />
+        <i
+          v-if="isSearching"
+          class="pi pi-spin pi-spinner search-spinner"
+        />
         <Button
           v-else
           icon="pi pi-search"
@@ -378,8 +395,8 @@ function onQAListKeydown(e: KeyboardEvent) {
           size="small"
           text
           rounded
-          @click="clearSearch"
           title="Clear search"
+          @click="clearSearch"
         />
       </div>
       <div class="search-options">
@@ -390,41 +407,54 @@ function onQAListKeydown(e: KeyboardEvent) {
             { label: 'Tags', value: 'tags' },
             { label: 'Semantic', value: 'semantic' },
           ]"
-          optionLabel="label"
-          optionValue="value"
+          option-label="label"
+          option-value="value"
           size="small"
           class="search-type-select"
         />
         <Select
-          v-model="uiStore.sortBy"
           v-if="uiStore.searchType !== 'semantic'"
+          v-model="uiStore.sortBy"
           :options="[
             { label: 'By date', value: 'date' },
             { label: 'By title', value: 'title' },
           ]"
-          optionLabel="label"
-          optionValue="value"
+          option-label="label"
+          option-value="value"
           size="small"
           class="sort-select"
         />
-        <span v-else class="semantic-hint">ranked by similarity</span>
+        <span
+          v-else
+          class="semantic-hint"
+        >ranked by similarity</span>
         <div class="scope-toggle">
           <button
             class="scope-btn"
             :class="{ active: uiStore.searchScope === 'thread' }"
             @click="uiStore.searchScope = 'thread'"
-          >Thread</button>
+          >
+            Thread
+          </button>
           <button
             class="scope-btn"
             :class="{ active: uiStore.searchScope === 'archive' }"
             @click="uiStore.searchScope = 'archive'"
-          >Archive</button>
+          >
+            Archive
+          </button>
         </div>
       </div>
     </div>
 
     <!-- QA list -->
-    <div ref="qaListRef" class="qa-list" data-testid="qa-list" tabindex="0" @keydown="onQAListKeydown">
+    <div
+      ref="qaListRef"
+      class="qa-list"
+      data-testid="qa-list"
+      tabindex="0"
+      @keydown="onQAListKeydown"
+    >
       <div
         v-for="id in displayedItems"
         :key="id"
@@ -436,19 +466,30 @@ function onQAListKeydown(e: KeyboardEvent) {
           <i class="pi pi-file" />
           <span>{{ qaStore.pairs[id]?.title || 'Untitled' }}</span>
         </div>
-        <div class="qa-item-snippet">{{ getQuestionSnippet(id) }}</div>
+        <div class="qa-item-snippet">
+          {{ getQuestionSnippet(id) }}
+        </div>
         <div class="qa-item-meta">
-          <span v-if="qaStore.pairs[id]?.source" class="qa-source">
+          <span
+            v-if="qaStore.pairs[id]?.source"
+            class="qa-source"
+          >
             {{ qaStore.pairs[id].source }}
           </span>
-          <span v-if="uiStore.isGlobalSearchActive" class="qa-thread-badge">
+          <span
+            v-if="uiStore.isGlobalSearchActive"
+            class="qa-thread-badge"
+          >
             {{ getFirstThreadName(id) ?? 'unthreaded' }}
           </span>
         </div>
       </div>
 
       <!-- Empty state -->
-      <div v-if="displayedItems.length === 0" class="empty-state">
+      <div
+        v-if="displayedItems.length === 0"
+        class="empty-state"
+      >
         <template v-if="uiStore.showGlobalSearchResults">
           <i class="pi pi-search" />
           <p>No results found</p>

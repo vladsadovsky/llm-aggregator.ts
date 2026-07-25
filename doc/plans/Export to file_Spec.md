@@ -1,5 +1,16 @@
 # Spec: Export to file / Import from file
 
+> **Superseded (2026-07-25).** Merged into
+> [`Export_And_Interchange_Master_Spec.md`](./Export_And_Interchange_Master_Spec.md),
+> which is the maintained source of truth for all export and interchange work.
+>
+> This document is retained for provenance. Chapter 1 below is the original
+> human-authored requirement statement and is reproduced verbatim in the master spec
+> §2.1; §2.2 there tracks compliance against it — including two requirements the
+> shipped code does **not** currently meet (all stored metadata exported; full-fidelity
+> round trip). Chapter 2's design is superseded by master spec §3–§5, which reflects
+> what was actually built rather than what was planned.
+
 ## Chapter 1: Human articulation of an intended use case, requirements
 
 There is a batch ingest feature currently, which operates on the text, pasted into question field, representing series of QA pairs, separated from each other by syntactic delimeters. 

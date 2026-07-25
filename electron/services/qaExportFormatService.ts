@@ -17,7 +17,7 @@ function appVersion(): string {
   // Resolved at runtime from package.json embedded by Electron build;
   // fall back gracefully so format service remains testable in isolation.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return (require('../../../package.json') as { version: string }).version
   } catch {
     return '0.0.0'
