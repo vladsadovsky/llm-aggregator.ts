@@ -42,6 +42,7 @@ Before substantial edits:
 ## Validation Expectations
 - Required: `npm run build` passes for non-trivial changes.
 - For UX regressions or workflow fixes, include a short manual reproduction check in PR notes.
+- Do not automatically run persistent UI regression suites. They are expensive and are run by the user as part of the pre-push test pass; run them only when the user explicitly requests them.
 
 ## PR Checklist
 - [ ] `npm run build` passed after edits.

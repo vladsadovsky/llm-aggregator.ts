@@ -6,7 +6,8 @@ Context for Claude Code when working on this project.
 
 **LLM Aggregator** is a local-first Electron + Vue 3 desktop app for archiving and organizing Q&A pairs copied from LLM conversations (Claude, ChatGPT, Copilot, Grok, etc.). The key design philosophy: the archive is fully editable and offline — no sync with original LLM sessions. Users can create, edit, merge, split, and manually write QA pairs, and group them into "threads" (ordered, reorderable lists).
 
-**Authors:** Eugene Veselov (`eveselov@hotmail.com`), Vlad Sadovsky (`sadovskyvlad@gmail.com`)
+**Authors:**  Vlad Sadovsky (`sadovskyvlad@gmail.com`) 
+
 
 ## Architecture Overview
 
@@ -233,7 +234,7 @@ Per the project owner's stated roadmap:
 - Better search (vector indexing, semantic search)
 - Enhanced markdown editor
 - Import/export formats
-
+- Robust detection of shared chats URLs (not based on hard match of the URL prefix)
 Sequenced work in flight (see `doc/plans/`):
 1. Secrets storage V1 Step 6 — migrate legacy keys instead of only orphaning them
 2. Replace the hand-rolled Anthropic `fetch` client with `@anthropic-ai/sdk`
