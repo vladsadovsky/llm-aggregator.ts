@@ -46,9 +46,11 @@ export function detectProvider(rawUrl: string): ProviderMatch | null {
     if (m) return { provider: 'chatgpt', shareId: m[1] }
   }
 
-  // Gemini: gemini.google.com/share/<id>
-  if (host === 'gemini.google.com') {
-    const m = path.match(/\/share\/([\w-]+)/i)
+  // Gemini: legacy gemini.google.com/share/<id> or share.gemini.google/<id>.
+  if (host === 'gemini.google.com' || host === 'share.gemini.google') {
+    const m = host === 'share.gemini.google'
+      ? path.match(/^\/([\w-]+)\/?$/i)
+      : path.match(/\/share\/([\w-]+)/i)
     if (m) return { provider: 'gemini', shareId: m[1] }
   }
 

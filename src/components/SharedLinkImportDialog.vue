@@ -43,7 +43,7 @@ const itemWarnings = computed(() => {
   return out
 })
 
-const providerHint = 'chatgpt.com/share/…, gemini.google.com/share/…, or copilot.microsoft.com/shares/…'
+const providerHint = 'chatgpt.com/share/…, share.gemini.google/…, or copilot.microsoft.com/shares/…'
 
 function submit() {
   if (!canSubmit.value) return

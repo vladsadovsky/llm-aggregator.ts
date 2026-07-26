@@ -31,6 +31,10 @@ describe('detectProvider', () => {
       provider: 'gemini',
       shareId: 'dae2d696ce75',
     })
+    expect(detectProvider('https://share.gemini.google/HUUbtVKXnlNG')).toEqual({
+      provider: 'gemini',
+      shareId: 'HUUbtVKXnlNG',
+    })
   })
 
   it('detects Copilot share links', () => {

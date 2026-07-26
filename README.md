@@ -272,7 +272,7 @@ Import an entire shared conversation from a public link. Choose **Import → Sha
 palette or the Import menu) and paste a URL of one of these forms:
 
 - `https://chatgpt.com/share/…`
-- `https://gemini.google.com/share/…`
+- `https://share.gemini.google/…` (current) or `https://gemini.google.com/share/…` (legacy)
 - `https://copilot.microsoft.com/shares/…`
 
 The conversation is fetched, split into ordered Q&A pairs, and grouped into a new thread. The
