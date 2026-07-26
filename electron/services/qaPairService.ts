@@ -46,6 +46,13 @@ export interface QAPairData {
   aiConfidence?: 'speculative' | 'working' | 'confident' | 'validated'
   aiSummary?: string
   aiRelatedIds?: string[]
+  /**
+   * Provider-side identity of the conversation turn this pair came from,
+   * `<provider>:<conversationId>:<messageId>`. Set by importers only; absent on
+   * hand-written pairs. Re-importing the same conversation matches on this, so
+   * it must stay stable across exports — never regenerate it on edit.
+   */
+  originId?: string
 }
 
 export interface QACreateData {
@@ -55,6 +62,8 @@ export interface QACreateData {
   tags: string[]
   question: string
   answer: string
+  /** See QAPairData.originId. Optional — only importers set it. */
+  originId?: string
 }
 
 export interface QAUpdateData {
@@ -121,6 +130,7 @@ function parseQAFile(filepath: string): QAPairData | null {
       ...(metadata.ai_confidence !== undefined && { aiConfidence: metadata.ai_confidence }),
       ...(metadata.ai_summary !== undefined && { aiSummary: metadata.ai_summary }),
       ...(metadata.ai_related_ids !== undefined && { aiRelatedIds: metadata.ai_related_ids }),
+      ...(metadata.origin_id !== undefined && { originId: String(metadata.origin_id) }),
     }
   } catch (err) {
     console.error(`Error parsing ${filepath}:`, err)
@@ -177,7 +187,7 @@ export function createPair(data: QACreateData): QAPairData {
   const filename = `${id}_00_${sourceStr}_${firstWords}.md`
   const filepath = join(dir, filename)
 
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     id,
     title: data.title,
     timestamp: now.toISOString(),
@@ -188,6 +198,7 @@ export function createPair(data: QACreateData): QAPairData {
     thread_pairs: [],
     question: data.question,
   }
+  if (data.originId) metadata.origin_id = data.originId
 
   const content = serializeQAFile(metadata, data.answer)
 
@@ -205,6 +216,7 @@ export function createPair(data: QACreateData): QAPairData {
     threadPairs: [],
     question: data.question,
     answer: data.answer,
+    ...(data.originId ? { originId: data.originId } : {}),
   }
 }
 
@@ -233,6 +245,8 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
   if (updatedPair.aiConfidence !== undefined) metadata.ai_confidence = updatedPair.aiConfidence
   if (updatedPair.aiSummary !== undefined) metadata.ai_summary = updatedPair.aiSummary
   if (updatedPair.aiRelatedIds !== undefined) metadata.ai_related_ids = updatedPair.aiRelatedIds
+  // Import identity is immutable — carry it through every edit so dedup keeps working.
+  if (pair.originId !== undefined) metadata.origin_id = pair.originId
 
   const content = serializeQAFile(metadata, updatedPair.answer)
 

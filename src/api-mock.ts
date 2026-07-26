@@ -106,6 +106,18 @@ export const mockApi: ElectronAPI = {
     exportQA: async (_id) => null,
     exportThread: async (_threadId) => null,
     importFromFile: async () => null,
+    importArchiveCommit: async () => ({
+        createdPairs: 0,
+        skippedDuplicates: 0,
+        createdThreads: 0,
+        failed: 0,
+        threadNames: [],
+        warnings: [],
+    }),
+    importArchiveCancel: async () => undefined,
+    onArchiveImportProgress: () => () => undefined,
+    duplicatesScan: async () => ({ scanned: 0, groups: [], removableCount: 0 }),
+    duplicatesDelete: async () => ({ deleted: [], failed: [], threadsUpdated: 0 }),
     importSharedLink: async (url: string) => ({
         provider: 'chatgpt' as const,
         url,

@@ -8,6 +8,7 @@ import { detectProvider, normalizeTag } from '../../electron/services/import/pro
 import { parseChatGPT } from '../../electron/services/import/parsers/chatgptParser'
 import { parseCopilot } from '../../electron/services/import/parsers/copilotParser'
 import { parseGemini } from '../../electron/services/import/parsers/geminiParser'
+import { parseClaude } from '../../electron/services/import/parsers/claudeParser'
 import { pairMessages } from '../../electron/services/import/pairMessages'
 import { buildResult, deriveTitle } from '../../electron/services/import/buildResult'
 import { htmlToMarkdown } from '../../electron/services/import/htmlToMarkdown'
@@ -44,8 +45,17 @@ describe('detectProvider', () => {
     })
   })
 
+  it('detects Claude share links', () => {
+    expect(detectProvider('https://claude.ai/share/7eb61e46-3c37-465f-9613-478c90a6e817')).toEqual({
+      provider: 'claude',
+      shareId: '7eb61e46-3c37-465f-9613-478c90a6e817',
+    })
+    expect(detectProvider('https://claude.com/share/abc123?utm_source=x')?.provider).toBe('claude')
+  })
+
   it('rejects unsupported / malformed URLs', () => {
     expect(detectProvider('https://example.com/share/abc')).toBeNull()
+    expect(detectProvider('https://claude.ai/chat/7eb61e46-3c37-465f-9613-478c90a6e817')).toBeNull()
     expect(detectProvider('not a url')).toBeNull()
     expect(detectProvider('ftp://chatgpt.com/share/abc')).toBeNull()
     expect(detectProvider('https://chatgpt.com/c/abc')).toBeNull()
@@ -161,6 +171,103 @@ describe('parseGemini', () => {
       'https://gemini.google.com/share/x',
     )
     expect(convo.messages[1].text).toBe('plain answer')
+  })
+})
+
+describe('parseClaude', () => {
+  // Mirrors /api/chat_snapshots/<id>: flat markdown `text`, `content: null`.
+  const json = {
+    snapshot_name: 'Migrating projects and conversations',
+    up_to_date: true,
+    chat_messages: [
+      { index: 1, sender: 'assistant', text: 'Answer 1', content: null },
+      { index: 0, sender: 'human', text: 'Question 1', content: null },
+      { index: 2, sender: 'human', text: 'Question 2', content: null },
+      { index: 3, sender: 'assistant', text: 'Answer 2', content: null },
+    ],
+  }
+
+  it('orders by index, maps human→user, and takes the flat text field', () => {
+    const convo = parseClaude(json, 'https://claude.ai/share/x')
+    expect(convo.provider).toBe('claude')
+    expect(convo.title).toBe('Migrating projects and conversations')
+    // No model identifier in the payload — buildResult falls back to "Claude".
+    expect(convo.model).toBe('')
+    expect(convo.messages).toEqual([
+      { role: 'user', text: 'Question 1' },
+      { role: 'assistant', text: 'Answer 1' },
+      { role: 'user', text: 'Question 2' },
+      { role: 'assistant', text: 'Answer 2' },
+    ])
+    expect(convo.warnings).toEqual([])
+  })
+
+  it('prefers content[] text blocks and drops thinking / tool_use blocks', () => {
+    const convo = parseClaude(
+      {
+        snapshot_name: 'T',
+        chat_messages: [
+          { index: 0, sender: 'human', text: 'ignored', content: [{ type: 'text', text: 'Q' }] },
+          {
+            index: 1,
+            sender: 'assistant',
+            text: 'ignored',
+            content: [
+              { type: 'thinking', thinking: 'internal reasoning' },
+              { type: 'text', text: 'A part 1' },
+              { type: 'tool_use', name: 'search' },
+              { type: 'text', text: 'A part 2' },
+            ],
+          },
+        ],
+      },
+      'https://claude.ai/share/x',
+    )
+    expect(convo.messages).toEqual([
+      { role: 'user', text: 'Q' },
+      { role: 'assistant', text: 'A part 1\n\nA part 2' },
+    ])
+  })
+
+  it('skips unknown senders and empty messages, warning about each', () => {
+    const convo = parseClaude(
+      {
+        snapshot_name: 'T',
+        chat_messages: [
+          { index: 0, sender: 'human', text: 'Q' },
+          { index: 1, sender: 'system', text: 'nope' },
+          { index: 2, sender: 'assistant', text: '   ', content: [] },
+          { index: 3, sender: 'assistant', text: 'A' },
+        ],
+      },
+      'https://claude.ai/share/x',
+    )
+    expect(convo.messages).toEqual([
+      { role: 'user', text: 'Q' },
+      { role: 'assistant', text: 'A' },
+    ])
+    expect(convo.warnings.some((w) => /unknown sender/i.test(w))).toBe(true)
+    expect(convo.warnings.some((w) => /no text content/i.test(w))).toBe(true)
+  })
+
+  it('warns when the snapshot is out of date', () => {
+    const convo = parseClaude({ ...json, up_to_date: false }, 'https://claude.ai/share/x')
+    expect(convo.warnings.some((w) => /outdated snapshot/i.test(w))).toBe(true)
+  })
+
+  it('warns when the payload has no messages', () => {
+    const convo = parseClaude({ snapshot_name: 'T' }, 'https://claude.ai/share/x')
+    expect(convo.messages).toEqual([])
+    expect(convo.warnings.some((w) => /no chat_messages/i.test(w))).toBe(true)
+  })
+
+  it('labels the model and source as Claude via buildResult', () => {
+    const result = buildResult(parseClaude(json, 'https://claude.ai/share/x'))
+    expect(result.model).toBe('Claude')
+    expect(result.tags).toEqual(['claude'])
+    expect(result.items[0].data.source).toBe('claude')
+    expect(result.threadName).toBe('Migrating projects and conversations')
+    expect(result.titleWasDerived).toBe(false)
   })
 })
 

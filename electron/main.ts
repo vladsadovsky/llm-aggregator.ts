@@ -38,7 +38,7 @@ Layout
 Getting content in
 - New Q&A (${mod}+N): write or paste a pair; structured paste can create several at once.
 - Import → From file (${mod}+O): re-import an exported .md (single Q&A or a whole thread).
-- Import → From shared link (${mod}+Shift+O): paste a ChatGPT / Gemini / Copilot share URL
+- Import → From shared link (${mod}+Shift+O): paste a Claude / ChatGPT / Gemini / Copilot share URL
   to import an entire conversation, split into Q&A pairs and grouped into a new thread.
 
 Organizing
@@ -187,6 +187,8 @@ Keyboard Shortcuts
         mi('Generate All Embeddings', 'view.generateEmbeddings'),
         mi('Run Confidence Annotation Pass…', 'view.annotationPass'),
         mi('Run Archive Health Check…', 'view.healthCheck'),
+        { type: 'separator' },
+        mi('Find Duplicate Q&As…', 'tools.findDuplicates'),
       ]
     },
     {

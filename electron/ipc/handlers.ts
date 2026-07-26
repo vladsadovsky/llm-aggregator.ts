@@ -13,8 +13,22 @@ import { search } from '../services/searchService'
 import { loadSettings, saveSettings, AppSettings } from '../services/settingsService'
 import { notifySettingsChanged } from '../services/settingsEvents'
 import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
-import { importFromFile } from '../services/fileImportService'
-import type { ImportResult } from '../services/qaImportFormatService'
+import { importFromFile, type FileImportOutcome } from '../services/fileImportService'
+import {
+  commitArchiveImport,
+  getPreview,
+  releasePreview,
+} from '../services/import/archive/bulkImportService'
+import type {
+  BulkImportSelection,
+  BulkImportCommitResult,
+} from '../services/import/archive/archiveTypes'
+import {
+  findDuplicateGroups,
+  deleteDuplicates,
+  type DuplicateScanResult,
+  type DuplicateCleanupResult,
+} from '../services/duplicateService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
 import type { SharedImportResult } from '../services/import/types'
 import {
@@ -125,12 +139,51 @@ export function registerIpcHandlers(): void {
     return exportThreadToFile(thread, pairs)
   })
 
-  ipcMain.handle('import:file', async (): Promise<ImportResult | null> => {
+  ipcMain.handle('import:file', async (): Promise<FileImportOutcome | null> => {
     return importFromFile()
   })
 
   ipcMain.handle('import:sharedLink', async (_event, url: string): Promise<SharedImportResult> => {
     return importSharedLink(url)
+  })
+
+  // ─── Bulk (account export) import ───────────────────────────
+  ipcMain.handle(
+    'import:archiveCommit',
+    async (
+      event,
+      previewId: string,
+      selection: BulkImportSelection,
+    ): Promise<BulkImportCommitResult> => {
+      const preview = getPreview(previewId)
+      if (!preview) {
+        throw new Error('This import preview has expired. Please choose the file again.')
+      }
+      try {
+        // Progress is pushed to the window that asked for the import; the
+        // renderer never polls.
+        return commitArchiveImport(preview, selection, (progress) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('archive-import:progress', progress)
+          }
+        })
+      } finally {
+        releasePreview(previewId)
+      }
+    },
+  )
+
+  ipcMain.handle('import:archiveCancel', async (_event, previewId: string): Promise<void> => {
+    releasePreview(previewId)
+  })
+
+  // ─── Duplicate cleanup ──────────────────────────────────────
+  ipcMain.handle('duplicates:scan', async (): Promise<DuplicateScanResult> => {
+    return findDuplicateGroups()
+  })
+
+  ipcMain.handle('duplicates:delete', async (_event, ids: string[]): Promise<DuplicateCleanupResult> => {
+    return deleteDuplicates(ids)
   })
 
   // ─── Semantic Search ────────────────────────────────────────
