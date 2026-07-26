@@ -3,12 +3,15 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
 import { initSecretsStorage } from './services/secretsService'
+import { loadSettings } from './services/settingsService'
+import { setSettingsChangeListener } from './services/settingsEvents'
 
 let mainWindow: BrowserWindow | null = null
 
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin'
   const mod = isMac ? 'Cmd' : 'Ctrl'
+  const lensEnabled = loadSettings().lensEnabled
 
   // Route a menu click to the renderer's central command registry (App.vue).
   const send = (action: string) => () => mainWindow?.webContents.send('menu-action', action)
@@ -17,6 +20,7 @@ function createApplicationMenu() {
   // themselves are handled in the renderer (see handleGlobalKeydown), so we do
   // NOT set an accelerator here (that would double-fire / hijack typing).
   const mi = (label: string, action: string, hint?: string) => ({
+    id: action,
     label: hint ? `${label}  (${hint})` : label,
     click: send(action),
   })
@@ -42,15 +46,16 @@ Organizing
 - Q&A: edit (E), duplicate (D), delete (Delete), export (X).
 - Views: Show All Q&As, Show Unthreaded, collapse the Threads / List panels.
 
-Search & AI (LLM Lens)
+Search & optional AI
 - Search box (${mod}+F or /): full-text or tag search; switch scope to the whole archive.
-- LLM Lens: Session Brief, Prior Art, Steelman, Question Seeding, Concept Summary
-  (requires an OpenAI key in Settings → AI). Also powers semantic search and metadata.
+- LLM Lens: optional archive exploration panel. Enable it in Settings → AI; it requires
+  an OpenAI key and embeddings. Semantic search and metadata are available independently.
 
 Discoverability
 - Every command is available in the Command Palette (${mod}+K) and in this application menu bar.
 - The most common actions also appear as toolbar buttons.
-- Data directory, AI keys, tag dictionary, and archive health live in Settings (${mod}+,).
+  - Data directory, AI keys, and preferences live in Settings (${mod}+,).
+  - Application Status and archive maintenance commands live in View.
 - This guide is always available from the menu bar via Help → Usage Information.
 
 Keyboard Shortcuts
@@ -64,7 +69,7 @@ Keyboard Shortcuts
 - Escape : Close dialog / cancel
 - F2 : Rename selected thread
 - Alt+Up / Alt+Down : Move Q&A within thread
-- E : Edit selected Q&A     D : Duplicate     Delete : Delete     X : Export
+- ${mod}+E : Edit selected Q&A     ${mod}+D : Duplicate     Delete : Delete     X : Export
 - ? : Keyboard shortcuts help
 - ${mod}+Enter : Submit form     Arrow Up / Down : Navigate lists`
 
@@ -131,8 +136,8 @@ Keyboard Shortcuts
     {
       label: 'Q&A',
       submenu: [
-        mi('Edit Selected', 'qa.edit', 'E'),
-        mi('Duplicate Selected', 'qa.duplicate', 'D'),
+        mi('Edit Selected', 'qa.edit', `${mod}+E`),
+        mi('Duplicate Selected', 'qa.duplicate', `${mod}+D`),
         mi('Delete Selected', 'qa.delete', 'Delete'),
         mi('Save Changes', 'qa.save', `${mod}+S`),
         { type: 'separator' },
@@ -155,7 +160,7 @@ Keyboard Shortcuts
       submenu: [
         mi('Focus Search', 'search.focus', `${mod}+F`),
         mi('Toggle Dark Mode', 'view.darkMode'),
-        mi('Toggle LLM Lens', 'view.lens'),
+        ...(lensEnabled ? [mi('Toggle LLM Lens', 'view.lens')] : []),
         { type: 'separator' },
         mi('Toggle Threads Panel', 'view.toggleThreads'),
         mi('Toggle List Panel', 'view.toggleList'),
@@ -173,6 +178,15 @@ Keyboard Shortcuts
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Tools',
+      submenu: [
+        mi('Manage Tag Dictionary…', 'view.manageTags'),
+        mi('Generate All Embeddings', 'view.generateEmbeddings'),
+        mi('Run Confidence Annotation Pass…', 'view.annotationPass'),
+        mi('Run Archive Health Check…', 'view.healthCheck'),
       ]
     },
     {
@@ -195,6 +209,7 @@ Keyboard Shortcuts
       submenu: [
         mi('Open Command Palette', 'app.commandPalette', `${mod}+K`),
         mi('Keyboard Shortcuts', 'app.shortcuts', '?'),
+        mi('Application Status', 'view.status'),
         { type: 'separator' },
         { label: 'Usage Information', click: showUsage },
         ...(isMac ? [] : [
@@ -283,6 +298,7 @@ app.whenReady().then(() => {
   // so live keys are not left sitting in clear text with nothing to clean them up.
   initSecretsStorage()
   createApplicationMenu()
+  setSettingsChangeListener(() => createApplicationMenu())
   registerIpcHandlers()
   createWindow()
 

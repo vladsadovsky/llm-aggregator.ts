@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["vite.config.mts", "electron/**/*.ts"]
+  "include": ["vite.config.mts", "electron/**/*.ts", "shared/**/*.ts"]
 }

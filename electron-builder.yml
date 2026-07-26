@@ -20,9 +20,10 @@ win:
     - nsis
     - portable
     - msi
-  # ${target} is required here: nsis and portable both emit .exe, so without it
-  # they render identical filenames and one silently overwrites the other.
-  artifactName: "${productName}-${version}-win-${target}.${ext}"
+  # nsis and portable both emit .exe, so each target sets its own artifactName
+  # below to avoid identical filenames overwriting each other. (Do NOT use a
+  # win-level "${target}" macro — it is not a valid electron-builder macro and
+  # fails the whole win build with "macro target is not defined".)
 linux:
   icon: public/icons/llm-aggregator.png
   target:
@@ -33,7 +34,11 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  artifactName: "${productName}-${version}-win-setup.${ext}"
+portable:
+  artifactName: "${productName}-${version}-win-portable.${ext}"
 msi:
   oneClick: false
   perMachine: false
   upgradeCode: "70DA883D-10E1-456D-BFBB-6E77AAE20DFC"
+  artifactName: "${productName}-${version}-win-msi.${ext}"

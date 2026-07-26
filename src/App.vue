@@ -10,6 +10,10 @@ import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import ApplicationStatusDialog from './components/ApplicationStatusDialog.vue'
+import AnnotationDialog from './components/AnnotationDialog.vue'
+import HealthReportDialog from './components/HealthReportDialog.vue'
+import TagManagerDialog from './components/TagManagerDialog.vue'
 import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import { useThreadStore } from './stores/threadStore'
@@ -25,7 +29,13 @@ const uiStore = useUIStore()
 const tagStore = useTagStore()
 const toast = useToast()
 const showSettings = ref(false)
+const showApplicationStatus = ref(false)
+const showAnnotationDialog = ref(false)
+const showHealthDialog = ref(false)
+const showTagManager = ref(false)
+const generatingEmbeddings = ref(false)
 const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
+const lensEnabled = ref(false)
 const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
 const commandQuery = ref('')
@@ -55,8 +65,8 @@ interface AppCommand {
 const appCommands: AppCommand[] = [
   { id: 'search.focus', label: 'Focus Search', shortcut: `${modKeyLabel}+F`, run: focusSearch },
   { id: 'qa.new', label: 'New Q&A', shortcut: `${modKeyLabel}+N`, run: openQAEditor },
-  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: 'E', run: requestEditSelectedQA },
-  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: 'D', run: requestDuplicateSelectedQA },
+  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: `${modKeyLabel}+E`, run: requestEditSelectedQA },
+  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: `${modKeyLabel}+D`, run: requestDuplicateSelectedQA },
   { id: 'qa.delete', label: 'Delete Selected Q&A', shortcut: 'Delete', run: requestDeleteSelectedQA },
   { id: 'qa.save', label: 'Save Changes', shortcut: `${modKeyLabel}+S`, run: requestSaveCurrentEdit },
   { id: 'qa.moveUp', label: 'Move Q&A Up in Thread', shortcut: 'Alt+Up', run: () => void moveSelectedQA(-1) },
@@ -75,12 +85,18 @@ const appCommands: AppCommand[] = [
   { id: 'view.zoomReset', label: 'Reset Content Zoom', shortcut: '', run: () => uiStore.zoomReset() },
   { id: 'view.darkMode', label: 'Toggle Dark Mode', shortcut: '', run: () => uiStore.toggleDarkMode() },
   { id: 'view.lens', label: 'Toggle LLM Lens', shortcut: '', run: () => insightsPanelRef.value?.toggle() },
+  { id: 'view.status', label: 'Application Status', shortcut: '', run: () => { showApplicationStatus.value = true } },
+  { id: 'view.manageTags', label: 'Manage Tag Dictionary', shortcut: '', run: () => { showTagManager.value = true } },
+  { id: 'view.generateEmbeddings', label: 'Generate All Embeddings', shortcut: '', run: () => void generateAllEmbeddings() },
+  { id: 'view.annotationPass', label: 'Run Confidence Annotation Pass', shortcut: '', run: () => { showAnnotationDialog.value = true } },
+  { id: 'view.healthCheck', label: 'Run Archive Health Check', shortcut: '', run: () => { showHealthDialog.value = true } },
   { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
   { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
   { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
 ]
 
 function handleMenuAction(action: string) {
+  if (action === 'view.lens' && !lensEnabled.value) return
   const command = appCommands.find((c) => c.id === action)
   command?.run()
 }
@@ -88,7 +104,9 @@ function handleMenuAction(action: string) {
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase()
   // Exclude "Open Command Palette" — you're already in it here.
-  const commands = appCommands.filter((c) => c.id !== 'app.commandPalette')
+  const commands = appCommands.filter((c) =>
+    c.id !== 'app.commandPalette' && (lensEnabled.value || c.id !== 'view.lens'),
+  )
   if (!query) return commands
   return commands.filter((command) => {
     return (
@@ -100,9 +118,10 @@ const filteredCommands = computed(() => {
 
 onMounted(async () => {
   // Load threads, QA pairs, and tag dictionary in parallel; don't let one failure block the others
-  const [threadResult, qaResult] = await Promise.allSettled([
+  const [threadResult, qaResult, settingsResult] = await Promise.allSettled([
     threadStore.loadThreads(),
     qaStore.loadAllPairs(),
+    window.api.settingsLoad(),
   ])
   // Tag store loads independently — failure is non-fatal
   tagStore.load().catch(() => {})
@@ -116,6 +135,9 @@ onMounted(async () => {
     debugError('App', 'Failed to load QA pairs:', qaResult.reason)
     const reason = qaResult.reason instanceof Error ? qaResult.reason.message : String(qaResult.reason)
     toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load QA pairs: ' + reason, life: 5000 })
+  }
+  if (settingsResult.status === 'fulfilled') {
+    lensEnabled.value = settingsResult.value.lensEnabled
   }
 
   // If there are no threads, default to showing all QAs so the user sees their content
@@ -178,6 +200,31 @@ function openQAEditor() {
 
 function openSettings() {
   showSettings.value = true
+}
+
+function handleSettingsSaved(updatedLensEnabled: boolean) {
+  lensEnabled.value = updatedLensEnabled
+}
+
+async function generateAllEmbeddings() {
+  // Re-entrancy guard: the pass can be slow, so ignore repeat invocations from
+  // the command palette / menu while one is already running.
+  if (generatingEmbeddings.value) return
+  generatingEmbeddings.value = true
+  toast.add({ severity: 'info', summary: 'Generating embeddings…', detail: 'This may take a moment.', life: 3000 })
+  try {
+    const result = await window.api.aiGenerateAllEmbeddings()
+    toast.add({
+      severity: 'success',
+      summary: 'Embeddings updated',
+      detail: `${result.generated} generated, ${result.skipped} up to date (${result.total} total)`,
+      life: 5000,
+    })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Embedding failed', detail: (err as Error).message, life: 6000 })
+  } finally {
+    generatingEmbeddings.value = false
+  }
 }
 
 function openShortcutsHelp() {
@@ -469,6 +516,13 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
+  // The command palette is global: it must work even when an input retains focus.
+  if (isMod && key === 'k') {
+    event.preventDefault()
+    openCommandPalette()
+    return
+  }
+
   if (isInputTarget(target)) return
 
   // Ctrl/Cmd + F and /: Focus search
@@ -519,8 +573,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // E: Edit selected QA
-  if (!isMod && !event.altKey && !event.shiftKey && key === 'e') {
+  // Ctrl/Cmd+E: Edit selected QA
+  if (isMod && !event.altKey && !event.shiftKey && key === 'e') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
     requestEditSelectedQA()
@@ -535,8 +589,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // D: Duplicate selected QA into create form
-  if (!isMod && !event.altKey && !event.shiftKey && key === 'd') {
+  // Ctrl/Cmd+D: Duplicate selected QA into create form
+  if (isMod && !event.altKey && !event.shiftKey && key === 'd') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
     requestDuplicateSelectedQA()
@@ -567,13 +621,6 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Ctrl/Cmd + K: Open command palette
-  if (isMod && key === 'k') {
-    event.preventDefault()
-    openCommandPalette()
-    return
-  }
-
   // ?: Show keyboard shortcuts
   if (event.key === '?') {
     event.preventDefault()
@@ -588,6 +635,23 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <SettingsDialog
     v-if="showSettings"
     @close="showSettings = false"
+    @saved="handleSettingsSaved"
+  />
+  <ApplicationStatusDialog
+    v-if="showApplicationStatus"
+    @close="showApplicationStatus = false"
+  />
+  <AnnotationDialog
+    v-if="showAnnotationDialog"
+    @close="showAnnotationDialog = false"
+  />
+  <HealthReportDialog
+    v-if="showHealthDialog"
+    @close="showHealthDialog = false"
+  />
+  <TagManagerDialog
+    v-if="showTagManager"
+    @close="showTagManager = false"
   />
   <div
     v-if="showCommandPalette"
@@ -635,9 +699,9 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           <tr><td>Escape</td><td>Close dialog / cancel current action</td></tr>
           <tr><td>F2 (Fn+F2 on some Macs)</td><td>Rename selected thread</td></tr>
           <tr><td>Alt+Up / Alt+Down</td><td>Move selected QA in thread</td></tr>
-          <tr><td>E</td><td>Edit selected QA</td></tr>
+          <tr><td>{{ modKeyLabel }}+E</td><td>Edit selected QA</td></tr>
           <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
-          <tr><td>D</td><td>Duplicate selected QA into new form</td></tr>
+          <tr><td>{{ modKeyLabel }}+D</td><td>Duplicate selected QA into new form</td></tr>
           <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
           <tr><td>X</td><td>Export selected QA or thread to file</td></tr>
           <tr><td>{{ modKeyLabel }}+O</td><td>Import from file</td></tr>
@@ -730,6 +794,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <div
     v-else
     class="app-container"
+    :class="{ 'app-container--lens-enabled': lensEnabled }"
   >
     <div
       class="panel-wrap"
@@ -798,6 +863,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
         </div>
         <div class="toolbar-buttons px-2 py-1">
           <Button
+            v-if="lensEnabled"
             icon="pi pi-sparkles"
             text
             rounded
@@ -826,7 +892,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       <QAContentPanel />
     </div>
   </div>
-  <InsightsPanel ref="insightsPanelRef" />
+  <InsightsPanel
+    v-if="lensEnabled"
+    ref="insightsPanelRef"
+  />
 </template>
 
 <style scoped>
@@ -856,8 +925,11 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  padding-bottom: 36px; /* reserve space for the Lens strip */
   box-sizing: border-box;
+}
+
+.app-container--lens-enabled {
+  padding-bottom: 36px; /* reserve space for the Lens strip */
 }
 
 .panel-wrap {

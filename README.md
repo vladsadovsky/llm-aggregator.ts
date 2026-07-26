@@ -26,13 +26,14 @@ Built with Vue 3, TypeScript, Electron, and PrimeVue.
 14. [Building Native Installers](#building-native-installers)
 15. [Runtime Configuration](#runtime-configuration)
 16. [Data Model and File Format](#data-model-and-file-format)
-17. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
-18. [Project Structure](#project-structure)
-19. [Technology Stack](#technology-stack)
-20. [Generative AI Usage](#generative-ai-usage)
-21. [Contributing](#contributing)
-22. [Credits](#credits)
-23. [License](#license)
+17. [Optional LLM Lens](#optional-llm-lens)
+18. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
+19. [Project Structure](#project-structure)
+20. [Technology Stack](#technology-stack)
+21. [Generative AI Usage](#generative-ai-usage)
+22. [Contributing](#contributing)
+23. [Credits](#credits)
+24. [License](#license)
 
 ---
 
@@ -271,7 +272,7 @@ Import an entire shared conversation from a public link. Choose **Import → Sha
 palette or the Import menu) and paste a URL of one of these forms:
 
 - `https://chatgpt.com/share/…`
-- `https://gemini.google.com/share/…`
+- `https://share.gemini.google/…` (current) or `https://gemini.google.com/share/…` (legacy)
 - `https://copilot.microsoft.com/shares/…`
 
 The conversation is fetched, split into ordered Q&A pairs, and grouped into a new thread. The
@@ -307,17 +308,32 @@ a single button:
   - **File** — New Q&A, Import from File, Import from Shared Link, Export Selected, Settings.
   - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
   - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
-  - **View** — Focus Search, Toggle Dark Mode, Toggle LLM Lens, Toggle Threads / List panels,
-    plus standard reload / zoom / full-screen / dev-tools.
+  - **View** — Focus Search, Toggle Dark Mode, LLM Lens when enabled, panel visibility, content
+    zoom, **Application Status**, and archive maintenance: tag dictionary, embeddings, confidence
+    annotation, and health checks; plus standard reload / zoom / full-screen / dev-tools.
   - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
 
   Menu items show their keyboard shortcut as a hint in parentheses.
 
-An in-app **Usage Information** guide (overview, layout, import options, LLM Lens, and the full
-shortcut list) is always available from **Help → Usage Information** in the menu bar.
+An in-app **Usage Information** guide (overview, layout, import options, optional Lens, and the
+full shortcut list) is always available from **Help → Usage Information** in the menu bar.
+
+## Settings and Status
+
+**Settings** is a tabbed dialog with **General**, **AI**, and **Metadata & Tags** sections. Its
+content scrolls within the dialog while Cancel and Save remain visible. Settings contains only
+preferences and key entry; concise control hints appear next to the relevant preference.
+
+Operational detail is available separately from **View → Application Status** or the Command
+Palette. It reports archive location, tag configuration, configured provider/model, non-secret key
+provenance, model-catalog source, secure-storage availability, and active warnings.
+
+Archive maintenance commands are available from **View** and the Command Palette: manage the tag
+dictionary, generate embeddings, run the confidence annotation pass, and run the archive health
+check.
 
 The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
-in the Threads panel; LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
+in the Threads panel; optional LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
 where relevant, right-click context menus. Toolbars and context menus deliberately carry only
 high-traffic actions — the Command Palette and menu bar are the complete reference.
 
@@ -338,9 +354,9 @@ high-traffic actions — the Command Palette and menu bar are the complete refer
 | Escape | Close dialog or cancel | Global |
 | F2 | Rename selected thread | Global |
 | Alt+Up / Alt+Down | Move selected QA | Thread mode |
-| E | Edit selected QA | Global |
+| Ctrl/Cmd+E | Edit selected QA | Global |
 | Delete | Delete selected QA (with confirmation) | Global |
-| D | Duplicate selected QA into new form | Global |
+| Ctrl/Cmd+D | Duplicate selected QA into new form | Global |
 | X | Export selected QA or thread to file | Global |
 | Ctrl/Cmd+O | Import from file | Global |
 | Ctrl/Cmd+Shift+O | Import from shared link | Global |
@@ -567,6 +583,24 @@ Example:
 }
 ```
 
+### Debug logging
+
+Verbose diagnostic traces (for example `[settingsService] loadSettings from ...`) are now
+opt-in and are disabled for normal development runs.
+
+- `npm run dev`: no debug trace output from the app debug logger.
+- `npm run dev:debug`: enables debug traces by setting `VITE_DEBUG_LEVEL=debug`.
+
+When `npm run dev` is launched from the VS Code integrated terminal, the script
+auto-initializes `VITE_DEBUG_LEVEL=debug`.
+
+In production builds, the default level is `ERROR` when no override is provided.
+
+Supported levels are `TRACE=0`, `DEBUG=1`, `WARNING=2`, `ERROR=3`.
+
+You can also set `VITE_DEBUG_LEVEL` (or `LLM_AGG_DEBUG_LEVEL` for Electron main-process
+only runs) in your shell before starting the app.
+
 ### API key storage
 
 API keys are **never stored in `settings.json`** and are never written in clear text.
@@ -579,21 +613,28 @@ Keys are also **write-only from the app's point of view**: the Settings window c
 store a key and show a masked preview of it (`sk-…a1b2`), but never displays or
 receives the full value back. Leaving the key field blank keeps the stored key as-is.
 
-Keys resolve in a fixed order, with the first source that supplies a value winning:
+Keys resolve independently for each provider in a fixed order. The first source with a value wins:
 
 | Order | Source | Notes |
 |---|---|---|
-| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Development only — see below. Read-only. |
+| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Used only when development override is enabled and the app is unpackaged. Read-only. |
 | 2 | `secrets.enc.json` (OS-encrypted) | Where Settings writes. |
 
-Settings shows which source the active key came from, and warns if OS-backed
-encryption is unavailable on the machine (in which case keys cannot be saved).
+If the development override is disabled, missing, or the app is packaged, environment variables
+are skipped and the encrypted local value is used. An environment value therefore never replaces
+or copies over the encrypted value; it only takes priority while the development-only override is
+active.
+
+Settings shows a compact key-source status and warnings if OS-backed encryption is unavailable
+(in which case keys cannot be saved). **View → Application Status** provides the full non-secret
+storage/backend report.
 
 #### Development environment overrides
 
 In development builds only, Settings offers **Use development environment variables
-for API keys**. When enabled, `LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`
-take precedence over stored keys. The variable names are fixed and not configurable.
+for API keys**. When enabled, an available `LLM_AGG_OPENAI_API_KEY` or
+`LLM_AGG_ANTHROPIC_API_KEY` takes precedence over that provider's encrypted stored key. The
+variable names are fixed and not configurable; setting only one variable affects only that provider.
 
 The override requires **both** the setting to be on and the build to be unpackaged.
 Enabling it and then running a packaged build has no effect — `settings.json` travels
@@ -731,32 +772,52 @@ Why this format works well:
 
 ---
 
-## LLM Lens Setup
+## Optional LLM Lens
 
-1. Open **Settings** → **AI** tab
-2. Select provider (**OpenAI** or **Anthropic**)
-3. Enter the matching provider API key. It is encrypted with OS secure storage on save;
-   afterwards the field shows a masked preview and stays blank unless you type a replacement.
-   See [API key storage](#api-key-storage).
-4. Optional (development only): enable **Use development environment variables for API keys**
-   to have `LLM_AGG_*` variables override the stored key.
-5. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
-6. Select a model using the Quality / Cost / Latency hints shown below the picker
-7. Click **Test Connection**
+LLM Lens is an optional bottom panel for exploring the Q&A archive with AI. It is disabled by
+default, so the focused capture, thread, search, and export workflow remains uncluttered.
 
-For OpenAI:
+### Enable and configure
 
-8. Click **Generate All Embeddings** to index your archive
-9. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+1. Open **Settings** → **AI**.
+2. Turn on **Enable LLM Lens** and save. The panel, toolbar button, command-palette command, and
+  **View → Toggle LLM Lens** menu item appear immediately.
+3. Select **OpenAI**, enter and test an OpenAI API key, then save. The key is encrypted with OS
+  secure storage; the field subsequently displays only a masked preview. See
+  [API key storage](#api-key-storage).
+4. Choose **View → Generate All Embeddings** to index the archive. Embeddings are cached locally in
+  `<userData>/embeddings.json` and are regenerated only when a Q&A pair changes.
 
-For Anthropic:
+Lens currently requires OpenAI as the active provider: it creates an embedding for each Lens
+query and Anthropic does not supply embeddings through this application. Metadata generation can
+still use Anthropic independently.
 
-8. Metadata and analysis generation works with Claude models.
-9. Embedding generation and semantic indexing are currently OpenAI-only in this app.
+To hide Lens again, turn off **Enable LLM Lens** in **Settings** → **AI** and save. The panel and
+all its entry points disappear immediately; no archive data, embeddings, or prompt history is
+deleted.
 
-The model list is cached locally in Electron user data (`model-catalog-cache.json`) so selection still works when provider discovery is temporarily unavailable.
+### Use Lens
 
-Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
+Open it with the sparkles toolbar button, **View → Toggle LLM Lens**, or the command palette.
+Choose a mode, enter a topic or claim, then click **Run** or press `Ctrl/Cmd+Enter` while the Lens
+input is focused. Each request searches the whole Q&A archive and sends the most relevant entries'
+full questions and answers to the configured provider. Lens does not browse the web, retain a
+chat conversation, or limit itself to the selected thread.
+
+| Mode | Use it to |
+|------|-----------|
+| **Brief** | Review established conclusions, unresolved questions, and contradictions before resuming a topic. |
+| **Prior Art** | See what the archive already covers and what remains open. |
+| **Steelman** | Find archive evidence supporting and challenging a stated hypothesis. |
+| **Gaps** | Generate 5-8 research questions grounded in unresolved archive material. |
+| **Concept** | Summarize a concept's working model, limitations, open questions, and abandoned directions. |
+
+Lens retrieves up to 12 related Q&As per request, or up to 20 for **Concept**. It keeps up to 20
+prompt-history entries per mode in local browser storage. Results can be copied or saved as a new
+Q&A with source `lens`. The token counter is session-only and can be reset from the panel.
+
+The model catalog is cached in Electron user data (`model-catalog-cache.json`) so model selection
+can still work when provider discovery is temporarily unavailable.
 
 ---
 

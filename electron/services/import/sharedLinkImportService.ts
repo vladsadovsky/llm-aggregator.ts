@@ -30,7 +30,7 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
     throw new Error(
       'Unrecognized share link. Supported links look like:\n' +
         '• https://chatgpt.com/share/…\n' +
-        '• https://gemini.google.com/share/…\n' +
+        '• https://gemini.google.com/share/… or https://share.gemini.google/…\n' +
         '• https://copilot.microsoft.com/shares/…',
     )
   }

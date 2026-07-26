@@ -14,6 +14,8 @@ export interface AppSettings {
   llmProvider: string
   /** Model to use for completions (provider-specific) */
   llmModel: string
+  /** Show the optional LLM Lens interface and related commands. */
+  lensEnabled: boolean
   /** Tag vocabulary enforcement mode */
   tagEnforcement: 'off' | 'warn' | 'strict'
   /** Vocabulary size at which a soft warning appears when adding new tags */
@@ -49,6 +51,7 @@ export function loadSettings(): AppSettings {
     dataDirectory: getDefaultDataDirectory(),
     llmProvider: 'openai',
     llmModel: 'gpt-4o',
+    lensEnabled: false,
     tagEnforcement: 'warn',
     tagSoftLimit: 50,
     tagHardLimit: 100,
@@ -69,6 +72,7 @@ export function loadSettings(): AppSettings {
     }
     return {
       ...merged,
+      lensEnabled: merged.lensEnabled === true,
       // Coerce explicitly: this flag gates a security-relevant code path, so a
       // truthy-but-not-boolean value in the file must not enable it by accident.
       allowDevEnvSecrets: merged.allowDevEnvSecrets === true,

@@ -5,6 +5,7 @@ export interface AppSettings {
   dataDirectory: string
   llmProvider: string
   llmModel: string
+  lensEnabled: boolean
   tagEnforcement: 'off' | 'warn' | 'strict'
   tagSoftLimit: number
   tagHardLimit: number
