@@ -4,7 +4,8 @@
   "description": "LLM Aggregator - Organize and search LLM conversation Q&A pairs",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "if /I \"%TERM_PROGRAM%\"==\"vscode\" (set VITE_DEBUG_LEVEL=debug&& vite --config vite.config.mts) else (vite --config vite.config.mts)",
+    "dev": "set VITE_DEBUG_LEVEL=warning&& vite --config vite.config.mts",
+    "dev:code": "if /I \"%TERM_PROGRAM%\"==\"vscode\" (set VITE_DEBUG_LEVEL=debug&& vite --config vite.config.mts) else (vite --config vite.config.mts)",
     "dev:debug": "set VITE_DEBUG_LEVEL=debug&& vite --config vite.config.mts",
     "dev:server": "vite --config vite.config.server.mts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
