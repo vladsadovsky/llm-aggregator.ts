@@ -43,7 +43,8 @@ const itemWarnings = computed(() => {
   return out
 })
 
-const providerHint = 'chatgpt.com/share/…, share.gemini.google/…, or copilot.microsoft.com/shares/…'
+const providerHint =
+  'claude.ai/share/…, chatgpt.com/share/…, share.gemini.google/…, or copilot.microsoft.com/shares/…'
 
 function submit() {
   if (!canSubmit.value) return
@@ -77,8 +78,8 @@ function close() {
     <!-- Input phase -->
     <div v-if="!result">
       <p class="dialog-intro">
-        Paste a shared conversation link from ChatGPT, Gemini, or Copilot. The whole thread is
-        split into Q&amp;A pairs and grouped into a new thread.
+        Paste a shared conversation link from Claude, ChatGPT, Gemini, or Copilot. The whole
+        thread is split into Q&amp;A pairs and grouped into a new thread.
       </p>
       <div class="field">
         <label for="shared-link-url">Share link</label>

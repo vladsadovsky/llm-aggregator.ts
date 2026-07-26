@@ -137,11 +137,21 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 - Version mismatches are handled with best-effort parsing and a per-item warning summary.
 
 #### Import from a shared conversation link
-- Paste a public share link from **ChatGPT**, **Gemini**, or **Copilot** to import a whole
-  conversation at once — it is split into Q&A pairs and grouped into a new thread.
+- Paste a public share link from **Claude**, **ChatGPT**, **Gemini**, or **Copilot** to import a
+  whole conversation at once — it is split into Q&A pairs and grouped into a new thread.
 - The thread and every imported QA are tagged with the provider and model name.
 - If a conversation title is found it becomes the thread name; otherwise a name is derived from
   the first question and the app reminds you to rename it.
+
+#### Import a whole account export (bulk)
+- Point the same **Import from File** action at a vendor account export — the `.zip` as downloaded,
+  the unzipped folder, or the conversations file inside it.
+- Supported: **Claude** and **Gemini** (Google Takeout, HTML or JSON) verified against real exports;
+  **ChatGPT** implemented but unverified, and flagged in the UI before importing.
+- A preview shows the conversation count, Q&A count, and date range, with a per-conversation
+  checklist. Nothing is written until you confirm; progress reports percentage, ETA, and current item.
+- Re-importing is safe: every imported QA records an `origin_id`, so pairs already in the archive
+  are recognized and skipped rather than duplicated.
 
 #### Export  to a note
 Same as a to a file, but targeting one note or section in a note repository app (OneNote or Apple Notes)
@@ -271,6 +281,7 @@ Missing fields are filled with safe defaults and listed in the import summary.
 Import an entire shared conversation from a public link. Choose **Import → Shared link** (command
 palette or the Import menu) and paste a URL of one of these forms:
 
+- `https://claude.ai/share/…`
 - `https://chatgpt.com/share/…`
 - `https://share.gemini.google/…` (current) or `https://gemini.google.com/share/…` (legacy)
 - `https://copilot.microsoft.com/shares/…`
@@ -280,20 +291,104 @@ thread and each QA are tagged with the provider and model name (for example `gem
 `gemini-3.6-flash`). When a title is present it becomes the thread name; otherwise a name is
 derived from the first question and a reminder to rename it is shown.
 
+Claude snapshots carry no model identifier, so Claude imports are tagged `claude` only — set the
+specific model by hand afterwards if you want it recorded.
+
 How each provider is read:
 
 | Provider | Source | Fidelity |
 |----------|--------|----------|
+| Claude   | `api/chat_snapshots/<id>` JSON | Full Markdown |
 | ChatGPT  | `backend-api/share/<id>` JSON (conversation tree) | Full Markdown |
 | Copilot  | `c/api/conversations/shares/<id>` JSON | Full Markdown |
 | Gemini   | Rendered in a hidden Electron `BrowserWindow`; answer HTML is converted back to Markdown with Turndown | Markdown recovered from rendered HTML |
 
-> **Testing note — Gemini requires the Electron runtime.** ChatGPT and Copilot parsing is pure
-> and covered by the Vitest unit suite (including real-response fixtures). Gemini has no
+> **Testing note — Gemini requires the Electron runtime.** Claude, ChatGPT, and Copilot parsing
+> is pure and covered by the Vitest unit suite (including real-response fixtures). Gemini has no
 > server-provided JSON, so its importer loads the real share page in a hidden `BrowserWindow`
 > and scrapes the DOM. That path **cannot be exercised by the Node unit tests** — verify it
 > end-to-end by running `npm run dev` and importing a Gemini share link, and re-check after any
 > change to the Gemini extractor or when Gemini alters its share-page markup.
+
+### Importing a whole account export (bulk)
+
+Vendors let you download your entire history. **File → Import from File** (`Ctrl/Cmd+O`) accepts
+those exports alongside `.md` files — pick the `.zip` exactly as downloaded, the folder you
+unzipped it to, or the conversations file inside it. There is one menu entry for both: the app
+identifies the file by its **structure**, not its name or extension.
+
+| Provider | What to select | Status |
+|----------|----------------|--------|
+| Claude | The export `.zip` (contains `conversations.json`) | Verified against a real export |
+| Gemini | The Google Takeout `.zip` (`My Activity/Gemini Apps/MyActivity.html`) | Verified against a real export |
+| Copilot | `copilot-activity-history.csv` from the Microsoft privacy dashboard | Verified against a real export |
+| ChatGPT | The export `.zip` (contains `conversations.json`) | Implemented but not yet verified — the app warns before importing |
+
+A preview appears before anything is written: format, conversation count, Q&A count, date range,
+and a checklist of conversations with per-conversation pair counts. Deselect what you don't want,
+then import. Progress shows percentage, ETA, and the item being written.
+
+Two provider-specific caveats:
+
+- **Claude** exports carry no model identifier, so pairs are tagged `claude` only.
+- **Copilot** exports as a CSV rather than an archive, and it *is* threaded — the `Conversation`
+  column gives real thread names, so those are reconstructed rather than grouped by date. Get it
+  from the Microsoft privacy dashboard → Copilot → **Export all activity history**.
+- **Gemini Takeout is an activity log, not conversations.** Google exports each prompt and
+  response as a standalone record with nothing linking follow-ups together, so the importer groups
+  records by **calendar day** rather than inventing threads. Canvas, upload, and feedback records
+  are skipped and reported. If Takeout offered you HTML or JSON, choose **HTML** — the JSON variant
+  is recognized but not yet parsed.
+
+#### Deduplication
+
+Every imported pair records an `origin_id` in its frontmatter
+(`<provider>:<conversationId>:<messageId>`). Re-importing the same export skips what is already
+there instead of duplicating it, and the preview tells you up front how many pairs it recognizes.
+Because the key is anchored on a pair's first message, it survives the conversation being continued
+and re-exported later, and a shared link and an account export of the *same* conversation produce
+the same key.
+
+For duplicates that predate this — or arrived by copy/paste — use **Tools → Find Duplicate Q&As**,
+which sweeps the whole archive and also matches on normalized content. It only ever proposes: you
+choose which copy to keep in each group, and nothing is deleted until you confirm.
+
+#### Fragility of shared-link import
+
+**Every provider here is read through an undocumented, unversioned, private endpoint.** None of
+these are public APIs: there is no contract, no deprecation notice, and no version negotiation.
+Any provider can rename a field, restructure a payload, tighten bot detection, or retire an
+endpoint without warning, and the corresponding importer will break the same day. Treat this
+feature as best-effort convenience, not as a dependable pipeline.
+
+What that means in practice:
+
+- **Failures are expected over time, and they are not your data's fault.** A broken importer
+  never touches the archive — the import either produces pairs or raises an error.
+- **Breakage is usually loud.** A changed payload shape surfaces as "no conversation content
+  could be extracted" or a parse error, not as silent data loss.
+- **But it can be quiet.** If a provider *adds* a message kind (a new content-block type, a
+  tool/reasoning turn), the parser drops what it does not recognize. Skim the imported thread
+  after a large import and check the per-item notes in the import summary.
+- **Bot detection is the most likely first failure.** The JSON endpoints are fetched through
+  Chromium's network stack with a browser `User-Agent`. Claude's `chat_snapshots` endpoint, for
+  example, returns `403` without one. Tighter checks (cookies, tokens, challenge pages) would
+  require moving that provider to the hidden-`BrowserWindow` approach Gemini already uses.
+- **Only public links work.** Private, expired, deleted, or login-gated conversations fail by
+  design; the app cannot authenticate as you.
+- **Claude links are point-in-time snapshots.** If the original conversation continued after it
+  was shared, the snapshot holds the older state — the importer flags this when the payload says
+  the snapshot is stale.
+
+When an importer breaks, the fix is normally confined to one provider: the pure parser in
+`electron/services/import/parsers/` and, at most, the endpoint URL in `sharedLinkImportService.ts`.
+Detection, pairing, tagging, and thread building are shared and provider-agnostic. Capture the
+failing payload into the Vitest fixtures in `tests/unit/sharedLinkImport.test.ts` before changing
+parser logic.
+
+**The durable alternative** is each provider's own account data export (Claude and ChatGPT both
+offer one), which is a supported, stable format. That is bulk backfill rather than single-link
+import, and is not wired into the app today.
 
 ---
 

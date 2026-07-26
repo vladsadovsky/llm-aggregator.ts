@@ -27,6 +27,90 @@ For the optional LLM Lens setup, operation, limits, and enable/disable instructi
 
 The entry is immediately available in search.
 
+### Importing a whole conversation from a share link
+
+Instead of copying pairs one at a time, you can import an entire public conversation at once.
+
+1. In the source chat, use its own **Share** action to create a public link
+2. In LLM Aggregator, press `Ctrl/Cmd+Shift+O` (or **File → Import from Shared Link**)
+3. Paste the link and press **Import**
+
+The conversation is split into ordered Q&A pairs and grouped into a new thread, tagged with the
+provider and — where the provider reports it — the model.
+
+| Provider | Link looks like |
+|----------|-----------------|
+| Claude | `https://claude.ai/share/…` |
+| ChatGPT | `https://chatgpt.com/share/…` |
+| Gemini | `https://share.gemini.google/…` |
+| Copilot | `https://copilot.microsoft.com/shares/…` |
+
+Only **public** links work — the app cannot sign in as you, so private, expired, or deleted
+conversations will fail. Gemini links take a few seconds longer, because that page has to be
+rendered before it can be read.
+
+Read the import summary before closing it. It reports the thread name, the tags applied, and any
+warnings — for example, that no title was found and the thread needs renaming, or that a Claude
+link is an older snapshot because the original conversation continued after it was shared.
+
+> **This feature can break without notice.** Share links are read through private endpoints that
+> the AI vendors do not publish or support. When a vendor changes their format, an importer stops
+> working until the app is updated — usually with a "no conversation content could be extracted"
+> error. Nothing in your archive is harmed when this happens; the import simply produces nothing.
+> Less often, a vendor adds a new kind of message that the importer does not recognize and quietly
+> skips, so **skim a large imported thread** to confirm it looks complete. For anything you truly
+> need to keep, saving the pair by hand (above) is the reliable path.
+
+### Importing your whole history from an account export
+
+Claude, ChatGPT, and Google all let you download everything you've ever asked them. That download
+can be imported in one go.
+
+1. Request the export from the provider (Claude: Settings → Privacy → Export data; Google: use
+   [takeout.google.com](https://takeout.google.com) and select only **Gemini**). They email you a
+   link, usually within a few hours.
+2. In LLM Aggregator press `Ctrl/Cmd+O` (**File → Import from File**)
+3. Select the `.zip` **exactly as you downloaded it** — no need to unzip. The unzipped folder or
+   the `conversations.json` inside also work.
+
+A preview appears first — nothing is written until you approve it. It shows the format detected,
+how many conversations and Q&A pairs were found, the date range, and a checklist of every
+conversation. Untick anything you don't want, then press Import. A progress bar shows the
+percentage, estimated time remaining, and which Q&A is being written.
+
+| Provider | Works today | Where to get the export |
+|----------|-------------|--------------------------|
+| Claude | Yes — verified | Settings → Privacy → Export data |
+| Gemini | Yes — verified | [takeout.google.com](https://takeout.google.com), select **Gemini** |
+| Copilot | Yes — verified | Microsoft privacy dashboard → Copilot → Export all activity history (a `.csv`) |
+| ChatGPT | Yes, but unverified — the app warns you before importing; check the results | Settings → Data controls → Export data |
+
+Two things worth knowing:
+
+- **Gemini exports are not conversations.** Google gives you an activity log — every prompt and
+  answer as a separate record, with nothing connecting a follow-up to what came before. Rather than
+  invent threads that don't exist, the app groups your Gemini history **by day**. You can reorganize
+  afterwards. Either format Takeout offers (HTML or JSON) works, and importing both won't duplicate.
+- **Hand over the whole Takeout file.** It normally contains your YouTube, Chrome, Search, and Maps
+  history too — all in files with the same name. The app finds the Gemini part and ignores the rest,
+  so there's no need to trim it down first.
+- **Claude exports don't say which model answered**, so those pairs are tagged just `claude`.
+- **Copilot arrives as a spreadsheet (`.csv`), not a zip** — select it directly. Unlike Gemini it
+  does keep your conversation titles, so those threads come across intact.
+
+### Re-importing, and cleaning up duplicates
+
+Importing the same export twice will **not** duplicate your archive. Every imported Q&A quietly
+records where it came from, and the preview tells you how many pairs it already recognizes before
+you commit. Leave "Skip pairs already in the archive" ticked and only genuinely new conversations
+are added — so it's safe to re-import a fresh export every few months to top up.
+
+If duplicates do creep in — from copy/paste, or from imports made before this was added — use
+**Tools → Find Duplicate Q&As**. It scans the whole archive and groups pairs that are either
+provably the same import or identical in content after ignoring formatting. You pick which copy to
+keep in each group; nothing is deleted until you press the delete button, and deleted pairs are
+also removed from any threads that referenced them.
+
 ### Organizing into threads
 
 A **thread** is an ordered list of QA pairs — similar to a chat session, but fully editable and reorderable.

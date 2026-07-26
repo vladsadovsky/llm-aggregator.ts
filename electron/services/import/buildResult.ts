@@ -20,6 +20,7 @@ const GENERIC_TITLES = new Set([
   'gemini',
   'copilot',
   'microsoft copilot',
+  'claude',
 ])
 
 /** First non-empty line of `text`, trimmed to `max` chars. */
@@ -31,6 +32,21 @@ export function deriveTitle(text: string, max = 70): string {
   if (!firstLine) return ''
   if (firstLine.length <= max) return firstLine
   return firstLine.slice(0, max).replace(/\s+\S*$/, '').trim() + '…'
+}
+
+/**
+ * Stable cross-import identity for one pair: `<provider>:<conversationId>:<anchorMessageId>`.
+ *
+ * The anchor is the pair's first provider-side message id, so the key survives
+ * later turns being appended to the same conversation. Returns '' when the
+ * payload carries no conversation id or no message ids — callers then fall back
+ * to content-based duplicate detection.
+ */
+export function buildOriginId(convo: ParsedConversation, sourceIds: string[]): string {
+  const conversationId = (convo.sourceId ?? '').trim()
+  const anchor = sourceIds[0]
+  if (!conversationId || !anchor) return ''
+  return `${convo.provider}:${conversationId}:${anchor}`
 }
 
 export function buildResult(convo: ParsedConversation): SharedImportResult {
@@ -54,6 +70,7 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
 
   const items: SharedImportQA[] = pairs.map((pair, i) => {
     const title = deriveTitle(pair.question) || deriveTitle(pair.answer) || `${threadName} — part ${i + 1}`
+    const originId = buildOriginId(convo, pair.sourceIds)
     return {
       data: {
         title,
@@ -62,8 +79,10 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
         tags: [...tags],
         question: pair.question,
         answer: pair.answer,
+        ...(originId ? { originId } : {}),
       },
       warnings: pair.warnings,
+      ...(originId ? { originId } : {}),
     }
   })
 

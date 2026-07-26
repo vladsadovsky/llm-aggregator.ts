@@ -14,12 +14,19 @@ export interface RawPair {
   question: string
   answer: string
   warnings: string[]
+  /**
+   * Provider-side message ids that went into this pair, in order. The first
+   * entry is the pair's stable anchor for dedup keys. Empty when the provider
+   * payload carries no message ids.
+   */
+  sourceIds: string[]
 }
 
 export function pairMessages(messages: ParsedMessage[]): RawPair[] {
   const pairs: RawPair[] = []
   let curQ: string[] = []
   let curA: string[] = []
+  let curIds: string[] = []
   let collectingAnswer = false
 
   const flush = (): void => {
@@ -29,9 +36,10 @@ export function pairMessages(messages: ParsedMessage[]): RawPair[] {
     const warnings: string[] = []
     if (!question) warnings.push('No question detected for this pair (leading assistant message).')
     if (!answer) warnings.push('No answer detected for this pair.')
-    pairs.push({ question, answer, warnings })
+    pairs.push({ question, answer, warnings, sourceIds: curIds })
     curQ = []
     curA = []
+    curIds = []
   }
 
   for (const m of messages) {
@@ -43,6 +51,7 @@ export function pairMessages(messages: ParsedMessage[]): RawPair[] {
       curA.push(m.text)
       collectingAnswer = true
     }
+    if (m.id) curIds.push(m.id)
   }
   flush()
 
