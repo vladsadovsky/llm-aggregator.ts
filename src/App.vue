@@ -10,6 +10,10 @@ import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import ApplicationStatusDialog from './components/ApplicationStatusDialog.vue'
+import AnnotationDialog from './components/AnnotationDialog.vue'
+import HealthReportDialog from './components/HealthReportDialog.vue'
+import TagManagerDialog from './components/TagManagerDialog.vue'
 import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import { useThreadStore } from './stores/threadStore'
@@ -25,6 +29,11 @@ const uiStore = useUIStore()
 const tagStore = useTagStore()
 const toast = useToast()
 const showSettings = ref(false)
+const showApplicationStatus = ref(false)
+const showAnnotationDialog = ref(false)
+const showHealthDialog = ref(false)
+const showTagManager = ref(false)
+const generatingEmbeddings = ref(false)
 const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
 const lensEnabled = ref(false)
 const showCommandPalette = ref(false)
@@ -76,6 +85,11 @@ const appCommands: AppCommand[] = [
   { id: 'view.zoomReset', label: 'Reset Content Zoom', shortcut: '', run: () => uiStore.zoomReset() },
   { id: 'view.darkMode', label: 'Toggle Dark Mode', shortcut: '', run: () => uiStore.toggleDarkMode() },
   { id: 'view.lens', label: 'Toggle LLM Lens', shortcut: '', run: () => insightsPanelRef.value?.toggle() },
+  { id: 'view.status', label: 'Application Status', shortcut: '', run: () => { showApplicationStatus.value = true } },
+  { id: 'view.manageTags', label: 'Manage Tag Dictionary', shortcut: '', run: () => { showTagManager.value = true } },
+  { id: 'view.generateEmbeddings', label: 'Generate All Embeddings', shortcut: '', run: () => void generateAllEmbeddings() },
+  { id: 'view.annotationPass', label: 'Run Confidence Annotation Pass', shortcut: '', run: () => { showAnnotationDialog.value = true } },
+  { id: 'view.healthCheck', label: 'Run Archive Health Check', shortcut: '', run: () => { showHealthDialog.value = true } },
   { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
   { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
   { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
@@ -190,6 +204,23 @@ function openSettings() {
 
 function handleSettingsSaved(updatedLensEnabled: boolean) {
   lensEnabled.value = updatedLensEnabled
+}
+
+async function generateAllEmbeddings() {
+  generatingEmbeddings.value = true
+  try {
+    const result = await window.api.aiGenerateAllEmbeddings()
+    toast.add({
+      severity: 'success',
+      summary: 'Embeddings updated',
+      detail: `${result.generated} generated, ${result.skipped} up to date (${result.total} total)`,
+      life: 5000,
+    })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Embedding failed', detail: (err as Error).message, life: 6000 })
+  } finally {
+    generatingEmbeddings.value = false
+  }
 }
 
 function openShortcutsHelp() {
@@ -481,6 +512,13 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
+  // The command palette is global: it must work even when an input retains focus.
+  if (isMod && key === 'k') {
+    event.preventDefault()
+    openCommandPalette()
+    return
+  }
+
   if (isInputTarget(target)) return
 
   // Ctrl/Cmd + F and /: Focus search
@@ -579,13 +617,6 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Ctrl/Cmd + K: Open command palette
-  if (isMod && key === 'k') {
-    event.preventDefault()
-    openCommandPalette()
-    return
-  }
-
   // ?: Show keyboard shortcuts
   if (event.key === '?') {
     event.preventDefault()
@@ -601,6 +632,22 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     v-if="showSettings"
     @close="showSettings = false"
     @saved="handleSettingsSaved"
+  />
+  <ApplicationStatusDialog
+    v-if="showApplicationStatus"
+    @close="showApplicationStatus = false"
+  />
+  <AnnotationDialog
+    v-if="showAnnotationDialog"
+    @close="showAnnotationDialog = false"
+  />
+  <HealthReportDialog
+    v-if="showHealthDialog"
+    @close="showHealthDialog = false"
+  />
+  <TagManagerDialog
+    v-if="showTagManager"
+    @close="showTagManager = false"
   />
   <div
     v-if="showCommandPalette"

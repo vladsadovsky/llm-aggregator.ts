@@ -308,15 +308,29 @@ a single button:
   - **File** — New Q&A, Import from File, Import from Shared Link, Export Selected, Settings.
   - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
   - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
-  - **View** — Focus Search, Toggle Dark Mode, and Toggle Threads / List panels. Toggle LLM Lens
-    appears when Lens is enabled in Settings.
-    plus standard reload / zoom / full-screen / dev-tools.
+  - **View** — Focus Search, Toggle Dark Mode, LLM Lens when enabled, panel visibility, content
+    zoom, **Application Status**, and archive maintenance: tag dictionary, embeddings, confidence
+    annotation, and health checks; plus standard reload / zoom / full-screen / dev-tools.
   - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
 
   Menu items show their keyboard shortcut as a hint in parentheses.
 
 An in-app **Usage Information** guide (overview, layout, import options, optional Lens, and the
 full shortcut list) is always available from **Help → Usage Information** in the menu bar.
+
+## Settings and Status
+
+**Settings** is a tabbed dialog with **General**, **AI**, and **Metadata & Tags** sections. Its
+content scrolls within the dialog while Cancel and Save remain visible. Settings contains only
+preferences and key entry; concise control hints appear next to the relevant preference.
+
+Operational detail is available separately from **View → Application Status** or the Command
+Palette. It reports archive location, tag configuration, configured provider/model, non-secret key
+provenance, model-catalog source, secure-storage availability, and active warnings.
+
+Archive maintenance commands are available from **View** and the Command Palette: manage the tag
+dictionary, generate embeddings, run the confidence annotation pass, and run the archive health
+check.
 
 The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
 in the Threads panel; optional LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
@@ -581,21 +595,28 @@ Keys are also **write-only from the app's point of view**: the Settings window c
 store a key and show a masked preview of it (`sk-…a1b2`), but never displays or
 receives the full value back. Leaving the key field blank keeps the stored key as-is.
 
-Keys resolve in a fixed order, with the first source that supplies a value winning:
+Keys resolve independently for each provider in a fixed order. The first source with a value wins:
 
 | Order | Source | Notes |
 |---|---|---|
-| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Development only — see below. Read-only. |
+| 1 | `LLM_AGG_OPENAI_API_KEY` / `LLM_AGG_ANTHROPIC_API_KEY` environment variables | Used only when development override is enabled and the app is unpackaged. Read-only. |
 | 2 | `secrets.enc.json` (OS-encrypted) | Where Settings writes. |
 
-Settings shows which source the active key came from, and warns if OS-backed
-encryption is unavailable on the machine (in which case keys cannot be saved).
+If the development override is disabled, missing, or the app is packaged, environment variables
+are skipped and the encrypted local value is used. An environment value therefore never replaces
+or copies over the encrypted value; it only takes priority while the development-only override is
+active.
+
+Settings shows a compact key-source status and warnings if OS-backed encryption is unavailable
+(in which case keys cannot be saved). **View → Application Status** provides the full non-secret
+storage/backend report.
 
 #### Development environment overrides
 
 In development builds only, Settings offers **Use development environment variables
-for API keys**. When enabled, `LLM_AGG_OPENAI_API_KEY` and `LLM_AGG_ANTHROPIC_API_KEY`
-take precedence over stored keys. The variable names are fixed and not configurable.
+for API keys**. When enabled, an available `LLM_AGG_OPENAI_API_KEY` or
+`LLM_AGG_ANTHROPIC_API_KEY` takes precedence over that provider's encrypted stored key. The
+variable names are fixed and not configurable; setting only one variable affects only that provider.
 
 The override requires **both** the setting to be on and the build to be unpackaged.
 Enabling it and then running a packaged build has no effect — `settings.json` travels
@@ -746,7 +767,7 @@ default, so the focused capture, thread, search, and export workflow remains unc
 3. Select **OpenAI**, enter and test an OpenAI API key, then save. The key is encrypted with OS
   secure storage; the field subsequently displays only a masked preview. See
   [API key storage](#api-key-storage).
-4. Click **Generate all embeddings** to index the archive. Embeddings are cached locally in
+4. Choose **View → Generate All Embeddings** to index the archive. Embeddings are cached locally in
   `<userData>/embeddings.json` and are regenerated only when a Q&A pair changes.
 
 Lens currently requires OpenAI as the active provider: it creates an embedding for each Lens

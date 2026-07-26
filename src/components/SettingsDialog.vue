@@ -9,9 +9,6 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import Password from 'primevue/password'
 import Select from 'primevue/select'
-import AnnotationDialog from './AnnotationDialog.vue'
-import HealthReportDialog from './HealthReportDialog.vue'
-import TagManagerDialog from './TagManagerDialog.vue'
 import { useTagStore } from '../stores/tagStore'
 import type { AppSecrets, SecretKey, SecretsStatus, SecretSource } from '../global'
 
@@ -64,13 +61,10 @@ const devEnvVarNames = ref<string[]>([])
 const recheckingStorage = ref(false)
 
 const testingConnection = ref(false)
-const generatingEmbeddings = ref(false)
 const loadingModelCatalog = ref(false)
-const showAnnotationDialog = ref(false)
-const showHealthDialog = ref(false)
-const showTagManager = ref(false)
 const modelCatalogWarning = ref('')
 const isDevMode = import.meta.env.DEV
+const activeTab = ref<'general' | 'ai' | 'metadata'>('general')
 
 const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
 const tagSoftLimit = ref(50)
@@ -83,7 +77,6 @@ const enforcementOptions = [
   { label: 'Warn — flag new tags', value: 'warn' },
   { label: 'Strict — dictionary only', value: 'strict' },
 ]
-const embeddingsResult = ref<{ total: number; generated: number; skipped: number } | null>(null)
 
 const providers = ref<ProviderDescriptor[]>([])
 const modelsByProvider = ref<Record<string, ModelDescriptor[]>>({})
@@ -104,8 +97,6 @@ const selectedModel = computed(() => {
   const models = modelsByProvider.value[llmProvider.value] ?? []
   return models.find(model => model.id === llmModel.value) ?? null
 })
-
-const embeddingsSupportedForProvider = computed(() => llmProvider.value === 'openai')
 
 const providerKeyLabel = computed(() => {
   if (llmProvider.value === 'openai') {
@@ -164,7 +155,11 @@ const secureStorageUnavailable = computed(() =>
   secretsStatus.value?.backends.some(b => b.id === 'safe-storage' && !b.available) ?? false,
 )
 
-const storageWarnings = computed(() => secretsStatus.value?.warnings ?? [])
+const storageWarnings = computed(() =>
+  (secretsStatus.value?.warnings ?? []).filter(warning =>
+    warning.code !== 'LEGACY_FILE_ORPHANED' && warning.code !== 'NO_SECRET_AVAILABLE',
+  ),
+)
 
 /**
  * Only the keys the user actually typed into. Untouched fields are omitted so the
@@ -335,29 +330,6 @@ function clearRememberedMetadata() {
   toast.add({ severity: 'info', summary: 'Remembered metadata cleared', life: 2000 })
 }
 
-async function generateEmbeddings() {
-  generatingEmbeddings.value = true
-  embeddingsResult.value = null
-  if (!await flushSecretUpdates()) {
-    generatingEmbeddings.value = false
-    return
-  }
-  try {
-    const result = await window.api.aiGenerateAllEmbeddings()
-    embeddingsResult.value = result
-    toast.add({
-      severity: 'success',
-      summary: 'Embeddings updated',
-      detail: `${result.generated} generated, ${result.skipped} up to date (${result.total} total)`,
-      life: 5000,
-    })
-  } catch (err) {
-    toast.add({ severity: 'error', summary: 'Embedding failed', detail: (err as Error).message, life: 6000 })
-  } finally {
-    generatingEmbeddings.value = false
-  }
-}
-
 async function testConnection() {
   testingConnection.value = true
   // Persist any typed key first so the main process tests the key the user sees.
@@ -399,363 +371,100 @@ function handleKeydown(event: KeyboardEvent) {
       class="settings-dialog"
       @keydown="handleKeydown"
     >
-      <h3 class="dialog-title">
-        <i class="pi pi-cog" />
-        Settings
-      </h3>
+      <header class="dialog-header">
+        <h3 class="dialog-title"><i class="pi pi-cog" />Settings</h3>
+        <button
+          class="close-button"
+          type="button"
+          title="Close Settings"
+          aria-label="Close Settings"
+          @click="emit('close')"
+        ><i class="pi pi-times" /></button>
+      </header>
 
-      <div class="field">
-        <label>Data Directory</label>
-        <p class="field-help">
-          The folder containing your <code>archive/</code> subfolder and <code>threads.json</code>.
-          On Windows, the default is <code>OneDrive\\Documents\\LLM-Aggregator</code> when
-          OneDrive is active, otherwise <code>Documents\\LLM-Aggregator</code>. OneDrive adds
-          cloud sync and backup, but a local folder avoids cloud privacy, availability, and
-          sync-conflict concerns. Choose either location here.
-        </p>
-        <div class="dir-row">
-          <InputText
-            v-model="dataDirectory"
-            class="dir-input"
-            placeholder="/path/to/your/data"
-          />
-          <Button
-            icon="pi pi-folder-open"
-            outlined
-            title="Browse..."
-            @click="pickDirectory"
-          />
-        </div>
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button :class="{ active: activeTab === 'general' }" role="tab" :aria-selected="activeTab === 'general'" type="button" @click="activeTab = 'general'">General</button>
+        <button :class="{ active: activeTab === 'ai' }" role="tab" :aria-selected="activeTab === 'ai'" type="button" @click="activeTab = 'ai'">AI</button>
+        <button :class="{ active: activeTab === 'metadata' }" role="tab" :aria-selected="activeTab === 'metadata'" type="button" @click="activeTab = 'metadata'">Metadata &amp; Tags</button>
       </div>
 
-      <div class="field">
-        <label>Appearance</label>
-        <div class="checkbox-field">
-          <Checkbox 
-            v-model="uiStore.darkMode" 
-            input-id="darkMode" 
-            binary 
-            @change="uiStore.toggleDarkMode()"
-          />
-          <label
-            for="darkMode"
-            class="checkbox-label"
-          >Dark mode</label>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>QA Editor</label>
-        <div class="checkbox-field">
-          <Checkbox 
-            v-model="rememberLastMetadataModel" 
-            input-id="rememberMetadata" 
-            binary 
-          />
-          <label
-            for="rememberMetadata"
-            class="checkbox-label"
-          >
-            Remember last-used source, tags, and URL
-          </label>
-        </div>
-        <div class="metadata-actions">
-          <Button
-            label="Clear Remembered Metadata"
-            severity="secondary"
-            outlined
-            size="small"
-            @click="clearRememberedMetadata"
-          />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>AI / LLM</label>
-        <p class="field-help">
-          Used for metadata generation, embeddings, and future analysis features.
-          API keys are encrypted with your operating system's secure storage and never committed to git.
-        </p>
-
-        <div class="checkbox-field">
-          <Checkbox
-            v-model="lensEnabled"
-            input-id="lensEnabled"
-            binary
-          />
-          <label
-            for="lensEnabled"
-            class="checkbox-label"
-          >Enable LLM Lens</label>
-        </div>
-        <p class="field-help">
-          Optional archive exploration panel. It remains hidden until enabled.
-        </p>
-
-        <div
-          v-for="warning in storageWarnings"
-          :key="warning.code"
-          class="storage-warning"
-        >
-          {{ warning.message }}
-        </div>
-
-        <div
-          v-if="secureStorageUnavailable"
-          class="storage-warning storage-warning--blocking"
-        >
-          Secure storage is unavailable on this machine, so API keys cannot be saved.
-        </div>
-
-        <div
-          v-if="isDevMode"
-          class="dev-env-section"
-        >
-          <div class="checkbox-field">
-            <Checkbox
-              v-model="allowDevEnvSecrets"
-              input-id="allowDevEnvSecrets"
-              binary
-            />
-            <label
-              for="allowDevEnvSecrets"
-              class="checkbox-label"
-            >Use development environment variables for API keys</label>
+      <main class="settings-content">
+        <section v-if="activeTab === 'general'" class="settings-section" role="tabpanel">
+          <div class="field">
+            <label for="dataDirectory">Data directory</label>
+            <div class="dir-row">
+              <InputText id="dataDirectory" v-model="dataDirectory" class="dir-input" placeholder="Data directory" />
+              <Button icon="pi pi-folder-open" outlined title="Browse for data directory" @click="pickDirectory" />
+            </div>
           </div>
-          <p
-            v-if="allowDevEnvSecrets"
-            class="field-help"
-            style="margin-top: 6px;"
-          >
-            Reads {{ devEnvVarNames.join(' and ') }}.
-            These take precedence over stored keys. Development only — ignored in packaged builds.
-          </p>
-        </div>
-        <div class="ai-row">
-          <Select
-            v-model="llmProvider"
-            :options="providerOptions"
-            option-label="label"
-            option-value="value"
-            option-disabled="disabled"
-            class="provider-select"
-          />
-          <Select
-            v-model="llmModel"
-            :options="modelOptions"
-            option-label="label"
-            option-value="value"
-            class="model-select"
-            :loading="loadingModelCatalog"
-          />
-          <Button
-            label="Refresh"
-            icon="pi pi-refresh"
-            severity="secondary"
-            outlined
-            size="small"
-            :loading="loadingModelCatalog"
-            @click="loadModelCatalog(true)"
-          />
-        </div>
-        <p
-          v-if="selectedProvider?.notes"
-          class="field-help"
-          style="margin-top: 8px;"
-        >
-          {{ selectedProvider.notes }}
-        </p>
-        <p
-          v-if="modelCatalogWarning"
-          class="field-help"
-          style="margin-top: 8px;"
-        >
-          {{ modelCatalogWarning }}
-        </p>
-        <p
-          v-for="hint in modelHints"
-          :key="hint"
-          class="field-help"
-          style="margin-top: 4px; margin-bottom: 0;"
-        >
-          {{ hint }}
-        </p>
-        <p
-          v-if="selectedModel?.notes"
-          class="field-help"
-          style="margin-top: 4px;"
-        >
-          {{ selectedModel.notes }}
-        </p>
-        <div
-          class="ai-row"
-          style="margin-top: 8px;"
-        >
-          <!--
-            One field per selected provider. It is always empty on open: the
-            stored key never leaves the main process, so the masked preview is
-            shown as placeholder text instead. Typing replaces the stored key;
-            leaving it blank keeps the stored key untouched.
-          -->
-          <Password
-            v-model="currentKeyDraft"
-            :placeholder="currentKeyPlaceholder"
-            :disabled="currentKeyStatus?.readOnly"
-            :feedback="false"
-            toggle-mask
-            class="api-key-input"
-            input-class="api-key-input-inner"
-          />
-          <Button
-            label="Test"
-            severity="secondary"
-            outlined
-            size="small"
-            :loading="testingConnection"
-            @click="testConnection"
-          />
-        </div>
-        <div class="storage-status-row">
-          <span class="field-help">{{ currentKeySourceText }}</span>
-          <Button
-            label="Re-check secure storage"
-            icon="pi pi-shield"
-            severity="secondary"
-            text
-            size="small"
-            :loading="recheckingStorage"
-            @click="recheckStorage"
-          />
-        </div>
-        <div
-          class="ai-row"
-          style="margin-top: 8px;"
-        >
-          <Button
-            label="Generate all embeddings"
-            icon="pi pi-database"
-            severity="secondary"
-            outlined
-            size="small"
-            :loading="generatingEmbeddings"
-            :disabled="!embeddingsSupportedForProvider"
-            @click="generateEmbeddings"
-          />
-          <span
-            v-if="embeddingsResult"
-            class="embeddings-status"
-          >
-            {{ embeddingsResult.generated }} new, {{ embeddingsResult.skipped }} up to date
-          </span>
-        </div>
-        <p
-          v-if="!embeddingsSupportedForProvider"
-          class="field-help"
-          style="margin-top: 6px;"
-        >
-          Embedding generation and semantic search indexing currently require the OpenAI provider.
-        </p>
-        <div
-          class="ai-row"
-          style="margin-top: 8px;"
-        >
-          <Button
-            label="Confidence Annotation Pass…"
-            icon="pi pi-check-circle"
-            severity="secondary"
-            outlined
-            size="small"
-            @click="showAnnotationDialog = true"
-          />
-        </div>
-        <div
-          class="ai-row"
-          style="margin-top: 8px;"
-        >
-          <Button
-            label="Archive Health Check…"
-            icon="pi pi-heart"
-            severity="secondary"
-            outlined
-            size="small"
-            @click="showHealthDialog = true"
-          />
-        </div>
-      </div>
+          <div class="field">
+            <label>Appearance</label>
+            <div class="checkbox-field">
+              <Checkbox v-model="uiStore.darkMode" input-id="darkMode" binary @change="uiStore.toggleDarkMode()" />
+              <label for="darkMode" class="checkbox-label">Dark mode</label>
+            </div>
+          </div>
+        </section>
 
-      <AnnotationDialog
-        v-if="showAnnotationDialog"
-        @close="showAnnotationDialog = false"
-      />
-      <HealthReportDialog
-        v-if="showHealthDialog"
-        @close="showHealthDialog = false"
-      />
-      <TagManagerDialog
-        v-if="showTagManager"
-        @close="showTagManager = false"
-      />
+        <section v-else-if="activeTab === 'ai'" class="settings-section" role="tabpanel">
+          <div class="ai-preferences">
+            <div class="checkbox-field">
+              <Checkbox v-model="lensEnabled" input-id="lensEnabled" binary />
+              <label for="lensEnabled" class="checkbox-label">Enable LLM Lens</label>
+            </div>
+            <div v-if="isDevMode" class="checkbox-field">
+              <Checkbox v-model="allowDevEnvSecrets" input-id="allowDevEnvSecrets" binary />
+              <label for="allowDevEnvSecrets" class="checkbox-label">Use development environment variables for API keys</label>
+            </div>
+            <span v-if="isDevMode && allowDevEnvSecrets" class="field-help">{{ devEnvVarNames.join(' / ') }}</span>
+          </div>
+          <div v-for="warning in storageWarnings" :key="warning.code" class="storage-warning">{{ warning.message }}</div>
+          <div v-if="secureStorageUnavailable" class="storage-warning storage-warning--blocking">Secure storage is unavailable; API keys cannot be saved.</div>
+          <div class="field">
+            <label>Provider and model</label>
+            <div class="ai-row">
+              <Select v-model="llmProvider" :options="providerOptions" option-label="label" option-value="value" option-disabled="disabled" class="provider-select" />
+              <Select v-model="llmModel" :options="modelOptions" option-label="label" option-value="value" class="model-select" :loading="loadingModelCatalog" />
+              <Button icon="pi pi-refresh" severity="secondary" outlined size="small" title="Refresh available models" :loading="loadingModelCatalog" @click="loadModelCatalog(true)" />
+            </div>
+            <span v-if="modelHints.length" class="field-help">{{ modelHints.join(' · ') }}</span>
+            <span v-if="selectedProvider?.notes" class="field-help">{{ selectedProvider.notes }}</span>
+          </div>
+          <div class="field">
+            <label>{{ providerKeyLabel }}</label>
+            <div class="ai-row">
+              <Password v-model="currentKeyDraft" :placeholder="currentKeyPlaceholder" :disabled="currentKeyStatus?.readOnly" :feedback="false" toggle-mask class="api-key-input" input-class="api-key-input-inner" />
+              <Button label="Test" severity="secondary" outlined size="small" :loading="testingConnection" @click="testConnection" />
+            </div>
+            <span class="field-help">{{ currentKeySourceText }}</span>
+            <div class="storage-check-action">
+              <Button icon="pi pi-shield" severity="secondary" outlined size="small" label="Re-check secure storage" :loading="recheckingStorage" @click="recheckStorage" />
+            </div>
+          </div>
+        </section>
 
-      <div class="field">
-        <label>Tags</label>
-        <p class="field-help">
-          Control how strictly new tags are validated against the dictionary.
-          The dictionary is stored in <code>tag-dictionary.json</code> alongside your archive.
-        </p>
-        <div class="ai-row">
-          <Select
-            v-model="tagEnforcement"
-            :options="enforcementOptions"
-            option-label="label"
-            option-value="value"
-            class="enforcement-select"
-          />
-          <Button
-            label="Manage tags…"
-            icon="pi pi-tags"
-            severity="secondary"
-            outlined
-            size="small"
-            @click="showTagManager = true"
-          />
-        </div>
-        <div
-          v-if="tagEnforcement !== 'off'"
-          class="ai-row"
-          style="margin-top: 8px; gap: 12px;"
-        >
-          <span
-            class="field-help"
-            style="margin: 0; white-space: nowrap;"
-          >Soft limit</span>
-          <input
-            v-model.number="tagSoftLimit"
-            type="number"
-            min="1"
-            max="999"
-            class="limit-input"
-            title="Warn when vocabulary exceeds this size"
-          >
-          <span
-            class="field-help"
-            style="margin: 0; white-space: nowrap;"
-          >Hard limit</span>
-          <input
-            v-model.number="tagHardLimit"
-            type="number"
-            min="1"
-            max="999"
-            class="limit-input"
-            title="Block new tags when vocabulary exceeds this size"
-          >
-          <span
-            class="field-help"
-            style="margin: 0;"
-          >
-            Dictionary: {{ tagStore.tagCount }} tag{{ tagStore.tagCount === 1 ? '' : 's' }}
-          </span>
-        </div>
-      </div>
+        <section v-else class="settings-section" role="tabpanel">
+          <div class="field">
+            <label>QA editor</label>
+            <div class="checkbox-field">
+              <Checkbox v-model="rememberLastMetadataModel" input-id="rememberMetadata" binary />
+              <label for="rememberMetadata" class="checkbox-label">Remember last-used source, tags, and URL</label>
+            </div>
+            <div class="metadata-actions"><Button label="Clear remembered metadata" severity="secondary" outlined size="small" @click="clearRememberedMetadata" /></div>
+          </div>
+          <div class="field">
+            <label for="tagEnforcement">Tag enforcement</label>
+            <Select id="tagEnforcement" v-model="tagEnforcement" :options="enforcementOptions" option-label="label" option-value="value" class="enforcement-select" />
+          </div>
+          <div v-if="tagEnforcement !== 'off'" class="limits-row">
+            <label for="tagSoftLimit">Soft limit</label>
+            <input id="tagSoftLimit" v-model.number="tagSoftLimit" type="number" min="1" max="999" class="limit-input" title="Warn when vocabulary exceeds this size">
+            <label for="tagHardLimit">Hard limit</label>
+            <input id="tagHardLimit" v-model.number="tagHardLimit" type="number" min="1" max="999" class="limit-input" title="Block new tags when vocabulary exceeds this size">
+            <span class="tag-dictionary-count">Tag dictionary: {{ tagStore.tagCount }} tags</span>
+          </div>
+        </section>
+      </main>
 
       <div class="button-row">
         <Button
@@ -784,20 +493,70 @@ function handleKeydown(event: KeyboardEvent) {
   justify-content: center;
   z-index: 1000;
 }
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 0;
+}
+
 
 .settings-dialog {
   background: var(--surface-card);
-  border-radius: 12px;
-  padding: 24px;
-  width: 560px;
-  max-width: 90vw;
+  border-radius: 8px;
+  width: min(640px, 94vw);
+  max-width: 94vw;
+  max-height: min(760px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.close-button {
+  border: 0;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  padding: 6px;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 16px 20px 0;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.settings-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings-tabs button.active {
+  border-bottom-color: var(--primary-color);
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.settings-content {
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.settings-section {
+  min-height: 260px;
 }
 
 .dialog-title {
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 20px;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -815,16 +574,10 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .field-help {
+  display: block;
   font-size: 12px;
   color: var(--text-color-secondary);
-  margin-bottom: 8px;
-}
-
-.field-help code {
-  background: var(--surface-200);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 11px;
+  margin-top: 6px;
 }
 
 .dir-row {
@@ -850,22 +603,27 @@ function handleKeydown(event: KeyboardEvent) {
   margin: 0;
 }
 
-.metadata-actions {
-  margin-top: 8px;
-}
-
 .ai-row {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
-.dev-env-section {
-  margin: 8px 0 10px;
-  padding: 10px;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  background: var(--surface-50);
+.metadata-actions {
+  margin-top: 10px;
+}
+
+.ai-preferences {
+  margin-bottom: 16px;
+}
+
+.ai-preferences .checkbox-field:first-child {
+  margin-top: 0;
+}
+
+.storage-check-action {
+  margin-top: 8px;
 }
 
 .storage-status-row {
@@ -908,13 +666,31 @@ function handleKeydown(event: KeyboardEvent) {
   width: 100%;
 }
 
-.embeddings-status {
+.enforcement-select {
+  width: 220px;
+}
+
+.limits-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.limits-row label {
   font-size: 12px;
   color: var(--text-color-secondary);
 }
 
-.enforcement-select {
-  width: 220px;
+.tag-dictionary-count {
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-warning {
+  color: var(--orange-600, #b45309);
 }
 
 .limit-input {
@@ -931,8 +707,7 @@ function handleKeydown(event: KeyboardEvent) {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--surface-border);
 }
 </style>

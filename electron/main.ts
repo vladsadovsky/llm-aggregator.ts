@@ -20,6 +20,7 @@ function createApplicationMenu() {
   // themselves are handled in the renderer (see handleGlobalKeydown), so we do
   // NOT set an accelerator here (that would double-fire / hijack typing).
   const mi = (label: string, action: string, hint?: string) => ({
+    id: action,
     label: hint ? `${label}  (${hint})` : label,
     click: send(action),
   })
@@ -53,7 +54,8 @@ Search & optional AI
 Discoverability
 - Every command is available in the Command Palette (${mod}+K) and in this application menu bar.
 - The most common actions also appear as toolbar buttons.
-- Data directory, AI keys, tag dictionary, and archive health live in Settings (${mod}+,).
+  - Data directory, AI keys, and preferences live in Settings (${mod}+,).
+  - Application Status and archive maintenance commands live in View.
 - This guide is always available from the menu bar via Help → Usage Information.
 
 Keyboard Shortcuts
@@ -179,6 +181,15 @@ Keyboard Shortcuts
       ]
     },
     {
+      label: 'Tools',
+      submenu: [
+        mi('Manage Tag Dictionary…', 'view.manageTags'),
+        mi('Generate All Embeddings', 'view.generateEmbeddings'),
+        mi('Run Confidence Annotation Pass…', 'view.annotationPass'),
+        mi('Run Archive Health Check…', 'view.healthCheck'),
+      ]
+    },
+    {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
@@ -198,6 +209,7 @@ Keyboard Shortcuts
       submenu: [
         mi('Open Command Palette', 'app.commandPalette', `${mod}+K`),
         mi('Keyboard Shortcuts', 'app.shortcuts', '?'),
+        mi('Application Status', 'view.status'),
         { type: 'separator' },
         { label: 'Usage Information', click: showUsage },
         ...(isMac ? [] : [
