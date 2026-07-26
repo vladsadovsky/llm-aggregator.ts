@@ -14,6 +14,7 @@ const settings = ref<AppSettings | null>(null)
 const secrets = ref<SecretsStatus | null>(null)
 const providers = ref<ProviderDescriptor[]>([])
 const modelCatalog = ref<ModelCatalogResult | null>(null)
+const modelCatalogError = ref('')
 
 function keyStatus(provider: string): string {
   const key = provider === 'anthropic' ? 'anthropicApiKey' : 'openaiApiKey'
@@ -25,6 +26,8 @@ function keyStatus(provider: string): string {
 async function loadStatus() {
   loading.value = true
   error.value = ''
+  modelCatalogError.value = ''
+  modelCatalog.value = null
   try {
     const [loadedSettings, loadedSecrets, loadedProviders] = await Promise.all([
       window.api.settingsLoad(),
@@ -34,7 +37,14 @@ async function loadStatus() {
     settings.value = loadedSettings
     secrets.value = loadedSecrets
     providers.value = loadedProviders
-    modelCatalog.value = await window.api.aiListModels(loadedSettings.llmProvider)
+    // Fetch the catalog separately: a failure here should not blank the whole
+    // dialog (settings/secrets already loaded), but it must be surfaced rather
+    // than silently reported as an "Unavailable" catalog.
+    try {
+      modelCatalog.value = await window.api.aiListModels(loadedSettings.llmProvider)
+    } catch (err) {
+      modelCatalogError.value = (err as Error).message
+    }
   } catch (err) {
     error.value = (err as Error).message
   } finally {
@@ -54,13 +64,20 @@ onMounted(() => void loadStatus())
     @update:visible="emit('close')"
   >
     <div class="status-body">
-      <p v-if="loading" class="status-message">Loading status...</p>
+      <p
+        v-if="loading"
+        class="status-message"
+      >
+        Loading status...
+      </p>
       <template v-else-if="settings && secrets">
         <section class="status-section">
           <h4>Archive</h4>
           <dl>
             <dt>Data directory</dt>
-            <dd class="path-value">{{ settings.dataDirectory }}</dd>
+            <dd class="path-value">
+              {{ settings.dataDirectory }}
+            </dd>
             <dt>Tags</dt>
             <dd>{{ tagStore.tagCount }} in dictionary; enforcement {{ settings.tagEnforcement }}</dd>
             <dt>LLM Lens</dt>
@@ -78,29 +95,70 @@ onMounted(() => void loadStatus())
             <dt>API key</dt>
             <dd>{{ keyStatus(settings.llmProvider) }}</dd>
             <dt>Model catalog</dt>
-            <dd>{{ modelCatalog?.source ?? 'Unavailable' }}<template v-if="modelCatalog?.fetchedAt">, {{ new Date(modelCatalog.fetchedAt).toLocaleString() }}</template></dd>
+            <dd
+              v-if="modelCatalogError"
+              class="error-message"
+            >
+              Unavailable — {{ modelCatalogError }}
+            </dd>
+            <dd v-else>
+              {{ modelCatalog?.source ?? 'Unavailable' }}<template v-if="modelCatalog?.fetchedAt">
+                , {{ new Date(modelCatalog.fetchedAt).toLocaleString() }}
+              </template>
+            </dd>
           </dl>
         </section>
 
         <section class="status-section">
           <h4>Secure Storage</h4>
           <dl>
-            <template v-for="backend in secrets.backends" :key="backend.id">
+            <template
+              v-for="backend in secrets.backends"
+              :key="backend.id"
+            >
               <dt>{{ backend.id }}</dt>
               <dd>{{ backend.available ? (backend.writable ? 'Available' : 'Read only') : 'Unavailable' }}</dd>
             </template>
           </dl>
-          <ul v-if="secrets.warnings.length" class="warnings">
-            <li v-for="warning in secrets.warnings" :key="warning.code">{{ warning.message }}</li>
+          <ul
+            v-if="secrets.warnings.length"
+            class="warnings"
+          >
+            <li
+              v-for="warning in secrets.warnings"
+              :key="warning.code"
+            >
+              {{ warning.message }}
+            </li>
           </ul>
-          <p v-else class="status-message">No storage warnings.</p>
+          <p
+            v-else
+            class="status-message"
+          >
+            No storage warnings.
+          </p>
         </section>
       </template>
-      <p v-else class="status-message error-message">{{ error || 'Status information is unavailable.' }}</p>
+      <p
+        v-else
+        class="status-message error-message"
+      >
+        {{ error || 'Status information is unavailable.' }}
+      </p>
     </div>
     <template #footer>
-      <Button label="Refresh" icon="pi pi-refresh" severity="secondary" outlined :loading="loading" @click="loadStatus" />
-      <Button label="Close" @click="emit('close')" />
+      <Button
+        label="Refresh"
+        icon="pi pi-refresh"
+        severity="secondary"
+        outlined
+        :loading="loading"
+        @click="loadStatus"
+      />
+      <Button
+        label="Close"
+        @click="emit('close')"
+      />
     </template>
   </Dialog>
 </template>

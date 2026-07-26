@@ -21,7 +21,8 @@
     "src/**/*.ts",
     "src/**/*.d.ts",
     "src/**/*.vue",
-    "electron/**/*.ts"
+    "electron/**/*.ts",
+    "shared/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "dist-electron"]
 }

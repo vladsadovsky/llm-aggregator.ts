@@ -73,13 +73,13 @@ export const useUIStore = defineStore('ui', () => {
   const qaEditorDraft = ref<Partial<QACreateData> | null>(null)
   const qaEditorTargetThreadId = ref<string | null>(null)
 
+  function setDarkMode(value: boolean) {
+    darkMode.value = value
+    document.documentElement.classList.toggle('dark-mode', value)
+  }
+
   function toggleDarkMode() {
-    darkMode.value = !darkMode.value
-    if (darkMode.value) {
-      document.documentElement.classList.add('dark-mode')
-    } else {
-      document.documentElement.classList.remove('dark-mode')
-    }
+    setDarkMode(!darkMode.value)
   }
 
   function zoomIn() {
@@ -207,6 +207,7 @@ export const useUIStore = defineStore('ui', () => {
     isGlobalSearchActive,
     showQAEditor,
     darkMode,
+    setDarkMode,
     toggleDarkMode,
     isSidebarVisible,
     contentZoom,

@@ -69,7 +69,7 @@ Keyboard Shortcuts
 - Escape : Close dialog / cancel
 - F2 : Rename selected thread
 - Alt+Up / Alt+Down : Move Q&A within thread
-- E : Edit selected Q&A     D : Duplicate     Delete : Delete     X : Export
+- ${mod}+E : Edit selected Q&A     ${mod}+D : Duplicate     Delete : Delete     X : Export
 - ? : Keyboard shortcuts help
 - ${mod}+Enter : Submit form     Arrow Up / Down : Navigate lists`
 
@@ -136,8 +136,8 @@ Keyboard Shortcuts
     {
       label: 'Q&A',
       submenu: [
-        mi('Edit Selected', 'qa.edit', 'E'),
-        mi('Duplicate Selected', 'qa.duplicate', 'D'),
+        mi('Edit Selected', 'qa.edit', `${mod}+E`),
+        mi('Duplicate Selected', 'qa.duplicate', `${mod}+D`),
         mi('Delete Selected', 'qa.delete', 'Delete'),
         mi('Save Changes', 'qa.save', `${mod}+S`),
         { type: 'separator' },

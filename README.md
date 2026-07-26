@@ -354,9 +354,9 @@ high-traffic actions — the Command Palette and menu bar are the complete refer
 | Escape | Close dialog or cancel | Global |
 | F2 | Rename selected thread | Global |
 | Alt+Up / Alt+Down | Move selected QA | Thread mode |
-| E | Edit selected QA | Global |
+| Ctrl/Cmd+E | Edit selected QA | Global |
 | Delete | Delete selected QA (with confirmation) | Global |
-| D | Duplicate selected QA into new form | Global |
+| Ctrl/Cmd+D | Duplicate selected QA into new form | Global |
 | X | Export selected QA or thread to file | Global |
 | Ctrl/Cmd+O | Import from file | Global |
 | Ctrl/Cmd+Shift+O | Import from shared link | Global |

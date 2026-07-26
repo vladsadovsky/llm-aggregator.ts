@@ -5,6 +5,7 @@ import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import Password from 'primevue/password'
@@ -266,6 +267,31 @@ const rememberLastMetadataModel = computed({
   set: (value: boolean) => uiStore.setRememberLastMetadata(Boolean(value)),
 })
 
+// Route the checkbox through the store's setter so the value is applied exactly
+// once. Binding v-model straight to the store ref *and* calling toggle on change
+// would mutate the state twice and cancel itself out.
+const darkModeModel = computed({
+  get: () => uiStore.darkMode,
+  set: (value: boolean) => uiStore.setDarkMode(value),
+})
+
+/** Non-empty when the tag limits are invalid; also shown inline in the form. */
+const tagLimitError = computed(() => {
+  if (tagEnforcement.value === 'off') return ''
+  const soft = tagSoftLimit.value
+  const hard = tagHardLimit.value
+  if (!Number.isInteger(soft) || soft < 1 || soft > 999) {
+    return 'Soft limit must be a whole number between 1 and 999.'
+  }
+  if (!Number.isInteger(hard) || hard < 1 || hard > 999) {
+    return 'Hard limit must be a whole number between 1 and 999.'
+  }
+  if (soft > hard) {
+    return 'Soft limit cannot exceed the hard limit.'
+  }
+  return ''
+})
+
 onMounted(async () => {
   const [settings, status, discoveredProviders, envVarNames] = await Promise.all([
     window.api.settingsLoad(),
@@ -296,6 +322,12 @@ async function pickDirectory() {
 }
 
 async function save() {
+  if (tagLimitError.value) {
+    activeTab.value = 'metadata'
+    toast.add({ severity: 'warn', summary: 'Invalid tag limits', detail: tagLimitError.value, life: 5000 })
+    return
+  }
+
   await window.api.settingsSave({
     dataDirectory: dataDirectory.value,
     llmProvider: llmProvider.value,
@@ -306,6 +338,11 @@ async function save() {
     tagHardLimit: tagHardLimit.value,
     allowDevEnvSecrets: allowDevEnvSecrets.value,
   })
+
+  // Settings are now persisted and the main process has rebuilt its menu, so
+  // sync the renderer's Lens state immediately — before the independent secrets
+  // save below, which may fail and keep the dialog open.
+  emit('saved', lensEnabled.value)
 
   // Keys are saved separately and can fail independently (secure storage may be
   // unavailable). Keep the dialog open in that case so the typed key is not lost.
@@ -321,7 +358,6 @@ async function save() {
     tagStore.load(),
   ])
   toast.add({ severity: 'success', summary: 'Settings saved', life: 3000 })
-  emit('saved', lensEnabled.value)
   emit('close')
 }
 
@@ -350,176 +386,316 @@ async function testConnection() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  // Ctrl/Cmd+Enter saves. Escape is handled by the Dialog's own closeOnEscape.
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
     event.preventDefault()
     void save()
-    return
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    emit('close')
   }
 }
 </script>
 
 <template>
-  <div
-    class="settings-overlay"
-    @click.self="emit('close')"
+  <Dialog
+    :visible="true"
+    modal
+    :style="{ width: '640px', maxWidth: '94vw' }"
+    :content-style="{ padding: '0' }"
+    :dismissable-mask="true"
+    class="settings-dialog"
+    @update:visible="emit('close')"
+    @keydown="handleKeydown"
   >
+    <template #header>
+      <h3 class="dialog-title">
+        <i class="pi pi-cog" />Settings
+      </h3>
+    </template>
+
     <div
-      class="settings-dialog"
-      @keydown="handleKeydown"
+      class="settings-tabs"
+      role="tablist"
+      aria-label="Settings sections"
     >
-      <header class="dialog-header">
-        <h3 class="dialog-title"><i class="pi pi-cog" />Settings</h3>
-        <button
-          class="close-button"
-          type="button"
-          title="Close Settings"
-          aria-label="Close Settings"
-          @click="emit('close')"
-        ><i class="pi pi-times" /></button>
-      </header>
-
-      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-        <button :class="{ active: activeTab === 'general' }" role="tab" :aria-selected="activeTab === 'general'" type="button" @click="activeTab = 'general'">General</button>
-        <button :class="{ active: activeTab === 'ai' }" role="tab" :aria-selected="activeTab === 'ai'" type="button" @click="activeTab = 'ai'">AI</button>
-        <button :class="{ active: activeTab === 'metadata' }" role="tab" :aria-selected="activeTab === 'metadata'" type="button" @click="activeTab = 'metadata'">Metadata &amp; Tags</button>
-      </div>
-
-      <main class="settings-content">
-        <section v-if="activeTab === 'general'" class="settings-section" role="tabpanel">
-          <div class="field">
-            <label for="dataDirectory">Data directory</label>
-            <div class="dir-row">
-              <InputText id="dataDirectory" v-model="dataDirectory" class="dir-input" placeholder="Data directory" />
-              <Button icon="pi pi-folder-open" outlined title="Browse for data directory" @click="pickDirectory" />
-            </div>
-          </div>
-          <div class="field">
-            <label>Appearance</label>
-            <div class="checkbox-field">
-              <Checkbox v-model="uiStore.darkMode" input-id="darkMode" binary @change="uiStore.toggleDarkMode()" />
-              <label for="darkMode" class="checkbox-label">Dark mode</label>
-            </div>
-          </div>
-        </section>
-
-        <section v-else-if="activeTab === 'ai'" class="settings-section" role="tabpanel">
-          <div class="ai-preferences">
-            <div class="checkbox-field">
-              <Checkbox v-model="lensEnabled" input-id="lensEnabled" binary />
-              <label for="lensEnabled" class="checkbox-label">Enable LLM Lens</label>
-            </div>
-            <div v-if="isDevMode" class="checkbox-field">
-              <Checkbox v-model="allowDevEnvSecrets" input-id="allowDevEnvSecrets" binary />
-              <label for="allowDevEnvSecrets" class="checkbox-label">Use development environment variables for API keys</label>
-            </div>
-            <span v-if="isDevMode && allowDevEnvSecrets" class="field-help">{{ devEnvVarNames.join(' / ') }}</span>
-          </div>
-          <div v-for="warning in storageWarnings" :key="warning.code" class="storage-warning">{{ warning.message }}</div>
-          <div v-if="secureStorageUnavailable" class="storage-warning storage-warning--blocking">Secure storage is unavailable; API keys cannot be saved.</div>
-          <div class="field">
-            <label>Provider and model</label>
-            <div class="ai-row">
-              <Select v-model="llmProvider" :options="providerOptions" option-label="label" option-value="value" option-disabled="disabled" class="provider-select" />
-              <Select v-model="llmModel" :options="modelOptions" option-label="label" option-value="value" class="model-select" :loading="loadingModelCatalog" />
-              <Button icon="pi pi-refresh" severity="secondary" outlined size="small" title="Refresh available models" :loading="loadingModelCatalog" @click="loadModelCatalog(true)" />
-            </div>
-            <span v-if="modelHints.length" class="field-help">{{ modelHints.join(' · ') }}</span>
-            <span v-if="selectedProvider?.notes" class="field-help">{{ selectedProvider.notes }}</span>
-          </div>
-          <div class="field">
-            <label>{{ providerKeyLabel }}</label>
-            <div class="ai-row">
-              <Password v-model="currentKeyDraft" :placeholder="currentKeyPlaceholder" :disabled="currentKeyStatus?.readOnly" :feedback="false" toggle-mask class="api-key-input" input-class="api-key-input-inner" />
-              <Button label="Test" severity="secondary" outlined size="small" :loading="testingConnection" @click="testConnection" />
-            </div>
-            <span class="field-help">{{ currentKeySourceText }}</span>
-            <div class="storage-check-action">
-              <Button icon="pi pi-shield" severity="secondary" outlined size="small" label="Re-check secure storage" :loading="recheckingStorage" @click="recheckStorage" />
-            </div>
-          </div>
-        </section>
-
-        <section v-else class="settings-section" role="tabpanel">
-          <div class="field">
-            <label>QA editor</label>
-            <div class="checkbox-field">
-              <Checkbox v-model="rememberLastMetadataModel" input-id="rememberMetadata" binary />
-              <label for="rememberMetadata" class="checkbox-label">Remember last-used source, tags, and URL</label>
-            </div>
-            <div class="metadata-actions"><Button label="Clear remembered metadata" severity="secondary" outlined size="small" @click="clearRememberedMetadata" /></div>
-          </div>
-          <div class="field">
-            <label for="tagEnforcement">Tag enforcement</label>
-            <Select id="tagEnforcement" v-model="tagEnforcement" :options="enforcementOptions" option-label="label" option-value="value" class="enforcement-select" />
-          </div>
-          <div v-if="tagEnforcement !== 'off'" class="limits-row">
-            <label for="tagSoftLimit">Soft limit</label>
-            <input id="tagSoftLimit" v-model.number="tagSoftLimit" type="number" min="1" max="999" class="limit-input" title="Warn when vocabulary exceeds this size">
-            <label for="tagHardLimit">Hard limit</label>
-            <input id="tagHardLimit" v-model.number="tagHardLimit" type="number" min="1" max="999" class="limit-input" title="Block new tags when vocabulary exceeds this size">
-            <span class="tag-dictionary-count">Tag dictionary: {{ tagStore.tagCount }} tags</span>
-          </div>
-        </section>
-      </main>
-
-      <div class="button-row">
-        <Button
-          label="Cancel"
-          severity="secondary"
-          outlined
-          @click="emit('close')"
-        />
-        <Button
-          label="Save"
-          icon="pi pi-check"
-          @click="save"
-        />
-      </div>
+      <button
+        :class="{ active: activeTab === 'general' }"
+        role="tab"
+        :aria-selected="activeTab === 'general'"
+        type="button"
+        @click="activeTab = 'general'"
+      >
+        General
+      </button>
+      <button
+        :class="{ active: activeTab === 'ai' }"
+        role="tab"
+        :aria-selected="activeTab === 'ai'"
+        type="button"
+        @click="activeTab = 'ai'"
+      >
+        AI
+      </button>
+      <button
+        :class="{ active: activeTab === 'metadata' }"
+        role="tab"
+        :aria-selected="activeTab === 'metadata'"
+        type="button"
+        @click="activeTab = 'metadata'"
+      >
+        Metadata &amp; Tags
+      </button>
     </div>
-  </div>
+
+    <main class="settings-content">
+      <section
+        v-if="activeTab === 'general'"
+        class="settings-section"
+        role="tabpanel"
+      >
+        <div class="field">
+          <label for="dataDirectory">Data directory</label>
+          <div class="dir-row">
+            <InputText
+              id="dataDirectory"
+              v-model="dataDirectory"
+              class="dir-input"
+              placeholder="Data directory"
+            />
+            <Button
+              icon="pi pi-folder-open"
+              outlined
+              title="Browse for data directory"
+              @click="pickDirectory"
+            />
+          </div>
+        </div>
+        <div class="field">
+          <label>Appearance</label>
+          <div class="checkbox-field">
+            <Checkbox
+              v-model="darkModeModel"
+              input-id="darkMode"
+              binary
+            />
+            <label
+              for="darkMode"
+              class="checkbox-label"
+            >Dark mode</label>
+          </div>
+        </div>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'ai'"
+        class="settings-section"
+        role="tabpanel"
+      >
+        <div class="ai-preferences">
+          <div class="checkbox-field">
+            <Checkbox
+              v-model="lensEnabled"
+              input-id="lensEnabled"
+              binary
+            />
+            <label
+              for="lensEnabled"
+              class="checkbox-label"
+            >Enable LLM Lens</label>
+          </div>
+          <div
+            v-if="isDevMode"
+            class="checkbox-field"
+          >
+            <Checkbox
+              v-model="allowDevEnvSecrets"
+              input-id="allowDevEnvSecrets"
+              binary
+            />
+            <label
+              for="allowDevEnvSecrets"
+              class="checkbox-label"
+            >Use development environment variables for API keys</label>
+          </div>
+          <span
+            v-if="isDevMode && allowDevEnvSecrets"
+            class="field-help"
+          >{{ devEnvVarNames.join(' / ') }}</span>
+        </div>
+        <div
+          v-for="warning in storageWarnings"
+          :key="warning.code"
+          class="storage-warning"
+        >
+          {{ warning.message }}
+        </div>
+        <div
+          v-if="secureStorageUnavailable"
+          class="storage-warning storage-warning--blocking"
+        >
+          Secure storage is unavailable; API keys cannot be saved.
+        </div>
+        <div class="field">
+          <label>Provider and model</label>
+          <div class="ai-row">
+            <Select
+              v-model="llmProvider"
+              :options="providerOptions"
+              option-label="label"
+              option-value="value"
+              option-disabled="disabled"
+              class="provider-select"
+            />
+            <Select
+              v-model="llmModel"
+              :options="modelOptions"
+              option-label="label"
+              option-value="value"
+              class="model-select"
+              :loading="loadingModelCatalog"
+            />
+            <Button
+              icon="pi pi-refresh"
+              severity="secondary"
+              outlined
+              size="small"
+              title="Refresh available models"
+              :loading="loadingModelCatalog"
+              @click="loadModelCatalog(true)"
+            />
+          </div>
+          <span
+            v-if="modelHints.length"
+            class="field-help"
+          >{{ modelHints.join(' · ') }}</span>
+          <span
+            v-if="selectedProvider?.notes"
+            class="field-help"
+          >{{ selectedProvider.notes }}</span>
+        </div>
+        <div class="field">
+          <label>{{ providerKeyLabel }}</label>
+          <div class="ai-row">
+            <Password
+              v-model="currentKeyDraft"
+              :placeholder="currentKeyPlaceholder"
+              :disabled="currentKeyStatus?.readOnly"
+              :feedback="false"
+              toggle-mask
+              class="api-key-input"
+              input-class="api-key-input-inner"
+            />
+            <Button
+              label="Test"
+              severity="secondary"
+              outlined
+              size="small"
+              :loading="testingConnection"
+              @click="testConnection"
+            />
+          </div>
+          <span class="field-help">{{ currentKeySourceText }}</span>
+          <div class="storage-check-action">
+            <Button
+              icon="pi pi-shield"
+              severity="secondary"
+              outlined
+              size="small"
+              label="Re-check secure storage"
+              :loading="recheckingStorage"
+              @click="recheckStorage"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section
+        v-else
+        class="settings-section"
+        role="tabpanel"
+      >
+        <div class="field">
+          <label>QA editor</label>
+          <div class="checkbox-field">
+            <Checkbox
+              v-model="rememberLastMetadataModel"
+              input-id="rememberMetadata"
+              binary
+            />
+            <label
+              for="rememberMetadata"
+              class="checkbox-label"
+            >Remember last-used source, tags, and URL</label>
+          </div>
+          <div class="metadata-actions">
+            <Button
+              label="Clear remembered metadata"
+              severity="secondary"
+              outlined
+              size="small"
+              @click="clearRememberedMetadata"
+            />
+          </div>
+        </div>
+        <div class="field">
+          <label for="tagEnforcement">Tag enforcement</label>
+          <Select
+            id="tagEnforcement"
+            v-model="tagEnforcement"
+            :options="enforcementOptions"
+            option-label="label"
+            option-value="value"
+            class="enforcement-select"
+          />
+        </div>
+        <div
+          v-if="tagEnforcement !== 'off'"
+          class="limits-row"
+        >
+          <label for="tagSoftLimit">Soft limit</label>
+          <input
+            id="tagSoftLimit"
+            v-model.number="tagSoftLimit"
+            type="number"
+            min="1"
+            max="999"
+            class="limit-input"
+            title="Warn when vocabulary exceeds this size"
+          >
+          <label for="tagHardLimit">Hard limit</label>
+          <input
+            id="tagHardLimit"
+            v-model.number="tagHardLimit"
+            type="number"
+            min="1"
+            max="999"
+            class="limit-input"
+            title="Block new tags when vocabulary exceeds this size"
+          >
+          <span class="tag-dictionary-count">Tag dictionary: {{ tagStore.tagCount }} tags</span>
+        </div>
+        <span
+          v-if="tagLimitError"
+          class="limit-error"
+        >{{ tagLimitError }}</span>
+      </section>
+    </main>
+
+    <template #footer>
+      <Button
+        label="Cancel"
+        severity="secondary"
+        outlined
+        @click="emit('close')"
+      />
+      <Button
+        label="Save"
+        icon="pi pi-check"
+        @click="save"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <style scoped>
-.settings-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px 0;
-}
-
-
-.settings-dialog {
-  background: var(--surface-card);
-  border-radius: 8px;
-  width: min(640px, 94vw);
-  max-width: 94vw;
-  max-height: min(760px, calc(100vh - 32px));
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-}
-
-.close-button {
-  border: 0;
-  background: transparent;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  padding: 6px;
-}
-
 .settings-tabs {
   display: flex;
   gap: 2px;
@@ -546,6 +722,7 @@ function handleKeydown(event: KeyboardEvent) {
 
 .settings-content {
   overflow-y: auto;
+  max-height: min(560px, calc(100vh - 240px));
   padding: 20px;
 }
 
@@ -626,14 +803,6 @@ function handleKeydown(event: KeyboardEvent) {
   margin-top: 8px;
 }
 
-.storage-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-}
-
 .storage-warning {
   margin: 8px 0;
   padding: 8px 10px;
@@ -689,8 +858,11 @@ function handleKeydown(event: KeyboardEvent) {
   white-space: nowrap;
 }
 
-.status-warning {
-  color: var(--orange-600, #b45309);
+.limit-error {
+  display: block;
+  margin-top: 10px;
+  color: var(--red-500, #dc2626);
+  font-size: 12px;
 }
 
 .limit-input {
@@ -701,13 +873,5 @@ function handleKeydown(event: KeyboardEvent) {
   background: var(--surface-card);
   color: var(--text-color);
   font-size: 13px;
-}
-
-.button-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px 18px;
-  border-top: 1px solid var(--surface-border);
 }
 </style>

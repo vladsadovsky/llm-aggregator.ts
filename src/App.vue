@@ -65,8 +65,8 @@ interface AppCommand {
 const appCommands: AppCommand[] = [
   { id: 'search.focus', label: 'Focus Search', shortcut: `${modKeyLabel}+F`, run: focusSearch },
   { id: 'qa.new', label: 'New Q&A', shortcut: `${modKeyLabel}+N`, run: openQAEditor },
-  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: 'E', run: requestEditSelectedQA },
-  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: 'D', run: requestDuplicateSelectedQA },
+  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: `${modKeyLabel}+E`, run: requestEditSelectedQA },
+  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: `${modKeyLabel}+D`, run: requestDuplicateSelectedQA },
   { id: 'qa.delete', label: 'Delete Selected Q&A', shortcut: 'Delete', run: requestDeleteSelectedQA },
   { id: 'qa.save', label: 'Save Changes', shortcut: `${modKeyLabel}+S`, run: requestSaveCurrentEdit },
   { id: 'qa.moveUp', label: 'Move Q&A Up in Thread', shortcut: 'Alt+Up', run: () => void moveSelectedQA(-1) },
@@ -207,7 +207,11 @@ function handleSettingsSaved(updatedLensEnabled: boolean) {
 }
 
 async function generateAllEmbeddings() {
+  // Re-entrancy guard: the pass can be slow, so ignore repeat invocations from
+  // the command palette / menu while one is already running.
+  if (generatingEmbeddings.value) return
   generatingEmbeddings.value = true
+  toast.add({ severity: 'info', summary: 'Generating embeddings…', detail: 'This may take a moment.', life: 3000 })
   try {
     const result = await window.api.aiGenerateAllEmbeddings()
     toast.add({
@@ -569,8 +573,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // E: Edit selected QA
-  if (!isMod && !event.altKey && !event.shiftKey && key === 'e') {
+  // Ctrl/Cmd+E: Edit selected QA
+  if (isMod && !event.altKey && !event.shiftKey && key === 'e') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
     requestEditSelectedQA()
@@ -585,8 +589,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // D: Duplicate selected QA into create form
-  if (!isMod && !event.altKey && !event.shiftKey && key === 'd') {
+  // Ctrl/Cmd+D: Duplicate selected QA into create form
+  if (isMod && !event.altKey && !event.shiftKey && key === 'd') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
     requestDuplicateSelectedQA()
@@ -695,9 +699,9 @@ function handleGlobalKeydown(event: KeyboardEvent) {
           <tr><td>Escape</td><td>Close dialog / cancel current action</td></tr>
           <tr><td>F2 (Fn+F2 on some Macs)</td><td>Rename selected thread</td></tr>
           <tr><td>Alt+Up / Alt+Down</td><td>Move selected QA in thread</td></tr>
-          <tr><td>E</td><td>Edit selected QA</td></tr>
+          <tr><td>{{ modKeyLabel }}+E</td><td>Edit selected QA</td></tr>
           <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
-          <tr><td>D</td><td>Duplicate selected QA into new form</td></tr>
+          <tr><td>{{ modKeyLabel }}+D</td><td>Duplicate selected QA into new form</td></tr>
           <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
           <tr><td>X</td><td>Export selected QA or thread to file</td></tr>
           <tr><td>{{ modKeyLabel }}+O</td><td>Import from file</td></tr>
