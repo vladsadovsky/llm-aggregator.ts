@@ -11,6 +11,7 @@ import {
 } from '../services/qaPairService'
 import { search } from '../services/searchService'
 import { loadSettings, saveSettings, AppSettings } from '../services/settingsService'
+import { notifySettingsChanged } from '../services/settingsEvents'
 import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
 import { importFromFile } from '../services/fileImportService'
 import type { ImportResult } from '../services/qaImportFormatService'
@@ -57,6 +58,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
     saveSettings(settings)
+    notifySettingsChanged(settings)
     // Data directory may have changed — drop the tag dictionary cache
     invalidateTagCache()
   })

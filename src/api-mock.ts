@@ -18,6 +18,7 @@ export const mockApi: ElectronAPI = {
         dataDirectory: '/mock/data/dir',
         llmProvider: 'openai' as const,
         llmModel: 'gpt-4o',
+        lensEnabled: false,
         tagEnforcement: 'warn' as const,
         tagSoftLimit: 50,
         tagHardLimit: 100,

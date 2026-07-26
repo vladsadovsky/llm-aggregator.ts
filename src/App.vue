@@ -26,6 +26,7 @@ const tagStore = useTagStore()
 const toast = useToast()
 const showSettings = ref(false)
 const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
+const lensEnabled = ref(false)
 const showCommandPalette = ref(false)
 const showShortcutsHelp = ref(false)
 const commandQuery = ref('')
@@ -81,6 +82,7 @@ const appCommands: AppCommand[] = [
 ]
 
 function handleMenuAction(action: string) {
+  if (action === 'view.lens' && !lensEnabled.value) return
   const command = appCommands.find((c) => c.id === action)
   command?.run()
 }
@@ -88,7 +90,9 @@ function handleMenuAction(action: string) {
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase()
   // Exclude "Open Command Palette" — you're already in it here.
-  const commands = appCommands.filter((c) => c.id !== 'app.commandPalette')
+  const commands = appCommands.filter((c) =>
+    c.id !== 'app.commandPalette' && (lensEnabled.value || c.id !== 'view.lens'),
+  )
   if (!query) return commands
   return commands.filter((command) => {
     return (
@@ -100,9 +104,10 @@ const filteredCommands = computed(() => {
 
 onMounted(async () => {
   // Load threads, QA pairs, and tag dictionary in parallel; don't let one failure block the others
-  const [threadResult, qaResult] = await Promise.allSettled([
+  const [threadResult, qaResult, settingsResult] = await Promise.allSettled([
     threadStore.loadThreads(),
     qaStore.loadAllPairs(),
+    window.api.settingsLoad(),
   ])
   // Tag store loads independently — failure is non-fatal
   tagStore.load().catch(() => {})
@@ -116,6 +121,9 @@ onMounted(async () => {
     debugError('App', 'Failed to load QA pairs:', qaResult.reason)
     const reason = qaResult.reason instanceof Error ? qaResult.reason.message : String(qaResult.reason)
     toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load QA pairs: ' + reason, life: 5000 })
+  }
+  if (settingsResult.status === 'fulfilled') {
+    lensEnabled.value = settingsResult.value.lensEnabled
   }
 
   // If there are no threads, default to showing all QAs so the user sees their content
@@ -178,6 +186,10 @@ function openQAEditor() {
 
 function openSettings() {
   showSettings.value = true
+}
+
+function handleSettingsSaved(updatedLensEnabled: boolean) {
+  lensEnabled.value = updatedLensEnabled
 }
 
 function openShortcutsHelp() {
@@ -588,6 +600,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <SettingsDialog
     v-if="showSettings"
     @close="showSettings = false"
+    @saved="handleSettingsSaved"
   />
   <div
     v-if="showCommandPalette"
@@ -730,6 +743,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <div
     v-else
     class="app-container"
+    :class="{ 'app-container--lens-enabled': lensEnabled }"
   >
     <div
       class="panel-wrap"
@@ -798,6 +812,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
         </div>
         <div class="toolbar-buttons px-2 py-1">
           <Button
+            v-if="lensEnabled"
             icon="pi pi-sparkles"
             text
             rounded
@@ -826,7 +841,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       <QAContentPanel />
     </div>
   </div>
-  <InsightsPanel ref="insightsPanelRef" />
+  <InsightsPanel
+    v-if="lensEnabled"
+    ref="insightsPanelRef"
+  />
 </template>
 
 <style scoped>
@@ -856,8 +874,11 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  padding-bottom: 36px; /* reserve space for the Lens strip */
   box-sizing: border-box;
+}
+
+.app-container--lens-enabled {
+  padding-bottom: 36px; /* reserve space for the Lens strip */
 }
 
 .panel-wrap {

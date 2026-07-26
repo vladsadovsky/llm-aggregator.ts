@@ -3,12 +3,15 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
 import { initSecretsStorage } from './services/secretsService'
+import { loadSettings } from './services/settingsService'
+import { setSettingsChangeListener } from './services/settingsEvents'
 
 let mainWindow: BrowserWindow | null = null
 
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin'
   const mod = isMac ? 'Cmd' : 'Ctrl'
+  const lensEnabled = loadSettings().lensEnabled
 
   // Route a menu click to the renderer's central command registry (App.vue).
   const send = (action: string) => () => mainWindow?.webContents.send('menu-action', action)
@@ -42,10 +45,10 @@ Organizing
 - Q&A: edit (E), duplicate (D), delete (Delete), export (X).
 - Views: Show All Q&As, Show Unthreaded, collapse the Threads / List panels.
 
-Search & AI (LLM Lens)
+Search & optional AI
 - Search box (${mod}+F or /): full-text or tag search; switch scope to the whole archive.
-- LLM Lens: Session Brief, Prior Art, Steelman, Question Seeding, Concept Summary
-  (requires an OpenAI key in Settings → AI). Also powers semantic search and metadata.
+- LLM Lens: optional archive exploration panel. Enable it in Settings → AI; it requires
+  an OpenAI key and embeddings. Semantic search and metadata are available independently.
 
 Discoverability
 - Every command is available in the Command Palette (${mod}+K) and in this application menu bar.
@@ -155,7 +158,7 @@ Keyboard Shortcuts
       submenu: [
         mi('Focus Search', 'search.focus', `${mod}+F`),
         mi('Toggle Dark Mode', 'view.darkMode'),
-        mi('Toggle LLM Lens', 'view.lens'),
+        ...(lensEnabled ? [mi('Toggle LLM Lens', 'view.lens')] : []),
         { type: 'separator' },
         mi('Toggle Threads Panel', 'view.toggleThreads'),
         mi('Toggle List Panel', 'view.toggleList'),
@@ -283,6 +286,7 @@ app.whenReady().then(() => {
   // so live keys are not left sitting in clear text with nothing to clean them up.
   initSecretsStorage()
   createApplicationMenu()
+  setSettingsChangeListener(() => createApplicationMenu())
   registerIpcHandlers()
   createWindow()
 

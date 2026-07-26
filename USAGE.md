@@ -1,6 +1,9 @@
 # User Guide — LLM Aggregator
 
-LLM Aggregator is a personal research archive. You capture Q&A pairs from your AI conversations, organize them into threads, and gradually build a knowledge base that reflects how your thinking has evolved. The **LLM Lens** layer lets you query that archive with AI — not to replace your thinking, but to act like a magnifying glass over what you already know.
+LLM Aggregator is a personal research archive. You capture Q&A pairs from your AI conversations, organize them into threads, and gradually build a knowledge base that reflects how your thinking has evolved.
+
+For the optional LLM Lens setup, operation, limits, and enable/disable instructions, see the
+[canonical Lens guide in README](README.md#optional-llm-lens).
 
 ---
 
@@ -8,7 +11,7 @@ LLM Aggregator is a personal research archive. You capture Q&A pairs from your A
 
 1. **Start the app.** On first run it opens with an empty archive in the current working directory.
 2. **Set your data folder.** Click the **gear icon** (top-left) → Settings → pick a directory. This is where your `archive/` folder and `threads.json` will live.
-3. **Optional: connect LLM Lens.** In Settings → AI tab, pick a provider (OpenAI or Anthropic), enter that provider's API key, choose a model, and click **Test Connection**.
+3. **Optional: configure AI features.** In Settings → AI, choose a provider, enter its API key, choose a model, and click **Test Connection**.
 
 ---
 
@@ -22,7 +25,7 @@ LLM Aggregator is a personal research archive. You capture Q&A pairs from your A
 4. Set the **Source** (which AI), add **Tags**, and optionally a **URL** back to the conversation
 5. Press `Ctrl/Cmd+Enter` to save
 
-The entry is immediately available in search and for LLM Lens analysis.
+The entry is immediately available in search.
 
 ### Organizing into threads
 
@@ -45,61 +48,6 @@ The **search bar** (middle column) works in three modes — switch with the drop
 | **Semantic** | Find by meaning (requires embeddings, see below) |
 
 Search scope can be set to the current thread or the whole archive.
-
----
-
-## LLM Lens
-
-The LLM Lens is a bottom drawer panel that analyses your archive using AI. It does **not** browse the web or use external knowledge — it works strictly from your own notes.
-
-### Prerequisites
-
-Before using LLM Lens:
-1. Configure your OpenAI API key in Settings → AI
-2. Click **Generate All Embeddings** in Settings → AI (takes a few seconds per entry on first run)
-
-Embeddings are cached locally and only recomputed when a QA pair changes.
-
-### Opening the panel
-
-Press `Ctrl/Cmd+L` or click the **Lens** icon in the toolbar.
-
-### Five insight modes
-
-**Brief** — Re-enter a topic after a break. Type a topic and get:
-- What your archive has already settled
-- What remains unresolved
-- Any contradictions between entries
-
-> *Example: "gradient descent optimization"*
-
-**Prior Art** — Before starting new research, check what you already know. Type a research question and get:
-- What's already covered in your archive
-- What's genuinely open
-
-> *Example: "how does attention mechanism handle long sequences"*
-
-**Steelman** — Test a hypothesis against your archive. Type a claim and get:
-- Archive evidence that supports it
-- Archive evidence that challenges it
-
-> *Example: "fine-tuning is more reliable than prompting for structured output"*
-
-**Gaps** — Identify the frontier of your thinking. Type a topic and get 5–8 specific questions your archive raises but doesn't answer.
-
-> *Example: "transformer scaling laws"*
-
-**Concept** — Synthesize your current understanding of a concept across all related entries. Type a concept name and get:
-- Your working model
-- Known limitations
-- Open questions
-- Abandoned directions
-
-> *Example: "RAG retrieval quality"*
-
-### Token usage
-
-The panel footer shows accumulated token usage for the current session (LLM calls + embeddings). Click **Reset** to zero the counters.
 
 ---
 
@@ -161,7 +109,7 @@ Use this to review and update confidence levels across many QA pairs at once.
 | API Key | The key for the selected provider. Encrypted with OS secure storage; never written to the data directory. |
 | Test Connection | Verify the API key works |
 | Re-check secure storage | Re-probe OS secure storage if it was unavailable |
-| Generate All Embeddings | Index your archive for semantic search and LLM Lens (OpenAI only) |
+| Generate All Embeddings | Index your archive for semantic search (OpenAI only) |
 
 **About the API key field.** After you save a key, the field goes blank and shows a
 masked preview (`sk-…a1b2`) as placeholder text — the app never reads the stored key
@@ -197,8 +145,7 @@ All data lives in plain files you control:
 ## Tips
 
 - **Build the archive incrementally.** Don't try to import everything at once. Save entries when they feel worth keeping, and quality will be higher than bulk imports.
-- **Use tags deliberately.** A consistent tagging vocabulary makes tag search and LLM Lens more useful. Treat tags like research categories, not keywords.
+- **Use tags deliberately.** A consistent tagging vocabulary makes tag search more useful. Treat tags like research categories, not keywords.
 - **Edit answers freely.** The archive is yours to revise. When your understanding changes, update the answer — the version counter tracks edits.
-- **Run LLM Lens before starting a new session.** The Brief mode is particularly useful for re-entering a topic after a few days away.
 - **Generate embeddings after bulk edits.** Settings → Generate All Embeddings is idempotent — it only recomputes entries that have changed.
 - **Keep threads focused.** A thread works best when it represents a coherent line of inquiry rather than a catch-all.

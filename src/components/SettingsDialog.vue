@@ -40,6 +40,7 @@ interface ModelDescriptor {
 
 const emit = defineEmits<{
   close: []
+  saved: [lensEnabled: boolean]
 }>()
 
 const threadStore = useThreadStore()
@@ -75,6 +76,7 @@ const tagEnforcement = ref<'off' | 'warn' | 'strict'>('warn')
 const tagSoftLimit = ref(50)
 const tagHardLimit = ref(100)
 const allowDevEnvSecrets = ref(false)
+const lensEnabled = ref(false)
 
 const enforcementOptions = [
   { label: 'Off — free-form tags', value: 'off' },
@@ -287,6 +289,7 @@ onMounted(async () => {
   tagSoftLimit.value = settings.tagSoftLimit ?? 50
   tagHardLimit.value = settings.tagHardLimit ?? 100
   allowDevEnvSecrets.value = settings.allowDevEnvSecrets ?? false
+  lensEnabled.value = settings.lensEnabled === true
   await loadModelCatalog(false)
 })
 
@@ -302,6 +305,7 @@ async function save() {
     dataDirectory: dataDirectory.value,
     llmProvider: llmProvider.value,
     llmModel: llmModel.value,
+    lensEnabled: lensEnabled.value,
     tagEnforcement: tagEnforcement.value,
     tagSoftLimit: tagSoftLimit.value,
     tagHardLimit: tagHardLimit.value,
@@ -322,6 +326,7 @@ async function save() {
     tagStore.load(),
   ])
   toast.add({ severity: 'success', summary: 'Settings saved', life: 3000 })
+  emit('saved', lensEnabled.value)
   emit('close')
 }
 
@@ -470,6 +475,21 @@ function handleKeydown(event: KeyboardEvent) {
         <p class="field-help">
           Used for metadata generation, embeddings, and future analysis features.
           API keys are encrypted with your operating system's secure storage and never committed to git.
+        </p>
+
+        <div class="checkbox-field">
+          <Checkbox
+            v-model="lensEnabled"
+            input-id="lensEnabled"
+            binary
+          />
+          <label
+            for="lensEnabled"
+            class="checkbox-label"
+          >Enable LLM Lens</label>
+        </div>
+        <p class="field-help">
+          Optional archive exploration panel. It remains hidden until enabled.
         </p>
 
         <div

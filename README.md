@@ -26,13 +26,14 @@ Built with Vue 3, TypeScript, Electron, and PrimeVue.
 14. [Building Native Installers](#building-native-installers)
 15. [Runtime Configuration](#runtime-configuration)
 16. [Data Model and File Format](#data-model-and-file-format)
-17. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
-18. [Project Structure](#project-structure)
-19. [Technology Stack](#technology-stack)
-20. [Generative AI Usage](#generative-ai-usage)
-21. [Contributing](#contributing)
-22. [Credits](#credits)
-23. [License](#license)
+17. [Optional LLM Lens](#optional-llm-lens)
+18. [Claude Desktop MCP Integration](#claude-desktop-mcp-integration)
+19. [Project Structure](#project-structure)
+20. [Technology Stack](#technology-stack)
+21. [Generative AI Usage](#generative-ai-usage)
+22. [Contributing](#contributing)
+23. [Credits](#credits)
+24. [License](#license)
 
 ---
 
@@ -307,17 +308,18 @@ a single button:
   - **File** — New Q&A, Import from File, Import from Shared Link, Export Selected, Settings.
   - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
   - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
-  - **View** — Focus Search, Toggle Dark Mode, Toggle LLM Lens, Toggle Threads / List panels,
+  - **View** — Focus Search, Toggle Dark Mode, and Toggle Threads / List panels. Toggle LLM Lens
+    appears when Lens is enabled in Settings.
     plus standard reload / zoom / full-screen / dev-tools.
   - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
 
   Menu items show their keyboard shortcut as a hint in parentheses.
 
-An in-app **Usage Information** guide (overview, layout, import options, LLM Lens, and the full
-shortcut list) is always available from **Help → Usage Information** in the menu bar.
+An in-app **Usage Information** guide (overview, layout, import options, optional Lens, and the
+full shortcut list) is always available from **Help → Usage Information** in the menu bar.
 
 The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
-in the Threads panel; LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
+in the Threads panel; optional LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
 where relevant, right-click context menus. Toolbars and context menus deliberately carry only
 high-traffic actions — the Command Palette and menu bar are the complete reference.
 
@@ -731,32 +733,52 @@ Why this format works well:
 
 ---
 
-## LLM Lens Setup
+## Optional LLM Lens
 
-1. Open **Settings** → **AI** tab
-2. Select provider (**OpenAI** or **Anthropic**)
-3. Enter the matching provider API key. It is encrypted with OS secure storage on save;
-   afterwards the field shows a masked preview and stays blank unless you type a replacement.
-   See [API key storage](#api-key-storage).
-4. Optional (development only): enable **Use development environment variables for API keys**
-   to have `LLM_AGG_*` variables override the stored key.
-5. Click **Refresh** to fetch the latest provider model list (or use cached/static fallback)
-6. Select a model using the Quality / Cost / Latency hints shown below the picker
-7. Click **Test Connection**
+LLM Lens is an optional bottom panel for exploring the Q&A archive with AI. It is disabled by
+default, so the focused capture, thread, search, and export workflow remains uncluttered.
 
-For OpenAI:
+### Enable and configure
 
-8. Click **Generate All Embeddings** to index your archive
-9. Open the **LLM Lens** panel (`Ctrl/Cmd+L`) and start querying
+1. Open **Settings** → **AI**.
+2. Turn on **Enable LLM Lens** and save. The panel, toolbar button, command-palette command, and
+  **View → Toggle LLM Lens** menu item appear immediately.
+3. Select **OpenAI**, enter and test an OpenAI API key, then save. The key is encrypted with OS
+  secure storage; the field subsequently displays only a masked preview. See
+  [API key storage](#api-key-storage).
+4. Click **Generate all embeddings** to index the archive. Embeddings are cached locally in
+  `<userData>/embeddings.json` and are regenerated only when a Q&A pair changes.
 
-For Anthropic:
+Lens currently requires OpenAI as the active provider: it creates an embedding for each Lens
+query and Anthropic does not supply embeddings through this application. Metadata generation can
+still use Anthropic independently.
 
-8. Metadata and analysis generation works with Claude models.
-9. Embedding generation and semantic indexing are currently OpenAI-only in this app.
+To hide Lens again, turn off **Enable LLM Lens** in **Settings** → **AI** and save. The panel and
+all its entry points disappear immediately; no archive data, embeddings, or prompt history is
+deleted.
 
-The model list is cached locally in Electron user data (`model-catalog-cache.json`) so selection still works when provider discovery is temporarily unavailable.
+### Use Lens
 
-Embeddings are cached locally in `<userData>/embeddings.json` and recomputed only when a QA pair changes.
+Open it with the sparkles toolbar button, **View → Toggle LLM Lens**, or the command palette.
+Choose a mode, enter a topic or claim, then click **Run** or press `Ctrl/Cmd+Enter` while the Lens
+input is focused. Each request searches the whole Q&A archive and sends the most relevant entries'
+full questions and answers to the configured provider. Lens does not browse the web, retain a
+chat conversation, or limit itself to the selected thread.
+
+| Mode | Use it to |
+|------|-----------|
+| **Brief** | Review established conclusions, unresolved questions, and contradictions before resuming a topic. |
+| **Prior Art** | See what the archive already covers and what remains open. |
+| **Steelman** | Find archive evidence supporting and challenging a stated hypothesis. |
+| **Gaps** | Generate 5-8 research questions grounded in unresolved archive material. |
+| **Concept** | Summarize a concept's working model, limitations, open questions, and abandoned directions. |
+
+Lens retrieves up to 12 related Q&As per request, or up to 20 for **Concept**. It keeps up to 20
+prompt-history entries per mode in local browser storage. Results can be copied or saved as a new
+Q&A with source `lens`. The token counter is session-only and can be reset from the panel.
+
+The model catalog is cached in Electron user data (`model-catalog-cache.json`) so model selection
+can still work when provider discovery is temporarily unavailable.
 
 ---
 
