@@ -583,6 +583,24 @@ Example:
 }
 ```
 
+### Debug logging
+
+Verbose diagnostic traces (for example `[settingsService] loadSettings from ...`) are now
+opt-in and are disabled for normal development runs.
+
+- `npm run dev`: no debug trace output from the app debug logger.
+- `npm run dev:debug`: enables debug traces by setting `VITE_DEBUG_LEVEL=debug`.
+
+When `npm run dev` is launched from the VS Code integrated terminal, the script
+auto-initializes `VITE_DEBUG_LEVEL=debug`.
+
+In production builds, the default level is `ERROR` when no override is provided.
+
+Supported levels are `TRACE=0`, `DEBUG=1`, `WARNING=2`, `ERROR=3`.
+
+You can also set `VITE_DEBUG_LEVEL` (or `LLM_AGG_DEBUG_LEVEL` for Electron main-process
+only runs) in your shell before starting the app.
+
 ### API key storage
 
 API keys are **never stored in `settings.json`** and are never written in clear text.
