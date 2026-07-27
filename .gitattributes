@@ -1,0 +1,27 @@
+# Line endings.
+#
+# This repository is LF, everywhere, in the index and in working trees. Without
+# this file nothing enforced that: an editor or tool on Windows could rewrite a
+# file's endings as a side effect of a one-line change, and the resulting diff
+# would show the whole file as modified, burying the real change. Ten tracked
+# files had already drifted to CRLF or mixed endings before this was added.
+#
+# `eol=lf` (rather than plain `text=auto`) also pins the working-tree copy, so
+# checking out on Windows does not reintroduce CRLF.
+* text=auto eol=lf
+
+# Binary formats: never normalize, never diff as text. `text=auto` detects most
+# of these anyway, but being explicit means a corrupt byte in a fixture or an
+# icon can never be "fixed" into corruption by normalization.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.zip   binary
+*.node  binary
