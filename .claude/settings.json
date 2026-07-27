@@ -28,7 +28,14 @@
       "Bash(npx playwright test:*)",
       "Bash(npx vitest run:*)",
       "PowerShell(git check-ignore:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "PowerShell(gh issue list --state open --limit 100 --json number,title,labels,state,createdAt,author)",
+      "PowerShell(foreach \\($n in 4,5,6,7,8,10\\) { gh issue view $n --json number,title,body,labels | ConvertFrom-Json | ForEach-Object { \"`n=============== ISSUE #$\\($_.number\\): $\\($_.title\\) ===============`nLABELS: $\\($_.labels.name -join ', '\\)`n$\\($_.body\\)\" } })",
+      "PowerShell(\"`n--- vite.config.ts ---\")",
+      "PowerShell(\"`n--- package.json ---\")",
+      "PowerShell(\"--- App.vue lines ---\"; \\(Get-Content src/App.vue | Measure-Object -Line\\).Lines; \"--- main.ts lines ---\"; \\(Get-Content electron/main.ts | Measure-Object -Line\\).Lines; \"--- formatRegistry ---\"; \\(Get-Content electron/services/import/archive/formatRegistry.ts | Measure-Object -Line\\).Lines; \"--- bulkImport.test ---\"; \\(Get-Content tests/unit/bulkImport.test.ts | Measure-Object -Line\\).Lines)",
+      "PowerShell(\"--- .gitignore diff ---\")",
+      "PowerShell(\"--- claude settings diff ---\")"
     ]
   }
 }

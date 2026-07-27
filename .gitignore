@@ -24,5 +24,7 @@ test-results
 # source files out of commits.
 /settings.json
 /threads.json
+tag-dictionary.json
 /archive/
+
 .history
