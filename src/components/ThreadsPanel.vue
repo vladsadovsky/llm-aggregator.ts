@@ -95,6 +95,25 @@ async function createThread() {
   toast.add({ severity: 'success', summary: 'Thread created', life: 2000 })
 }
 
+/**
+ * Hover text with the thread's dates. Threads created before these fields
+ * existed have neither, in which case the tooltip is just the name.
+ */
+function threadDateTooltip(tid: string): string {
+  const thread = threadStore.threads[tid]
+  const format = (iso?: string): string => {
+    if (!iso) return ''
+    const parsed = new Date(iso)
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleString()
+  }
+  const created = format(thread.createdAt)
+  const updated = format(thread.updatedAt)
+  const lines = [thread.name]
+  if (created) lines.push(`Created: ${created}`)
+  if (updated && updated !== created) lines.push(`Updated: ${updated}`)
+  return lines.join('\n')
+}
+
 function startRename(tid: string) {
   editingThreadId.value = tid
   editingName.value = threadStore.threads[tid].name
@@ -345,7 +364,10 @@ onUnmounted(() => {
         <!-- Normal display -->
         <template v-if="editingThreadId !== tid">
           <div class="thread-info">
-            <div class="thread-name">
+            <div
+              class="thread-name"
+              :title="threadDateTooltip(tid)"
+            >
               <i class="pi pi-folder" />
               <span>{{ threadStore.threads[tid].name }}</span>
             </div>

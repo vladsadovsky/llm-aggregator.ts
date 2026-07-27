@@ -139,6 +139,23 @@ export const mockApi: ElectronAPI = {
             },
         ],
         warnings: [],
+        createdAt: '2026-01-01T10:00:00.000Z',
+        updatedAt: '2026-01-01T10:05:00.000Z',
+    }),
+    archiveResetPreview: async () => ({
+        pairs: 0,
+        threads: 0,
+        tags: 0,
+        hasEmbeddings: false,
+        dataDirectory: '/mock/data',
+    }),
+    archiveReset: async () => ({
+        pairsRemoved: 0,
+        threadsRemoved: 0,
+        tagsRemoved: 0,
+        embeddingsRemoved: false,
+        backupPath: '/mock/data/purged-20260101_100000',
+        warnings: [],
     }),
     onMenuAction: () => () => {},
 

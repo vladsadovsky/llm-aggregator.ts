@@ -75,18 +75,43 @@ export const useThreadStore = defineStore('threads', () => {
     }
   }
 
-  async function createThread(name: string): Promise<string> {
-    const now = new Date()
+  /**
+   * Stamp a thread as edited. Every mutation below calls this before saving, so
+   * `updatedAt` means "last entry or edit" rather than only "time of import".
+   */
+  function touch(tid: string) {
+    const thread = threads.value[tid]
+    if (thread) thread.updatedAt = new Date().toISOString()
+  }
+
+  /**
+   * `options.createdAt` lets importers date a thread from its source conversation
+   * instead of the moment of import; the thread id is derived from the same
+   * instant so ids stay chronological.
+   */
+  async function createThread(name: string, options: { createdAt?: string } = {}): Promise<string> {
+    const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
+    const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
     const y = now.getFullYear()
     const mo = String(now.getMonth() + 1).padStart(2, '0')
     const d = String(now.getDate()).padStart(2, '0')
     const h = String(now.getHours()).padStart(2, '0')
     const mi = String(now.getMinutes()).padStart(2, '0')
     const s = String(now.getSeconds()).padStart(2, '0')
-    const tid = `thread_${y}${mo}${d}_${h}${mi}${s}`
+    let tid = `thread_${y}${mo}${d}_${h}${mi}${s}`
+    // Second-resolution ids collide when several source conversations start in
+    // the same second; walk forward until one is free.
+    for (let i = 1; threads.value[tid] && i < 5000; i += 1) {
+      const next = new Date(now.getTime() + i * 1000)
+      const p = (n: number): string => String(n).padStart(2, '0')
+      tid =
+        `thread_${next.getFullYear()}${p(next.getMonth() + 1)}${p(next.getDate())}_` +
+        `${p(next.getHours())}${p(next.getMinutes())}${p(next.getSeconds())}`
+    }
 
     debugLog('threadStore', 'createThread start', { tid, name })
-    threads.value[tid] = { name, items: [] }
+    const stamp = now.toISOString()
+    threads.value[tid] = { name, items: [], createdAt: stamp, updatedAt: stamp }
     await save()
     debugLog('threadStore', 'createThread completed', { tid, thread: threads.value[tid] })
     return tid
@@ -95,6 +120,7 @@ export const useThreadStore = defineStore('threads', () => {
   async function renameThread(tid: string, newName: string) {
     if (threads.value[tid]) {
       threads.value[tid].name = newName
+      touch(tid)
       await save()
     }
   }
@@ -104,9 +130,23 @@ export const useThreadStore = defineStore('threads', () => {
       debugLog('threadStore', 'updateThread start', { tid, name, tags })
       threads.value[tid].name = name
       threads.value[tid].tags = tags.length > 0 ? tags : undefined
+      touch(tid)
       await save()
       debugLog('threadStore', 'updateThread completed', { tid, thread: threads.value[tid] })
     }
+  }
+
+  /**
+   * Set a thread's dates explicitly. Importers call this *after* filling the
+   * thread: `addToThread` and friends stamp `updatedAt` with "now", which would
+   * otherwise overwrite the source conversation's own time.
+   */
+  async function setThreadTimes(tid: string, times: { createdAt?: string; updatedAt?: string }) {
+    const thread = threads.value[tid]
+    if (!thread) return
+    if (times.createdAt) thread.createdAt = times.createdAt
+    if (times.updatedAt) thread.updatedAt = times.updatedAt
+    await save()
   }
 
   async function deleteThread(tid: string) {
@@ -134,6 +174,7 @@ export const useThreadStore = defineStore('threads', () => {
       })
       if (!items.includes(pairId)) {
         items.push(pairId)
+        touch(tid)
         await save()
         debugLog('threadStore', 'addToThread completed', {
           tid,
@@ -152,6 +193,7 @@ export const useThreadStore = defineStore('threads', () => {
       const idx = items.indexOf(pairId)
       if (idx !== -1) {
         items.splice(idx, 1)
+        touch(tid)
         await save()
       }
     }
@@ -174,11 +216,13 @@ export const useThreadStore = defineStore('threads', () => {
   async function moveToThread(fromTid: string, toTid: string, pairId: string) {
     if (threads.value[toTid] && !threads.value[toTid].items.includes(pairId)) {
       threads.value[toTid].items.push(pairId)
+      touch(toTid)
     }
     if (threads.value[fromTid]) {
       const index = threads.value[fromTid].items.indexOf(pairId)
       if (index !== -1) {
         threads.value[fromTid].items.splice(index, 1)
+        touch(fromTid)
       }
     }
     await save()
@@ -192,6 +236,7 @@ export const useThreadStore = defineStore('threads', () => {
         const newIdx = idx + direction
         if (newIdx >= 0 && newIdx < items.length) {
           ;[items[idx], items[newIdx]] = [items[newIdx], items[idx]]
+          touch(tid)
           await save()
         }
       }
@@ -205,6 +250,7 @@ export const useThreadStore = defineStore('threads', () => {
       if (idx > 0) {
         items.splice(idx, 1)
         items.unshift(pairId)
+        touch(tid)
         await save()
       }
     }
@@ -217,6 +263,7 @@ export const useThreadStore = defineStore('threads', () => {
       if (idx !== -1 && idx < items.length - 1) {
         items.splice(idx, 1)
         items.push(pairId)
+        touch(tid)
         await save()
       }
     }
@@ -235,6 +282,7 @@ export const useThreadStore = defineStore('threads', () => {
     createThread,
     renameThread,
     updateThread,
+    setThreadTimes,
     deleteThread,
     selectThread,
     addToThread,

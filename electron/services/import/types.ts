@@ -17,6 +17,13 @@ export interface ParsedMessage {
    * payload carries one. Used to build dedup keys — see `originId` below.
    */
   id?: string
+  /**
+   * When the provider says this message was sent (ISO). Absent when the payload
+   * carries no per-message time. Imported pairs are timestamped from this rather
+   * than from the moment of import, so an archived conversation keeps its real
+   * date — see `SharedImportQA.data.timestamp`.
+   */
+  createdAt?: string
 }
 
 /** Normalized shape every provider parser produces. */
@@ -64,4 +71,8 @@ export interface SharedImportResult {
   items: SharedImportQA[]
   /** File / conversation-level warnings. */
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when the payload has none. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when the payload has none. */
+  updatedAt: string
 }

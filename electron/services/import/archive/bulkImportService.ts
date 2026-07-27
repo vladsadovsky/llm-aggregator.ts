@@ -26,6 +26,7 @@ import { buildResult } from '../buildResult'
 import { buildOriginIndex } from '../../duplicateService'
 import { createPair } from '../../qaPairService'
 import { loadThreads, saveThreads } from '../../threadService'
+import { addTag, listTags } from '../../tagDictionaryService'
 import { debugLog, debugError } from '../../logger'
 import type {
   BulkImportPreview,
@@ -42,6 +43,13 @@ import type {
  * cancels — see `releasePreview`.
  */
 const pendingPreviews = new Map<string, BulkImportPreview>()
+
+/**
+ * Applied to every thread and pair produced by an account-export import, on top
+ * of the provider/model tags `buildResult` already assigns. It is what makes a
+ * whole batch filterable — and separable — after the fact.
+ */
+export const BULK_TAG = 'bulk'
 
 export function storePreview(preview: BulkImportPreview): string {
   const previewId = `preview_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -74,6 +82,7 @@ export function summarizePreview(preview: BulkImportPreview, previewId: string):
       pairCount: t.items.length,
       duplicateCount: t.duplicateCount,
       createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
       warnings: t.warnings,
     })),
     totalPairs: preview.totalPairs,
@@ -83,19 +92,34 @@ export function summarizePreview(preview: BulkImportPreview, previewId: string):
   }
 }
 
-/**
- * Thread ids follow the existing `thread_YYYYMMdd_HHMMSS` convention, which only
- * has second-level resolution. `offset` is in whole seconds so that a batch of
- * threads created back-to-back in the same commit never collide on one id —
- * a millisecond offset would not roll the seconds field over.
- */
-function generateThreadId(offsetSeconds: number): string {
-  const now = new Date(Date.now() + offsetSeconds * 1000)
+function formatThreadId(date: Date): string {
   const pad = (n: number, w = 2): string => String(n).padStart(w, '0')
   return (
-    `thread_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
-    `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    `thread_${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_` +
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
   )
+}
+
+/**
+ * Thread ids follow the existing `thread_YYYYMMdd_HHMMSS` convention, which only
+ * has second-level resolution — so they collide easily and must be checked
+ * against the ids already taken in this commit.
+ *
+ * The id is derived from the conversation's own time when the export reports
+ * one, so ids read chronologically like the QA ids do. Collisions are real here:
+ * Takeout day-buckets all start at whatever the first record's time was, and a
+ * Copilot export can hold several conversations opened in the same second. On a
+ * collision the id walks forward one second at a time — the id is an identifier,
+ * not the thread's timestamp, which is stored separately as `createdAt`.
+ */
+function generateThreadId(sourceTime: string, taken: Set<string>): string {
+  const parsed = sourceTime ? Date.parse(sourceTime) : NaN
+  const base = Number.isNaN(parsed) ? Date.now() : parsed
+  for (let i = 0; i < 5000; i += 1) {
+    const candidate = formatThreadId(new Date(base + i * 1000))
+    if (!taken.has(candidate)) return candidate
+  }
+  return `${formatThreadId(new Date())}_${Math.random().toString(36).slice(2, 6)}`
 }
 
 /**
@@ -159,13 +183,18 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
 
   for (const convo of conversations) {
     // Reuse the share-link builder: identical tagging, titling, and pairing rules.
-    const built = buildResult(convo)
+    // The `bulk` tag is the one addition — it lands on the thread and on every
+    // pair, so a whole import can be filtered (or found again) as a batch.
+    const built = buildResult(convo, { extraTags: [BULK_TAG] })
     const duplicateCount = built.items.filter((i) => i.originId && originIndex.has(i.originId)).length
 
     totalPairs += built.items.length
     duplicatePairs += duplicateCount
 
-    const createdAt = convo.createdAt ?? ''
+    // Prefer the message-derived range: `convo.createdAt` is conversation-level
+    // and absent for some formats, while message times are what the pairs use.
+    const createdAt = built.createdAt || convo.createdAt || ''
+    const updatedAt = built.updatedAt || createdAt
     if (createdAt) {
       if (!from || createdAt < from) from = createdAt
       if (!to || createdAt > to) to = createdAt
@@ -178,6 +207,7 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
       tags: built.tags,
       items: built.items,
       createdAt,
+      updatedAt,
       warnings: built.warnings,
       duplicateCount,
     })
@@ -204,6 +234,23 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
     duplicatePairs,
     dateRange: { from, to },
     warnings,
+  }
+}
+
+/**
+ * Teach the tag dictionary the tags this import just applied, so the vocabulary
+ * UI and tag enforcement recognize them immediately instead of treating an
+ * import's own tags as unknown. Best-effort: a dictionary write failure must not
+ * fail an import whose pairs are already on disk.
+ */
+function registerImportTags(tags: string[]): void {
+  try {
+    const known = new Set(listTags())
+    for (const tag of new Set(tags)) {
+      if (tag && !known.has(tag)) addTag(tag)
+    }
+  } catch (err) {
+    debugError('bulkImport', 'tag dictionary update failed', err)
   }
 }
 
@@ -235,6 +282,7 @@ export function commitArchiveImport(
   }
 
   const threads = loadThreads()
+  const takenThreadIds = new Set(Object.keys(threads))
   const startedAt = Date.now()
   let processed = 0
   let threadsDone = 0
@@ -288,8 +336,17 @@ export function commitArchiveImport(
     }
 
     if (createdIds.length > 0) {
-      const threadId = generateThreadId(threadsDone)
-      threads[threadId] = { name: threadName, items: createdIds }
+      const threadId = generateThreadId(thread.createdAt, takenThreadIds)
+      takenThreadIds.add(threadId)
+      threads[threadId] = {
+        name: threadName,
+        items: createdIds,
+        ...(thread.tags.length > 0 ? { tags: [...thread.tags] } : {}),
+        ...(thread.createdAt ? { createdAt: thread.createdAt } : {}),
+        ...(thread.updatedAt || thread.createdAt
+          ? { updatedAt: thread.updatedAt || thread.createdAt }
+          : {}),
+      }
       result.createdThreads += 1
       result.threadNames.push(threadName)
     } else if (thread.items.length > 0) {
@@ -299,6 +356,7 @@ export function commitArchiveImport(
   }
 
   saveThreads(threads)
+  registerImportTags(selected.flatMap((t) => t.tags))
 
   debugLog('bulkImport', 'commit complete', {
     createdPairs: result.createdPairs,

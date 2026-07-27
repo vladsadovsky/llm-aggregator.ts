@@ -26,20 +26,26 @@ export const test = base.extend<{
         rmSync(tempRoot, { recursive: true, force: true });
     },
     electronApp: async ({ dataDir }, use) => {
+        const env: Record<string, string> = {
+            ...(process.env as Record<string, string>),
+            NODE_ENV: 'test',
+            LLM_AGGREGATOR_DATA_DIR: dataDir,
+            APPDATA: path.join(path.dirname(dataDir), 'appdata'),
+            LOCALAPPDATA: path.join(path.dirname(dataDir), 'appdata'),
+            TEMP: path.join(path.dirname(dataDir), 'appdata'),
+            TMP: path.join(path.dirname(dataDir), 'appdata'),
+        };
+        // VS Code sets ELECTRON_RUN_AS_NODE=1 in terminals it spawns. Inherited, it
+        // makes Electron start as plain Node: no window is ever created, and every
+        // test fails with Playwright's opaque "Process failed to launch!".
+        delete env.ELECTRON_RUN_AS_NODE;
+
         // Launch Electron application using the resolved executable path and absolute path to main.js
         const electronApp = await electron.launch({
             executablePath: require('electron'),
             args: ['--no-sandbox', path.join(__dirname, '../../dist-electron/main.js')],
             cwd: dataDir,
-            env: {
-                ...process.env,
-                NODE_ENV: 'test',
-                LLM_AGGREGATOR_DATA_DIR: dataDir,
-                APPDATA: path.join(path.dirname(dataDir), 'appdata'),
-                LOCALAPPDATA: path.join(path.dirname(dataDir), 'appdata'),
-                TEMP: path.join(path.dirname(dataDir), 'appdata'),
-                TMP: path.join(path.dirname(dataDir), 'appdata'),
-            },
+            env,
             // Increase timeout for Electron startup
             timeout: 45000
         });

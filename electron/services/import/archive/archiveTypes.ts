@@ -31,6 +31,8 @@ export interface BulkImportThread {
   items: SharedImportQA[]
   /** ISO creation time reported by the provider, '' when unknown. */
   createdAt: string
+  /** ISO time of the conversation's last message, '' when unknown. */
+  updatedAt: string
   warnings: string[]
   /** Pairs in this thread whose `originId` already exists in the archive. */
   duplicateCount: number
@@ -70,6 +72,7 @@ export interface BulkImportThreadSummary {
   pairCount: number
   duplicateCount: number
   createdAt: string
+  updatedAt: string
   warnings: string[]
 }
 

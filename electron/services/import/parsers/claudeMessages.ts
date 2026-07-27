@@ -79,7 +79,12 @@ export function parseClaudeMessages(rawMessages: unknown): {
       stats.skippedEmptyText += 1
       continue
     }
-    messages.push({ role, text, ...(typeof m?.uuid === 'string' && m.uuid ? { id: m.uuid } : {}) })
+    messages.push({
+      role,
+      text,
+      ...(typeof m?.uuid === 'string' && m.uuid ? { id: m.uuid } : {}),
+      ...(typeof m?.created_at === 'string' && m.created_at ? { createdAt: m.created_at } : {}),
+    })
   }
 
   return { messages, stats }

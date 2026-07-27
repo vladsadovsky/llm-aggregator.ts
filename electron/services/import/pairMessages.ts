@@ -20,6 +20,12 @@ export interface RawPair {
    * payload carries no message ids.
    */
   sourceIds: string[]
+  /**
+   * When the pair's first message was sent (ISO), '' when the provider payload
+   * carries no times. The question's time anchors the pair — the answer follows
+   * within seconds, and the question is what the user searches and sorts by.
+   */
+  createdAt: string
 }
 
 export function pairMessages(messages: ParsedMessage[]): RawPair[] {
@@ -27,6 +33,7 @@ export function pairMessages(messages: ParsedMessage[]): RawPair[] {
   let curQ: string[] = []
   let curA: string[] = []
   let curIds: string[] = []
+  let curCreatedAt = ''
   let collectingAnswer = false
 
   const flush = (): void => {
@@ -36,10 +43,11 @@ export function pairMessages(messages: ParsedMessage[]): RawPair[] {
     const warnings: string[] = []
     if (!question) warnings.push('No question detected for this pair (leading assistant message).')
     if (!answer) warnings.push('No answer detected for this pair.')
-    pairs.push({ question, answer, warnings, sourceIds: curIds })
+    pairs.push({ question, answer, warnings, sourceIds: curIds, createdAt: curCreatedAt })
     curQ = []
     curA = []
     curIds = []
+    curCreatedAt = ''
   }
 
   for (const m of messages) {
@@ -52,6 +60,7 @@ export function pairMessages(messages: ParsedMessage[]): RawPair[] {
       collectingAnswer = true
     }
     if (m.id) curIds.push(m.id)
+    if (!curCreatedAt && m.createdAt) curCreatedAt = m.createdAt
   }
   flush()
 

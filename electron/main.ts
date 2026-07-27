@@ -189,6 +189,8 @@ Keyboard Shortcuts
         mi('Run Archive Health Check…', 'view.healthCheck'),
         { type: 'separator' },
         mi('Find Duplicate Q&As…', 'tools.findDuplicates'),
+        { type: 'separator' },
+        mi('Reset Archive (Clear Everything)…', 'tools.resetArchive'),
       ]
     },
     {

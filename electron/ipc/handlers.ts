@@ -29,6 +29,12 @@ import {
   type DuplicateScanResult,
   type DuplicateCleanupResult,
 } from '../services/duplicateService'
+import {
+  previewArchiveReset,
+  resetArchive,
+  type ArchiveResetPreview,
+  type ArchiveResetResult,
+} from '../services/archiveResetService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
 import type { SharedImportResult } from '../services/import/types'
 import {
@@ -184,6 +190,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('duplicates:delete', async (_event, ids: string[]): Promise<DuplicateCleanupResult> => {
     return deleteDuplicates(ids)
+  })
+
+  // ─── Archive reset ──────────────────────────────────────────
+  ipcMain.handle('archive:resetPreview', async (): Promise<ArchiveResetPreview> => {
+    return previewArchiveReset()
+  })
+
+  ipcMain.handle('archive:reset', async (): Promise<ArchiveResetResult> => {
+    return resetArchive()
   })
 
   // ─── Semantic Search ────────────────────────────────────────
