@@ -7,9 +7,9 @@ const ZOOM_KEY = 'llm-aggregator.contentZoom'
 const THREADS_COLLAPSED_KEY = 'llm-aggregator.threadsCollapsed'
 const LIST_COLLAPSED_KEY = 'llm-aggregator.listCollapsed'
 
-function loadZoom(key = ZOOM_KEY): number {
+function loadZoom(): number {
   if (typeof window === 'undefined') return 100
-  const saved = window.localStorage.getItem(key)
+  const saved = window.localStorage.getItem(ZOOM_KEY)
   const parsed = saved ? parseInt(saved, 10) : NaN
   return ZOOM_STEPS.includes(parsed) ? parsed : 100
 }

@@ -221,9 +221,11 @@ describe('parseClaudeAccountExport', () => {
     expect(convos[0].title).toBe('First conversation')
     expect(convos[0].url).toBe('https://claude.ai/chat/conv-1')
     expect(convos[0].createdAt).toBe('2026-07-01T10:00:00Z')
+    // Per-message `createdAt` is carried through from the export so imported
+    // pairs keep their original times rather than their import time.
     expect(convos[0].messages).toEqual([
-      { role: 'user', text: 'Q1', id: 'm1' },
-      { role: 'assistant', text: 'A1', id: 'm2' },
+      { role: 'user', text: 'Q1', id: 'm1', createdAt: '2026-07-01T10:00:00Z' },
+      { role: 'assistant', text: 'A1', id: 'm2', createdAt: '2026-07-01T10:00:05Z' },
     ])
   })
 
@@ -516,12 +518,21 @@ describe('formatRegistry', () => {
   })
 
   it('recognizes unsupported exports well enough to explain them', () => {
-    // The JSON variant of Takeout is recognized but not parsed.
-    const takeoutJson = UNSUPPORTED_HINTS.find((h) => h.test('myactivity.json', '{}'))
-    expect(takeoutJson?.message).toMatch(/HTML variant/i)
-    // A Takeout page for a different product.
-    const wrongProduct = UNSUPPORTED_HINTS.find((h) => h.test('myactivity.html', '<div>Search</div>'))
-    expect(wrongProduct?.message).toMatch(/not for Gemini Apps/i)
+    // Both Takeout variants parse, so a MyActivity file that reaches the hints
+    // is one for a *different product* — never a "wrong variant" problem. The
+    // hint must not tell the user to re-export in the other format.
+    for (const basename of ['myactivity.json', 'myactivity.html']) {
+      const hint = UNSUPPORTED_HINTS.find((h) => h.test(basename, '<div>Search</div>'))
+      expect(hint?.message).toMatch(/not for Gemini Apps/i)
+      expect(hint?.message).not.toMatch(/only the (HTML|JSON) variant/i)
+    }
+    // A decoy page that merely mentions Gemini still gets the product hint —
+    // detection already rejected it, so no substring test may exempt it.
+    const decoy = UNSUPPORTED_HINTS.find((h) =>
+      h.test('myactivity.html', '<div>Watch this video about Gemini Apps</div>'),
+    )
+    expect(decoy?.message).toMatch(/not for Gemini Apps/i)
+
     const copilot = UNSUPPORTED_HINTS.find((h) => h.test('history.csv', 'Copilot,activity'))
     expect(copilot?.message).toMatch(/Copilot/i)
   })

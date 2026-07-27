@@ -4,26 +4,40 @@ import { existsSync } from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
 import { initSecretsStorage } from './services/secretsService'
 import { loadSettings } from './services/settingsService'
-import { setSettingsChangeListener } from './services/settingsEvents'
+import { addSettingsChangeListener } from './services/settingsEvents'
+import { ACCELERATORS, hintFor, renderKeys, styleForPlatform } from '../shared/accelerators'
 
 let mainWindow: BrowserWindow | null = null
 
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin'
   const mod = isMac ? 'Cmd' : 'Ctrl'
+  const style = styleForPlatform(isMac)
   const lensEnabled = loadSettings().lensEnabled
 
   // Route a menu click to the renderer's central command registry (App.vue).
   const send = (action: string) => () => mainWindow?.webContents.send('menu-action', action)
 
-  // App-action menu item. `hint` is a display-only shortcut label — the keys
-  // themselves are handled in the renderer (see handleGlobalKeydown), so we do
-  // NOT set an accelerator here (that would double-fire / hijack typing).
-  const mi = (label: string, action: string, hint?: string) => ({
-    id: action,
-    label: hint ? `${label}  (${hint})` : label,
-    click: send(action),
-  })
+  // App-action menu item. The shortcut shown is looked up from
+  // `shared/accelerators.ts` by command id, never passed in by hand — hand-typed
+  // hints are exactly what drifted from the handler before (issue #8).
+  //
+  // It stays a display-only *label*, not an Electron accelerator: the keys are
+  // handled in the renderer (see handleGlobalKeydown), and registering them here
+  // too would double-fire and hijack typing.
+  const mi = (label: string, action: string) => {
+    const hint = hintFor(action, style)
+    return {
+      id: action,
+      label: hint ? `${label}  (${hint})` : label,
+      click: send(action),
+    }
+  }
+
+  /** The Keyboard Shortcuts block of the usage dialog, from the same table. */
+  const shortcutLines = ACCELERATORS.map(
+    (a) => `- ${renderKeys(a.keys, style)} : ${a.description}${a.context === 'Global' ? '' : `  [${a.context}]`}`,
+  ).join('\n')
 
   const usageDetail = `Overview
 LLM Aggregator keeps a local, fully-editable archive of Q&A pairs captured from
@@ -43,7 +57,8 @@ Getting content in
 
 Organizing
 - Threads: create, rename (F2), tag, and reorder Q&As within a thread (Alt+Up / Alt+Down).
-- Q&A: edit (E), duplicate (D), delete (Delete), export (X).
+- Q&A: edit (${hintFor('qa.edit', style)}), duplicate (${hintFor('qa.duplicate', style)}),
+  delete (${hintFor('qa.delete', style)}), export (${hintFor('io.export', style)}).
 - Views: Show All Q&As, Show Unthreaded, collapse the Threads / List panels.
 
 Search & optional AI
@@ -59,19 +74,11 @@ Discoverability
 - This guide is always available from the menu bar via Help → Usage Information.
 
 Keyboard Shortcuts
-- ${mod}+F or / : Focus search
-- ${mod}+N : New Q&A
-- ${mod}+S : Save current edit
-- ${mod}+O : Import from file
-- ${mod}+Shift+O : Import from shared link
-- ${mod}+, : Settings
-- ${mod}+K : Command palette
-- Escape : Close dialog / cancel
-- F2 : Rename selected thread
-- Alt+Up / Alt+Down : Move Q&A within thread
-- ${mod}+E : Edit selected Q&A     ${mod}+D : Duplicate     Delete : Delete     X : Export
-- ? : Keyboard shortcuts help
-- ${mod}+Enter : Submit form     Arrow Up / Down : Navigate lists`
+${shortcutLines}
+
+Note: ${mod}+Plus / ${mod}+Minus / ${mod}+0 zoom the whole window (a standard
+Electron behaviour). The Q&A content zoom under View is a separate, finer
+control and is reached from the menu or the Command Palette.`
 
   const aboutDetail =
     'A desktop application for organizing and searching your LLM conversation Q&A pairs.\n\n' +
@@ -87,7 +94,7 @@ Keyboard Shortcuts
       submenu: [
         { role: 'about' },
         { type: 'separator' },
-        mi('Settings…', 'app.settings', `${mod}+,`),
+        mi('Settings…', 'app.settings'),
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -103,13 +110,13 @@ Keyboard Shortcuts
       submenu: [
         // Creation verbs live together under File, per platform convention.
         mi('New Thread', 'thread.new'),
-        mi('New Q&A', 'qa.new', `${mod}+N`),
+        mi('New Q&A', 'qa.new'),
         { type: 'separator' },
-        mi('Import from File…', 'io.importFile', `${mod}+O`),
-        mi('Import from Shared Link…', 'io.importSharedLink', `${mod}+Shift+O`),
-        mi('Export Selected Q&A / Thread…', 'io.export', 'X'),
+        mi('Import from File…', 'io.importFile'),
+        mi('Import from Shared Link…', 'io.importSharedLink'),
+        mi('Export Selected Q&A / Thread…', 'io.export'),
         { type: 'separator' },
-        ...(isMac ? [] : [mi('Settings…', 'app.settings', `${mod}+,`), { type: 'separator' }]),
+        ...(isMac ? [] : [mi('Settings…', 'app.settings'), { type: 'separator' }]),
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
     },
@@ -136,20 +143,20 @@ Keyboard Shortcuts
     {
       label: 'Q&A',
       submenu: [
-        mi('Edit Selected', 'qa.edit', `${mod}+E`),
-        mi('Duplicate Selected', 'qa.duplicate', `${mod}+D`),
-        mi('Delete Selected', 'qa.delete', 'Delete'),
-        mi('Save Changes', 'qa.save', `${mod}+S`),
+        mi('Edit Selected', 'qa.edit'),
+        mi('Duplicate Selected', 'qa.duplicate'),
+        mi('Delete Selected', 'qa.delete'),
+        mi('Save Changes', 'qa.save'),
         { type: 'separator' },
-        mi('Move Up in Thread', 'qa.moveUp', 'Alt+Up'),
-        mi('Move Down in Thread', 'qa.moveDown', 'Alt+Down')
+        mi('Move Up in Thread', 'qa.moveUp'),
+        mi('Move Down in Thread', 'qa.moveDown')
       ]
     },
     {
       label: 'Thread',
       submenu: [
         // "New Thread" now lives under File with the other creation verbs.
-        mi('Rename Selected Thread', 'thread.rename', 'F2'),
+        mi('Rename Selected Thread', 'thread.rename'),
         { type: 'separator' },
         mi('Show All Q&As', 'view.showAll'),
         mi('Show Unthreaded Q&As', 'view.showUnthreaded')
@@ -158,7 +165,7 @@ Keyboard Shortcuts
     {
       label: 'View',
       submenu: [
-        mi('Focus Search', 'search.focus', `${mod}+F`),
+        mi('Focus Search', 'search.focus'),
         mi('Toggle Dark Mode', 'view.darkMode'),
         ...(lensEnabled ? [mi('Toggle LLM Lens', 'view.lens')] : []),
         { type: 'separator' },
@@ -211,8 +218,8 @@ Keyboard Shortcuts
     {
       role: 'help',
       submenu: [
-        mi('Open Command Palette', 'app.commandPalette', `${mod}+K`),
-        mi('Keyboard Shortcuts', 'app.shortcuts', '?'),
+        mi('Open Command Palette', 'app.commandPalette'),
+        mi('Keyboard Shortcuts', 'app.shortcuts'),
         mi('Application Status', 'view.status'),
         { type: 'separator' },
         { label: 'Usage Information', click: showUsage },
@@ -302,7 +309,7 @@ app.whenReady().then(() => {
   // so live keys are not left sitting in clear text with nothing to clean them up.
   initSecretsStorage()
   createApplicationMenu()
-  setSettingsChangeListener(() => createApplicationMenu())
+  addSettingsChangeListener(() => createApplicationMenu())
   registerIpcHandlers()
   createWindow()
 
