@@ -270,10 +270,13 @@ export function parseGeminiTakeout(text: string): ParsedConversation[] {
       warnings.push(`${emptyAnswers} record(s) on this day had no response text.`)
     }
 
+    // No real conversation title exists for a Takeout day-bucket — leave it
+    // blank so buildResult() derives the name from the first prompt, same as
+    // every other provider's untitled-conversation fallback.
     conversations.push({
       provider: 'gemini',
       url: '',
-      title: `Gemini Apps — ${day}`,
+      title: '',
       model: '',
       messages,
       warnings,

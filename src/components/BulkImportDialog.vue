@@ -35,6 +35,9 @@ const emit = defineEmits<{
 
 const selectedIds = ref<string[]>([])
 const skipDuplicates = ref(true)
+const includeDateInThreadNames = ref(false)
+
+const isGeminiTakeout = computed(() => props.preview?.format === 'gemini-takeout')
 
 // Default to everything selected each time a fresh preview arrives.
 watch(
@@ -42,6 +45,7 @@ watch(
   (preview) => {
     selectedIds.value = preview ? preview.threads.map((t) => t.sourceId).filter(Boolean) : []
     skipDuplicates.value = true
+    includeDateInThreadNames.value = false
   },
   { immediate: true },
 )
@@ -89,7 +93,11 @@ const dateRangeLabel = computed(() => {
 
 function submit() {
   if (selectedIds.value.length === 0 || isRunning.value) return
-  emit('commit', { threadSourceIds: [...selectedIds.value], skipDuplicates: skipDuplicates.value })
+  emit('commit', {
+    threadSourceIds: [...selectedIds.value],
+    skipDuplicates: skipDuplicates.value,
+    includeDateInThreadNames: isGeminiTakeout.value ? includeDateInThreadNames.value : false,
+  })
 }
 
 function close() {
@@ -185,6 +193,18 @@ function close() {
       >
         {{ w }}
       </Message>
+
+      <div
+        v-if="isGeminiTakeout"
+        class="options-row"
+      >
+        <Checkbox
+          v-model="includeDateInThreadNames"
+          input-id="include-date-in-thread-names"
+          :binary="true"
+        />
+        <label for="include-date-in-thread-names">Prefix each thread's name with its date</label>
+      </div>
 
       <Message
         v-if="preview.duplicatePairs > 0"

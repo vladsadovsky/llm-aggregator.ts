@@ -1,9 +1,12 @@
 /**
  * Unit tests for the bulk ("account export") import layer.
- * All modules under test are pure (no Electron / filesystem), so they run
- * directly under the Node vitest config.
+ * Most modules under test are pure (no Electron / filesystem), so they run
+ * directly under the Node vitest config. The `commitArchiveImport` tests at
+ * the bottom are the exception — that function writes through threadService /
+ * qaPairService, so those two plus duplicateService's origin index are mocked
+ * out below to keep the whole file filesystem-free.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   parseClaudeMessages,
   extractClaudeText,
@@ -34,6 +37,82 @@ import { pairMessages } from '../../electron/services/import/pairMessages'
 import { buildResult, buildOriginId } from '../../electron/services/import/buildResult'
 import { parseClaude } from '../../electron/services/import/parsers/claudeParser'
 import { fingerprintPair } from '../../electron/services/duplicateService'
+import { commitArchiveImport } from '../../electron/services/import/archive/bulkImportService'
+import type { BulkImportPreview, BulkImportThread } from '../../electron/services/import/archive/archiveTypes'
+
+// commitArchiveImport writes real files via these three modules — mock them so
+// the test stays in-memory. duplicateService keeps its real fingerprintPair
+// export (used above) and only buildOriginIndex is replaced.
+const savedThreadsCalls: Array<Record<string, { name: string; items: string[] }>> = []
+let createdPairCounter = 0
+
+vi.mock('../../electron/services/threadService', () => ({
+  loadThreads: vi.fn(() => ({})),
+  saveThreads: vi.fn((threads: Record<string, { name: string; items: string[] }>) => {
+    savedThreadsCalls.push(threads)
+  }),
+}))
+
+vi.mock('../../electron/services/qaPairService', () => ({
+  createPair: vi.fn((data: { title: string; source: string; url: string; tags: string[]; question: string; answer: string; originId?: string }) => ({
+    id: `pair_${createdPairCounter++}`,
+    filepath: '',
+    title: data.title,
+    source: data.source,
+    url: data.url,
+    tags: data.tags,
+    timestamp: new Date().toISOString(),
+    version: 0,
+    threadPairs: [],
+    question: data.question,
+    answer: data.answer,
+    ...(data.originId ? { originId: data.originId } : {}),
+  })),
+}))
+
+vi.mock('../../electron/services/duplicateService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/services/duplicateService')>()
+  return { ...actual, buildOriginIndex: vi.fn(() => new Map()) }
+})
+
+/** One BulkImportThread with `count` items, all with a distinct originId. */
+function makeThread(sourceId: string, count: number): BulkImportThread {
+  return {
+    sourceId,
+    name: `Thread ${sourceId}`,
+    nameWasDerived: false,
+    tags: [],
+    items: Array.from({ length: count }, (_, i) => ({
+      data: {
+        title: `${sourceId} item ${i}`,
+        source: 'gemini',
+        url: '',
+        tags: [],
+        question: `Q${i}`,
+        answer: `A${i}`,
+      },
+      warnings: [],
+    })),
+    createdAt: '2026-07-26T00:00:00.000Z',
+    warnings: [],
+    duplicateCount: 0,
+  }
+}
+
+function makePreview(threads: BulkImportThread[]): BulkImportPreview {
+  return {
+    format: 'gemini-takeout',
+    formatLabel: 'Gemini (Google Takeout activity)',
+    provider: 'gemini',
+    sourcePath: '/fake/export.zip',
+    sourceEntry: 'MyActivity.json',
+    threads,
+    totalPairs: threads.reduce((sum, t) => sum + t.items.length, 0),
+    duplicatePairs: 0,
+    dateRange: { from: '', to: '' },
+    warnings: [],
+  }
+}
 
 describe('extractClaudeText', () => {
   it('prefers typed text blocks over the flat text field', () => {
@@ -194,8 +273,8 @@ describe('parseGeminiTakeout', () => {
     // Jul 26 in UTC — grouping is UTC so it matches the JSON variant's keys.
     const convos = parseGeminiTakeout(html)
     expect(convos).toHaveLength(2)
-    expect(convos[0].title).toBe('Gemini Apps — 2026-07-26')
-    expect(convos[1].title).toBe('Gemini Apps — 2026-07-27')
+    expect(convos[0].title).toBe('')
+    expect(convos[1].title).toBe('')
     expect(convos[0].sourceId).toBe('takeout:2026-07-26')
     expect(convos[0].provider).toBe('gemini')
     expect(convos[0].messages).toHaveLength(4) // two records × (prompt + answer)
@@ -296,7 +375,7 @@ describe('parseGeminiTakeout — JSON variant', () => {
   it('groups by UTC day and keeps the exact ISO time as createdAt', () => {
     const convos = parseGeminiTakeout(json)
     expect(convos).toHaveLength(1)
-    expect(convos[0].title).toBe('Gemini Apps — 2026-07-26')
+    expect(convos[0].title).toBe('')
     expect(convos[0].sourceId).toBe('takeout:2026-07-26')
     expect(convos[0].createdAt).toBe('2026-07-26T06:07:57.773Z')
   })
@@ -547,6 +626,53 @@ describe('buildResult origin ids', () => {
     })
     expect(result.items[0].originId).toBeUndefined()
     expect(result.items[0].data.originId).toBeUndefined()
+  })
+})
+
+describe('commitArchiveImport', () => {
+  it('creates one distinct thread per selected conversation, not just the last', () => {
+    // Regression test: generateThreadId() used to offset Date.now() by the loop
+    // index in *milliseconds*, but thread ids only have second resolution — a
+    // batch committed within one second (the normal case) collided on a single
+    // id, and later threads silently overwrote earlier ones in threads.json.
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const threads = [makeThread('a', 2), makeThread('b', 3), makeThread('c', 1)]
+    const preview = makePreview(threads)
+
+    const result = commitArchiveImport(preview, {
+      threadSourceIds: ['a', 'b', 'c'],
+      skipDuplicates: false,
+    })
+
+    expect(result.createdThreads).toBe(3)
+    expect(result.createdPairs).toBe(6)
+
+    const finalThreads = savedThreadsCalls.at(-1)
+    expect(finalThreads).toBeDefined()
+    expect(Object.keys(finalThreads!)).toHaveLength(3)
+
+    const itemCounts = Object.values(finalThreads!)
+      .map((t) => t.items.length)
+      .sort((x, y) => x - y)
+    expect(itemCounts).toEqual([1, 2, 3])
+  })
+
+  it('prefixes thread names with their UTC day only when requested, and only for gemini-takeout', () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const preview = makePreview([makeThread('a', 1)])
+    commitArchiveImport(preview, {
+      threadSourceIds: ['a'],
+      skipDuplicates: false,
+      includeDateInThreadNames: true,
+    })
+
+    const finalThreads = savedThreadsCalls.at(-1)!
+    const names = Object.values(finalThreads).map((t) => t.name)
+    expect(names).toEqual(['2026-07-26 — Thread a'])
   })
 })
 

@@ -93,6 +93,12 @@ export interface BulkImportSelection {
   threadSourceIds: string[]
   /** Skip pairs whose `origin_id` is already in the archive. */
   skipDuplicates: boolean
+  /**
+   * Prefix each created thread's name with its UTC calendar day. Only meaningful
+   * for `gemini-takeout`, where a thread is a day-bucket rather than a real
+   * conversation — ignored for every other format.
+   */
+  includeDateInThreadNames?: boolean
 }
 
 /** Progress tick emitted from main → renderer during a commit. */
