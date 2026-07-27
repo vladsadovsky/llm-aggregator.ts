@@ -49,13 +49,40 @@ export function buildOriginId(convo: ParsedConversation, sourceIds: string[]): s
   return `${convo.provider}:${conversationId}:${anchor}`
 }
 
-export function buildResult(convo: ParsedConversation): SharedImportResult {
+export interface BuildResultOptions {
+  /**
+   * Tags applied on top of the provider/model ones, e.g. `bulk` for account-export
+   * imports so those threads and pairs can be filtered as a batch afterwards.
+   */
+  extraTags?: string[]
+}
+
+/** Earliest / latest message time in a conversation. '' when the payload has no times. */
+function messageTimeRange(convo: ParsedConversation): { createdAt: string; updatedAt: string } {
+  // ISO strings compare lexicographically, and every parser normalizes to UTC ISO.
+  let createdAt = ''
+  let updatedAt = ''
+  for (const m of convo.messages) {
+    if (!m.createdAt) continue
+    if (!createdAt || m.createdAt < createdAt) createdAt = m.createdAt
+    if (!updatedAt || m.createdAt > updatedAt) updatedAt = m.createdAt
+  }
+  // Fall back to the conversation-level time when messages carry none.
+  const fallback = convo.createdAt ?? ''
+  return { createdAt: createdAt || fallback, updatedAt: updatedAt || createdAt || fallback }
+}
+
+export function buildResult(convo: ParsedConversation, options: BuildResultOptions = {}): SharedImportResult {
   const providerLabel = PROVIDER_LABEL[convo.provider]
   const model = convo.model.trim() || providerLabel
 
-  // Tags: provider name + model name (deduped, non-empty).
+  // Tags: provider name + model name + any caller-supplied extras (deduped, non-empty).
   const tags = Array.from(
-    new Set([normalizeTag(providerLabel), normalizeTag(model)].filter(Boolean)),
+    new Set(
+      [normalizeTag(providerLabel), normalizeTag(model), ...(options.extraTags ?? []).map(normalizeTag)].filter(
+        Boolean,
+      ),
+    ),
   )
 
   const pairs = pairMessages(convo.messages)
@@ -71,6 +98,9 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
   const items: SharedImportQA[] = pairs.map((pair, i) => {
     const title = deriveTitle(pair.question) || deriveTitle(pair.answer) || `${threadName} — part ${i + 1}`
     const originId = buildOriginId(convo, pair.sourceIds)
+    // Prefer the pair's own message time; fall back to the conversation's so a
+    // provider that only dates the conversation still beats "time of import".
+    const timestamp = pair.createdAt || convo.createdAt || ''
     return {
       data: {
         title,
@@ -80,6 +110,7 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
         question: pair.question,
         answer: pair.answer,
         ...(originId ? { originId } : {}),
+        ...(timestamp ? { timestamp } : {}),
       },
       warnings: pair.warnings,
       ...(originId ? { originId } : {}),
@@ -93,6 +124,8 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
     )
   }
 
+  const { createdAt, updatedAt } = messageTimeRange(convo)
+
   return {
     provider: convo.provider,
     url: convo.url,
@@ -102,5 +135,7 @@ export function buildResult(convo: ParsedConversation): SharedImportResult {
     tags,
     items,
     warnings,
+    createdAt,
+    updatedAt,
   }
 }

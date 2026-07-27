@@ -64,6 +64,13 @@ export interface QACreateData {
   answer: string
   /** See QAPairData.originId. Optional — only importers set it. */
   originId?: string
+  /**
+   * When the pair was originally created at the provider (ISO). Set by importers
+   * from the source payload so an archived conversation keeps its real date
+   * instead of the moment of import. The id / filename is derived from it too,
+   * so the archive stays chronological on disk. Omitted → "now".
+   */
+  timestamp?: string
 }
 
 export interface QAUpdateData {
@@ -172,7 +179,11 @@ export function getPair(id: string): QAPairData | null {
 
 export function createPair(data: QACreateData): QAPairData {
   const dir = getArchiveDir()
-  const now = new Date()
+  // Importers supply the provider-side creation time; everything else is "now".
+  // An unparseable value falls back rather than throwing — a bad timestamp in
+  // one export record must not abort the import.
+  const parsedSource = data.timestamp ? Date.parse(data.timestamp) : NaN
+  const now = Number.isNaN(parsedSource) ? new Date() : new Date(parsedSource)
   const id = generateUniqueId(dir, now)
 
   // Generate filename matching Python format

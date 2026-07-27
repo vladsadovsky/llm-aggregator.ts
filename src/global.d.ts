@@ -174,6 +174,7 @@ export interface BulkImportThreadSummary {
   pairCount: number
   duplicateCount: number
   createdAt: string
+  updatedAt: string
   warnings: string[]
 }
 
@@ -253,6 +254,24 @@ export interface DuplicateCleanupResult {
   threadsUpdated: number
 }
 
+export interface ArchiveResetPreview {
+  pairs: number
+  threads: number
+  tags: number
+  hasEmbeddings: boolean
+  dataDirectory: string
+}
+
+export interface ArchiveResetResult {
+  pairsRemoved: number
+  threadsRemoved: number
+  tagsRemoved: number
+  embeddingsRemoved: boolean
+  /** Folder everything was moved into — nothing is deleted outright. */
+  backupPath: string
+  warnings: string[]
+}
+
 export interface SharedImportResult {
   provider: ProviderId
   url: string
@@ -262,6 +281,10 @@ export interface SharedImportResult {
   tags: string[]
   items: SharedImportQA[]
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when unknown. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when unknown. */
+  updatedAt: string
 }
 
 export interface ElectronAPI {
@@ -341,6 +364,10 @@ export interface ElectronAPI {
   // Duplicate cleanup
   duplicatesScan: () => Promise<DuplicateScanResult>
   duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+
+  // Archive reset (Tools → Reset Archive)
+  archiveResetPreview: () => Promise<ArchiveResetPreview>
+  archiveReset: () => Promise<ArchiveResetResult>
 
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void

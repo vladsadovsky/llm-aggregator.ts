@@ -18,6 +18,7 @@ import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import BulkImportDialog from './components/BulkImportDialog.vue'
 import DuplicateCleanupDialog from './components/DuplicateCleanupDialog.vue'
+import ArchiveResetDialog from './components/ArchiveResetDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
@@ -61,6 +62,7 @@ const bulkImportPreview = ref<BulkImportPreviewSummary | null>(null)
 const bulkImportProgress = ref<BulkImportProgress | null>(null)
 const bulkImportResult = ref<BulkImportCommitResult | null>(null)
 const showDuplicates = ref(false)
+const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
 let disposeProgressListener: (() => void) | null = null
 
@@ -107,6 +109,7 @@ const appCommands: AppCommand[] = [
   { id: 'view.annotationPass', label: 'Run Confidence Annotation Pass', shortcut: '', run: () => { showAnnotationDialog.value = true } },
   { id: 'view.healthCheck', label: 'Run Archive Health Check', shortcut: '', run: () => { showHealthDialog.value = true } },
   { id: 'tools.findDuplicates', label: 'Find Duplicate Q&As', shortcut: '', run: () => { showDuplicates.value = true } },
+  { id: 'tools.resetArchive', label: 'Reset Archive (Clear Everything)', shortcut: '', run: () => { showArchiveReset.value = true } },
   { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
   { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
   { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
@@ -433,6 +436,21 @@ async function handleDuplicatesChanged() {
   await threadStore.loadThreads()
 }
 
+/**
+ * After a reset every id in memory is stale, so selections and filters are
+ * cleared before reloading — leaving a selected pair id pointing at a deleted
+ * file shows an empty content panel with no way back.
+ */
+async function handleArchiveReset() {
+  qaStore.selectedPairId = null
+  threadStore.selectedThreadId = null
+  threadStore.clearTagFilters()
+  uiStore.searchQuery = ''
+  await qaStore.loadAllPairs()
+  await threadStore.loadThreads()
+  await tagStore.reload()
+}
+
 function openSharedLinkImport() {
   debugLog('sharedImportTrace', 'opening shared-link import dialog')
   sharedImportResult.value = null
@@ -505,7 +523,8 @@ async function handleSharedLinkImport(url: string) {
         threadName: result.threadName,
         createdIds,
       })
-      const tid = await threadStore.createThread(result.threadName)
+      // Date the thread from the conversation itself, not from the import.
+      const tid = await threadStore.createThread(result.threadName, { createdAt: result.createdAt })
       debugLog('sharedImportTrace', 'thread created', {
         threadId: tid,
         initialItems: threadStore.threads[tid]?.items ?? null,
@@ -526,6 +545,11 @@ async function handleSharedLinkImport(url: string) {
           currentItems: threadStore.threads[tid]?.items ?? null,
         })
       }
+      // Last, so the per-item edits above do not stamp it with the import time.
+      await threadStore.setThreadTimes(tid, {
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      })
       await qaStore.loadAllPairs()
       await threadStore.loadThreads()
       debugLog('sharedImportTrace', 'post-reload thread snapshot', {
@@ -880,6 +904,12 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <DuplicateCleanupDialog
     v-model:visible="showDuplicates"
     @changed="handleDuplicatesChanged"
+  />
+
+  <!-- Reset the archive to a clean state (Tools) -->
+  <ArchiveResetDialog
+    v-model:visible="showArchiveReset"
+    @reset="handleArchiveReset"
   />
 
   <!-- Loading screen -->

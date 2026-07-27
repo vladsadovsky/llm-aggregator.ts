@@ -136,6 +136,7 @@ export interface BulkImportThreadSummary {
   pairCount: number
   duplicateCount: number
   createdAt: string
+  updatedAt: string
   warnings: string[]
 }
 
@@ -214,6 +215,26 @@ export interface DuplicateCleanupResult {
   threadsUpdated: number
 }
 
+// ─── Archive reset ───────────────────────────────────────────────────────────
+
+export interface ArchiveResetPreview {
+  pairs: number
+  threads: number
+  tags: number
+  hasEmbeddings: boolean
+  dataDirectory: string
+}
+
+export interface ArchiveResetResult {
+  pairsRemoved: number
+  threadsRemoved: number
+  tagsRemoved: number
+  embeddingsRemoved: boolean
+  /** Folder everything was moved into — nothing is deleted outright. */
+  backupPath: string
+  warnings: string[]
+}
+
 export interface SharedImportResult {
   provider: ProviderId
   url: string
@@ -223,6 +244,10 @@ export interface SharedImportResult {
   tags: string[]
   items: SharedImportQA[]
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when unknown. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when unknown. */
+  updatedAt: string
 }
 
 export interface ElectronAPI {
@@ -307,6 +332,10 @@ export interface ElectronAPI {
   // Duplicate cleanup
   duplicatesScan: () => Promise<DuplicateScanResult>
   duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+  /** Counts of what a reset would clear — read-only. */
+  archiveResetPreview: () => Promise<ArchiveResetPreview>
+  /** Move the archive, threads, tags and embeddings aside; returns the backup path. */
+  archiveReset: () => Promise<ArchiveResetResult>
 
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void
@@ -339,6 +368,10 @@ export interface QACreateData {
   tags: string[]
   question: string
   answer: string
+  /** Provider-side identity (`<provider>:<conversationId>:<messageId>`). Importers only. */
+  originId?: string
+  /** Provider-side creation time (ISO); drives both the stored timestamp and the id. */
+  timestamp?: string
 }
 
 export interface QAUpdateData {
@@ -470,6 +503,9 @@ const api: ElectronAPI = {
 
   duplicatesScan: () => ipcRenderer.invoke('duplicates:scan'),
   duplicatesDelete: (ids) => ipcRenderer.invoke('duplicates:delete', ids),
+
+  archiveResetPreview: () => ipcRenderer.invoke('archive:resetPreview'),
+  archiveReset: () => ipcRenderer.invoke('archive:reset'),
 
   onMenuAction: (callback) => {
     const handler = (_event: IpcRendererEvent, action: string) => callback(action)

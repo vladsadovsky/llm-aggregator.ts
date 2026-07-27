@@ -159,6 +159,7 @@ export function parseCopilotCsv(text: string): ParsedConversation[] {
       text: record.text,
       // No ids in the export; the message hash disambiguates tied timestamps.
       id: `${record.instant}#${shortHash(record.text)}`,
+      ...(record.iso ? { createdAt: record.iso } : {}),
     }))
 
     const warnings: string[] = []

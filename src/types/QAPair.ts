@@ -26,6 +26,14 @@ export interface QACreateData {
   tags: string[]
   question: string
   answer: string
+  /** Provider-side identity (`<provider>:<conversationId>:<messageId>`). Importers only. */
+  originId?: string
+  /**
+   * Provider-side creation time (ISO). Importers set it so an archived
+   * conversation keeps its real date instead of the moment of import; the id and
+   * filename are derived from it too. Omitted → "now".
+   */
+  timestamp?: string
 }
 
 export interface QAUpdateData {

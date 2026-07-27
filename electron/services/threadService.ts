@@ -3,9 +3,15 @@ import { join } from 'path'
 import { getDataDir } from './pathResolver'
 import { debugLog, debugError } from './logger'
 
+/** Mirrors `src/types/Thread.ts` — threads.json is written from both sides. */
 export interface ThreadData {
   name: string
   items: string[]
+  tags?: string[]
+  /** ISO. Source-conversation time for imports, creation time otherwise. */
+  createdAt?: string
+  /** ISO. Last entry or edit. */
+  updatedAt?: string
 }
 
 export type ThreadMap = Record<string, ThreadData>

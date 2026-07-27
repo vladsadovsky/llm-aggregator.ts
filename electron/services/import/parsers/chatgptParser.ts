@@ -68,7 +68,14 @@ export function parseChatGPT(json: any, url: string): ParsedConversation {
     if (role === 'assistant' && !model && typeof m?.metadata?.model_slug === 'string') {
       model = m.metadata.model_slug
     }
-    messages.push({ role, text, ...(typeof m?.id === 'string' && m.id ? { id: m.id } : {}) })
+    // Both share payloads and account exports date messages in epoch seconds.
+    const createdAt = typeof m?.create_time === 'number' ? new Date(m.create_time * 1000).toISOString() : ''
+    messages.push({
+      role,
+      text,
+      ...(typeof m?.id === 'string' && m.id ? { id: m.id } : {}),
+      ...(createdAt ? { createdAt } : {}),
+    })
   }
 
   if (!model && typeof json?.default_model_slug === 'string') {

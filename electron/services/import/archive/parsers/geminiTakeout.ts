@@ -260,8 +260,11 @@ export function parseGeminiTakeout(text: string): ParsedConversation[] {
     for (const record of dayRecords) {
       // Timestamps alone collide, so mix in the prompt.
       const id = `${record.instant}#${shortHash(record.prompt)}`
-      messages.push({ role: 'user', text: record.prompt, id })
-      messages.push({ role: 'assistant', text: record.answerMarkdown, id })
+      // Takeout dates the record, not the individual turns — prompt and response
+      // share the one timestamp.
+      const createdAt = record.isoExact
+      messages.push({ role: 'user', text: record.prompt, id, ...(createdAt ? { createdAt } : {}) })
+      messages.push({ role: 'assistant', text: record.answerMarkdown, id, ...(createdAt ? { createdAt } : {}) })
     }
 
     const warnings: string[] = []
