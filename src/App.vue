@@ -16,12 +16,22 @@ import HealthReportDialog from './components/HealthReportDialog.vue'
 import TagManagerDialog from './components/TagManagerDialog.vue'
 import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
+import BulkImportDialog from './components/BulkImportDialog.vue'
+import DuplicateCleanupDialog from './components/DuplicateCleanupDialog.vue'
+import ArchiveResetDialog from './components/ArchiveResetDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { useTagStore } from './stores/tagStore'
 import { debugError, debugLog } from './utils/logger'
-import type { ImportResult, SharedImportResult } from './global'
+import type {
+  ImportResult,
+  SharedImportResult,
+  BulkImportPreviewSummary,
+  BulkImportProgress,
+  BulkImportCommitResult,
+  BulkImportSelection,
+} from './global'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
@@ -46,7 +56,15 @@ const showSharedLinkImport = ref(false)
 const sharedImportBusy = ref(false)
 const sharedImportResult = ref<SharedImportResult | null>(null)
 const sharedImportError = ref('')
+// Bulk ("account export") import: preview → commit, with live progress.
+const showBulkImport = ref(false)
+const bulkImportPreview = ref<BulkImportPreviewSummary | null>(null)
+const bulkImportProgress = ref<BulkImportProgress | null>(null)
+const bulkImportResult = ref<BulkImportCommitResult | null>(null)
+const showDuplicates = ref(false)
+const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
+let disposeProgressListener: (() => void) | null = null
 
 const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
 
@@ -90,6 +108,8 @@ const appCommands: AppCommand[] = [
   { id: 'view.generateEmbeddings', label: 'Generate All Embeddings', shortcut: '', run: () => void generateAllEmbeddings() },
   { id: 'view.annotationPass', label: 'Run Confidence Annotation Pass', shortcut: '', run: () => { showAnnotationDialog.value = true } },
   { id: 'view.healthCheck', label: 'Run Archive Health Check', shortcut: '', run: () => { showHealthDialog.value = true } },
+  { id: 'tools.findDuplicates', label: 'Find Duplicate Q&As', shortcut: '', run: () => { showDuplicates.value = true } },
+  { id: 'tools.resetArchive', label: 'Reset Archive (Clear Everything)', shortcut: '', run: () => { showArchiveReset.value = true } },
   { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
   { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
   { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
@@ -177,6 +197,7 @@ onUnmounted(() => {
   window.removeEventListener('llm:import-file', handleImportFileEvent)
   window.removeEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
   disposeMenuListener?.()
+  disposeProgressListener?.()
 })
 
 function isInputTarget(target: HTMLElement): boolean {
@@ -303,9 +324,20 @@ async function exportSelectedThread() {
 }
 
 async function importFile() {
-  const result = await window.api.importFromFile()
-  if (!result) return // user cancelled
+  const outcome = await window.api.importFromFile()
+  if (!outcome) return // user cancelled
 
+  // An account export opens the preview dialog instead of importing straight
+  // away — it can be hundreds of threads, so the user confirms first.
+  if (outcome.kind === 'archive') {
+    bulkImportPreview.value = outcome.preview
+    bulkImportProgress.value = null
+    bulkImportResult.value = null
+    showBulkImport.value = true
+    return
+  }
+
+  const result = outcome.result
   const createdIds: string[] = []
   for (const item of result.items) {
     try {
@@ -342,6 +374,81 @@ async function importFile() {
     importSummaryResult.value = result
     showImportSummary.value = true
   }
+}
+
+async function handleBulkImportCommit(selection: BulkImportSelection) {
+  const preview = bulkImportPreview.value
+  if (!preview) return
+
+  // Subscribe before the call so the first ticks are not missed.
+  disposeProgressListener?.()
+  disposeProgressListener = window.api.onArchiveImportProgress((progress) => {
+    bulkImportProgress.value = progress
+  })
+
+  try {
+    const result = await window.api.importArchiveCommit(preview.previewId, selection)
+    bulkImportResult.value = result
+    await qaStore.loadAllPairs()
+    await threadStore.loadThreads()
+    toast?.add({
+      severity: result.failed > 0 ? 'warn' : 'success',
+      summary: result.failed > 0 ? 'Import completed with errors' : 'Import complete',
+      detail:
+        `${result.createdPairs} Q&A${result.createdPairs === 1 ? '' : 's'} in ` +
+        `${result.createdThreads} thread${result.createdThreads === 1 ? '' : 's'}` +
+        (result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} duplicate(s) skipped` : ''),
+      life: 5000,
+    })
+  } catch (err) {
+    debugError('App', 'bulk import commit failed', err)
+    toast?.add({
+      severity: 'error',
+      summary: 'Import failed',
+      detail: err instanceof Error ? err.message : String(err),
+      life: 6000,
+    })
+  } finally {
+    disposeProgressListener?.()
+    disposeProgressListener = null
+    bulkImportProgress.value = null
+  }
+}
+
+async function handleBulkImportClose() {
+  // Release the main-process preview only if the user never committed it.
+  const preview = bulkImportPreview.value
+  if (preview && !bulkImportResult.value) {
+    try {
+      await window.api.importArchiveCancel(preview.previewId)
+    } catch (err) {
+      debugError('App', 'importArchiveCancel failed', err)
+    }
+  }
+  showBulkImport.value = false
+  bulkImportPreview.value = null
+  bulkImportProgress.value = null
+  bulkImportResult.value = null
+}
+
+async function handleDuplicatesChanged() {
+  await qaStore.loadAllPairs()
+  await threadStore.loadThreads()
+}
+
+/**
+ * After a reset every id in memory is stale, so selections and filters are
+ * cleared before reloading — leaving a selected pair id pointing at a deleted
+ * file shows an empty content panel with no way back.
+ */
+async function handleArchiveReset() {
+  qaStore.selectedPairId = null
+  threadStore.selectedThreadId = null
+  threadStore.clearTagFilters()
+  uiStore.searchQuery = ''
+  await qaStore.loadAllPairs()
+  await threadStore.loadThreads()
+  await tagStore.reload()
 }
 
 function openSharedLinkImport() {
@@ -416,7 +523,8 @@ async function handleSharedLinkImport(url: string) {
         threadName: result.threadName,
         createdIds,
       })
-      const tid = await threadStore.createThread(result.threadName)
+      // Date the thread from the conversation itself, not from the import.
+      const tid = await threadStore.createThread(result.threadName, { createdAt: result.createdAt })
       debugLog('sharedImportTrace', 'thread created', {
         threadId: tid,
         initialItems: threadStore.threads[tid]?.items ?? null,
@@ -437,6 +545,11 @@ async function handleSharedLinkImport(url: string) {
           currentItems: threadStore.threads[tid]?.items ?? null,
         })
       }
+      // Last, so the per-item edits above do not stamp it with the import time.
+      await threadStore.setThreadTimes(tid, {
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      })
       await qaStore.loadAllPairs()
       await threadStore.loadThreads()
       debugLog('sharedImportTrace', 'post-reload thread snapshot', {
@@ -775,6 +888,28 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     :result="sharedImportResult"
     :error="sharedImportError"
     @submit="handleSharedLinkImport"
+  />
+
+  <!-- Account-export (bulk) import: preview, progress, summary -->
+  <BulkImportDialog
+    v-model:visible="showBulkImport"
+    :preview="bulkImportPreview"
+    :progress="bulkImportProgress"
+    :result="bulkImportResult"
+    @commit="handleBulkImportCommit"
+    @close="handleBulkImportClose"
+  />
+
+  <!-- Archive-wide duplicate cleanup (Tools) -->
+  <DuplicateCleanupDialog
+    v-model:visible="showDuplicates"
+    @changed="handleDuplicatesChanged"
+  />
+
+  <!-- Reset the archive to a clean state (Tools) -->
+  <ArchiveResetDialog
+    v-model:visible="showArchiveReset"
+    @reset="handleArchiveReset"
   />
 
   <!-- Loading screen -->

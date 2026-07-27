@@ -15,6 +15,7 @@ export const PROVIDER_LABEL: Record<ProviderId, string> = {
   chatgpt: 'ChatGPT',
   gemini: 'Gemini',
   copilot: 'Copilot',
+  claude: 'Claude',
 }
 
 /** Value written to the QA `source` frontmatter field. Must match an allowed source. */
@@ -22,6 +23,7 @@ export const PROVIDER_SOURCE: Record<ProviderId, string> = {
   chatgpt: 'chatgpt',
   gemini: 'gemini',
   copilot: 'copilot',
+  claude: 'claude',
 }
 
 /**
@@ -58,6 +60,12 @@ export function detectProvider(rawUrl: string): ProviderMatch | null {
   if (host === 'copilot.microsoft.com' || host.endsWith('.copilot.microsoft.com')) {
     const m = path.match(/\/shares\/([\w-]+)/i)
     if (m) return { provider: 'copilot', shareId: m[1] }
+  }
+
+  // Claude: claude.ai/share/<uuid> (claude.com is an accepted alias).
+  if (host === 'claude.ai' || host === 'claude.com' || host.endsWith('.claude.ai') || host.endsWith('.claude.com')) {
+    const m = path.match(/\/share\/([\w-]+)/i)
+    if (m) return { provider: 'claude', shareId: m[1] }
   }
 
   return null

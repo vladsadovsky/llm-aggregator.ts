@@ -36,7 +36,12 @@ src/                                 electron/
 | `electron/services/qaPairService.ts` | Archive `.md` file CRUD |
 | `electron/services/threadService.ts` | `threads.json` CRUD |
 | `electron/services/searchService.ts` | Full-text and tag search |
-| `electron/services/import/` | Shared-link conversation import (ChatGPT/Gemini/Copilot) |
+| `electron/services/import/` | Shared-link conversation import (Claude/ChatGPT/Gemini/Copilot) |
+| `electron/services/import/archive/` | Bulk account-export import (zip/folder/json → many threads) |
+| `electron/services/import/archive/formatRegistry.ts` | Structure-based vendor-format sniffing |
+| `electron/services/import/archive/archiveReader.ts` | Reads a .zip / folder / bare file, by entry basename |
+| `electron/services/import/archive/bulkImportService.ts` | Preview → commit orchestration + progress |
+| `electron/services/duplicateService.ts` | Dedup index (`origin_id`) + archive-wide duplicate sweep |
 | `electron/services/settingsService.ts` | `settings.json` load/save |
 | `electron/services/secretsService.ts` | API key storage entry point (chain wiring, startup sweep) |
 | `electron/services/secrets/secretResolver.ts` | Precedence chain, partial save, status projection |
@@ -54,6 +59,8 @@ src/                                 electron/
 | `src/components/QAContentPanel.vue` | Right column — QA viewer/editor |
 | `src/components/QAEditor.vue` | Modal dialog for creating new QA |
 | `src/components/SharedLinkImportDialog.vue` | Modal dialog for importing a shared conversation link |
+| `src/components/BulkImportDialog.vue` | Account-export preview / selection / progress / summary |
+| `src/components/DuplicateCleanupDialog.vue` | Archive-wide duplicate sweep (Tools menu) |
 | `src/components/QAEditForm.vue` | Inline form for editing existing QA |
 | `src/components/QAMetadataBar.vue` | Metadata display (source, tags, date) |
 | `src/components/MarkdownRenderer.vue` | Markdown + syntax highlighting |
@@ -95,6 +102,9 @@ ai_concepts: [backprop, loss, optimization]
 ai_status: open | closed | speculative | dead-end
 ai_confidence: speculative | working | confident | validated
 ai_summary: Brief summary of conclusion
+
+# Import identity (optional, set by importers only)
+origin_id: claude:<conversation_uuid>:<first_message_uuid>
 ---
 
 The answer is the unrestricted Markdown body — any headings, code blocks, tables, or formatting are valid.
@@ -141,7 +151,13 @@ All renderer↔main communication uses `ipcRenderer.invoke()` / `ipcMain.handle(
 | `secretsDevEnvVarNames()` | `string[]` | Env var names the dev override reads |
 | `aiListProviders()` | `ProviderDescriptor[]` | Available LLM providers and their capabilities |
 | `aiListModels(id, force?, keyOverride?)` | `ModelCatalogResult` | Model catalog (api / cache / static) |
-| `importSharedLink(url)` | `SharedImportResult` | Import a shared LLM conversation (ChatGPT/Gemini/Copilot) as QA pairs |
+| `importSharedLink(url)` | `SharedImportResult` | Import a shared LLM conversation (Claude/ChatGPT/Gemini/Copilot) as QA pairs |
+| `importFromFile()` | `FileImportOutcome\|null` | **Union**: `{kind:'markdown'}` for a .md export, `{kind:'archive'}` for an account export preview |
+| `importArchiveCommit(id, sel)` | `BulkImportCommitResult` | Write the selected conversations; streams `archive-import:progress` |
+| `importArchiveCancel(id)` | `void` | Release an uncommitted preview held in main |
+| `onArchiveImportProgress(cb)` | `() => void` | Subscribe to bulk-import progress; returns an unsubscribe fn |
+| `duplicatesScan()` | `DuplicateScanResult` | Archive-wide duplicate groups (proposal only, deletes nothing) |
+| `duplicatesDelete(ids)` | `DuplicateCleanupResult` | Delete the given pairs and purge them from threads |
 | `onMenuAction(cb)` | `() => void` | Subscribe to native-menu clicks (main → renderer `menu-action`); returns an unsubscribe fn |
 
 ## Command Exposure (palette + menu)
@@ -166,6 +182,8 @@ in `main.ts`, and — only for high-traffic actions — a toolbar/context button
 The renderer (`SharedLinkImportDialog.vue` → `App.vue`) creates the pairs and thread from the
 returned `SharedImportResult`, mirroring the file-import flow.
 
+- **Claude** — JSON from `claude.ai/api/chat_snapshots/<id>` (`chat_messages[]`, ordered by `index`).
+  The endpoint 403s without a browser `User-Agent`; `fetchJson` already sends one.
 - **ChatGPT** — JSON from `chatgpt.com/backend-api/share/<id>` (walks the `mapping` tree).
 - **Copilot** — JSON from `copilot.microsoft.com/c/api/conversations/shares/<id>` (sorted by `createdAt`).
 - **Gemini** — no server JSON; rendered in a hidden `BrowserWindow` and extracted from the DOM.
@@ -173,7 +191,140 @@ returned `SharedImportResult`, mirroring the file-import flow.
 Transport uses Electron's `net` module (Chromium stack — Node `fetch` overflows on Google's
 headers). Provider parsers are **pure** (no Electron/FS) and unit-tested. The thread + every QA
 are tagged with the provider and model name; if no title is found, the thread name is derived
-from the first question and the UI reminds the user to rename it.
+from the first question and the UI reminds the user to rename it. Claude snapshots expose no
+model identifier, so Claude imports carry the `claude` tag only.
+
+**Fragility — expect breakage.** Every endpoint above is private, undocumented, and unversioned.
+Vendors change payload shapes and tighten bot detection without notice, so importers rot. When
+one breaks:
+
+- The blast radius is **one provider**. Detection, `pairMessages`, `buildResult`, and the IPC/UI
+  layer are shared and provider-agnostic — fix the parser in `parsers/`, and at most the endpoint
+  URL in `sharedLinkImportService.ts`.
+- **Capture the failing payload as a fixture** in `tests/unit/sharedLinkImport.test.ts` before
+  changing parser logic. Every parser is pure precisely so this is cheap.
+- Parsers **drop what they don't recognize** rather than throwing — good for resilience, but a
+  newly-added content-block or turn type disappears silently. Prefer adding a warning to
+  `ParsedConversation.warnings` over dropping unknown-but-visible content.
+- If a JSON endpoint starts returning 403/challenge pages, the escalation path is the
+  hidden-`BrowserWindow` approach Gemini uses — load the share page, then `fetch` the API from
+  inside that page's context (same-origin, real browser headers). The parser stays unchanged.
+- The stable long-term answer is per-vendor **account data export** files (a supported format),
+  not share links. Not implemented today.
+
+## Bulk (Account Export) Import
+
+`electron/services/import/archive/` turns a **vendor account export** into many threads at once.
+It reuses the share-link pipeline wholesale — `ParsedConversation` → `pairMessages` → `buildResult`
+— and only adds an envelope reader plus a format sniffer.
+
+**One menu entry, two pipelines.** `File → Import from File` accepts `.md`, `.json`, and `.zip`.
+`fileImportService.ts` forks on extension and returns a discriminated `FileImportOutcome`; the
+renderer opens either the markdown summary or the bulk preview dialog. Users never classify their
+own file.
+
+**Detection keys on structure, never filename.** Claude, ChatGPT, and Gemini all ship a file named
+`conversations.json` with unrelated shapes. `formatRegistry.ts` therefore receives the raw entry
+**text** (not parsed JSON) — Copilot's export is CSV and Takeout can be HTML, so the contract must
+not assume JSON. Adding a format = one registry entry + one pure parser + fixtures.
+
+**Input shapes.** `archiveReader.ts` accepts the downloaded `.zip`, an unzipped folder, or the bare
+conversations file. Entries are matched by **basename** (Claude's zip is flat; Takeout nests several
+folders deep).
+
+**A basename match is not identification.** A Google Takeout archive contains
+`My Activity/<Product>/MyActivity.json` for *every* product — YouTube, Chrome, Search, Maps, Gemini
+Apps — all identically named. Taking the first basename hit would import browser history. The
+reader therefore takes an `accept` predicate (structural detection) and keeps trying candidates
+until one is accepted, ordering by `pathHints` (`gemini apps`) so the likely entry is probed first.
+
+**yauzl reads sequentially.** In `lazyEntries` mode an `Entry` handle is only valid for
+`openReadStream` during its own `entry` event — handles cannot be stashed and read later. Reading
+is therefore two passes (`listZipCandidates` then `fetchZipEntry`), each costing only a
+central-directory read. Do not "optimize" this back into one pass.
+
+**Writes happen in main, not the renderer.** A large export is thousands of file writes; routing
+each through IPC would flood the bridge and make progress impossible. `bulkImportService.ts` holds
+the full preview in a main-side map keyed by `previewId` and ships only counts to the renderer —
+`summarizePreview` strips the pair bodies, which are megabytes.
+
+**Two-phase by design.** `previewArchive()` is read-only; `commitArchiveImport()` writes and emits
+progress. Per-pair failures are isolated — one unwritable file must not abandon a 500-conversation
+import.
+
+### Deduplication
+
+`origin_id` (`<provider>:<conversationId>:<anchorMessageId>`) is stamped onto every imported pair
+and persisted in frontmatter. The anchor is the pair's **first** message id, so the key survives
+later turns being appended to the same conversation. A share link and an account export of the
+same conversation produce **identical** keys — verified by test.
+
+- `updatePair()` must carry `origin_id` through every edit. It is immutable identity, never
+  regenerated.
+- `duplicateService.ts` serves both uses: `buildOriginIndex()` for exact import-time skipping
+  (the index is updated live during a commit, so duplicates *within* one import are caught too),
+  and `findDuplicateGroups()` for the archive-wide sweep, which falls back to a normalized content
+  fingerprint for pairs predating `origin_id`. The sweep only ever proposes; deletion needs an
+  explicit id list.
+
+### Provider support status
+
+| Provider | Export | Status |
+|----------|--------|--------|
+| Claude | `conversations.json` in a zip | **Validated** against a real export (11 conversations → 109 pairs) |
+| Gemini | Takeout `Gemini Apps/MyActivity.json` **or** `.html` | **Validated** against real exports of both variants (875 records each) |
+| Copilot | Privacy-dashboard `copilot-activity-history.csv` | **Validated** against a real export (2613 rows → 375 threads, 1286 pairs) |
+| ChatGPT | `conversations.json` (array of `mapping` trees) | Implemented by reusing `parseChatGPT`; `validated: false` until checked against a real file — the UI warns |
+
+**Gemini Takeout is not threaded.** Takeout exports an *activity log*: each record is a standalone
+prompt + response, and nothing links a follow-up to what preceded it. `geminiTakeout.ts` therefore
+groups records by **UTC calendar day** — a stand-in for threads, not a reconstruction. Only
+prompt-like verbs (`Prompted`, `Branched`, `Answered`) are imported; `Created` / `Used` / `Added` /
+`Gave` are Canvas, upload, and feedback records with no response body. Response HTML goes through
+the existing Turndown `htmlToMarkdown`.
+
+`parseGeminiTakeout` handles **both variants** behind one entry — it sniffs JSON vs HTML itself:
+
+- **JSON** (`safeHtmlItem[].html`, ISO `time`, `header: "Gemini Apps"`) is the better source and is
+  probed first. Some records carry *several* html items — join them, do not take `[0]`.
+- **HTML** must compare the header-cell product **exactly**; a substring test would accept a YouTube
+  page that merely mentions Gemini.
+
+Dedup keys are `<isoSeconds>#<djb2(prompt)>`:
+
+- There are no message ids, and timestamps are *nearly* but not quite unique — 13 collisions in the
+  JSON variant, 28 in the HTML one — hence the prompt hash.
+- Milliseconds are **truncated** and days are **UTC** specifically so that the JSON and HTML exports
+  of the same history produce identical keys and de-duplicate against each other. Changing either to
+  local time silently breaks cross-variant dedup — there is a test pinning this.
+
+The two variants do not yield identical counts: the JSON leaves `title` bare for image-only prompts
+(8 in a real export) where the HTML carries filename text. Those are skipped and reported separately
+from non-conversation records.
+
+**Copilot CSV is threaded — reverse it, never sort it.** `copilotCsv.ts` reads the privacy-dashboard
+export (`Conversation,Time,Author,Message`). Unlike Takeout it carries a real conversation title, so
+threads are reconstructed rather than grouped by day, and message bodies are already Markdown.
+
+Two facts make ordering subtle:
+
+- Rows are **newest-first**, globally and within a conversation.
+- **An AI row and the Human prompt that produced it share an identical timestamp** — 1290 of 2613
+  rows in a real export tie with a sibling. Sorting ascending by time is therefore ambiguous *and
+  wrong*: a stable sort preserves the file's AI-before-Human order inside each tie. The rows must be
+  **reversed**. There is a test pinning this; do not "improve" it into a sort.
+
+Message bodies are multi-line Markdown containing commas, quotes, and blank lines, so `parseCsvRows`
+is a real RFC 4180 reader — a line-split would corrupt the data. The file is UTF-8 **with a BOM**.
+There are no ids, so keys are `csv:<hash(title)>` + `<isoSeconds>#<hash(message)>`; the message hash
+is what separates a prompt from its reply when their timestamps tie.
+
+### Multi-select readiness
+
+Every structure here is multi-conversation and every selection is an array
+(`BulkImportSelection.threadSourceIds`, `deleteDuplicates(ids)`). Single-item flows are the
+one-element case, so the planned multi-select export / re-import does not need a second set of
+shapes.
 
 ## Tech Stack
 

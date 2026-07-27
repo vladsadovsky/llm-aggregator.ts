@@ -150,10 +150,125 @@ export interface ExportResult {
   savedPath: string
 }
 
-export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot' | 'claude'
 
 export interface SharedImportQA {
   data: QACreateData
+  warnings: string[]
+  originId?: string
+}
+
+// ─── Bulk (account export) import ────────────────────────────────────────────
+
+export type ArchiveFormatId =
+  | 'claude-account-export'
+  | 'chatgpt-account-export'
+  | 'gemini-takeout'
+  | 'copilot-activity-csv'
+
+export interface BulkImportThreadSummary {
+  sourceId: string
+  name: string
+  nameWasDerived: boolean
+  tags: string[]
+  pairCount: number
+  duplicateCount: number
+  createdAt: string
+  updatedAt: string
+  warnings: string[]
+}
+
+export interface BulkImportPreviewSummary {
+  previewId: string
+  format: ArchiveFormatId
+  formatLabel: string
+  provider: ProviderId
+  sourcePath: string
+  sourceEntry: string
+  threads: BulkImportThreadSummary[]
+  totalPairs: number
+  duplicatePairs: number
+  dateRange: { from: string; to: string }
+  warnings: string[]
+}
+
+export interface BulkImportSelection {
+  threadSourceIds: string[]
+  skipDuplicates: boolean
+  /** Prefix each created thread's name with its UTC calendar day (gemini-takeout only). */
+  includeDateInThreadNames?: boolean
+}
+
+export interface BulkImportProgress {
+  processed: number
+  total: number
+  percent: number
+  etaSeconds: number | null
+  currentThreadName: string
+  currentItemTitle: string
+  threadsDone: number
+  threadsTotal: number
+}
+
+export interface BulkImportCommitResult {
+  createdPairs: number
+  skippedDuplicates: number
+  createdThreads: number
+  failed: number
+  threadNames: string[]
+  warnings: string[]
+}
+
+export type FileImportOutcome =
+  | { kind: 'markdown'; result: ImportResult }
+  | { kind: 'archive'; preview: BulkImportPreviewSummary }
+
+// ─── Duplicate cleanup ───────────────────────────────────────────────────────
+
+export type DuplicateMatchKind = 'origin-id' | 'content'
+
+export interface DuplicateMember {
+  id: string
+  title: string
+  source: string
+  timestamp: string
+  threadCount: number
+  keep: boolean
+}
+
+export interface DuplicateGroup {
+  key: string
+  matchKind: DuplicateMatchKind
+  members: DuplicateMember[]
+}
+
+export interface DuplicateScanResult {
+  scanned: number
+  groups: DuplicateGroup[]
+  removableCount: number
+}
+
+export interface DuplicateCleanupResult {
+  deleted: string[]
+  failed: Array<{ id: string; error: string }>
+  threadsUpdated: number
+}
+
+export interface ArchiveResetPreview {
+  pairs: number
+  threads: number
+  tags: number
+  hasEmbeddings: boolean
+  dataDirectory: string
+}
+
+export interface ArchiveResetResult {
+  pairsRemoved: number
+  threadsRemoved: number
+  tagsRemoved: number
+  embeddingsRemoved: boolean
+  /** Folder everything was moved into — nothing is deleted outright. */
+  backupPath: string
   warnings: string[]
 }
 
@@ -166,6 +281,10 @@ export interface SharedImportResult {
   tags: string[]
   items: SharedImportQA[]
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when unknown. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when unknown. */
+  updatedAt: string
 }
 
 export interface ElectronAPI {
@@ -233,8 +352,22 @@ export interface ElectronAPI {
   // Export / Import
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
-  importFromFile: () => Promise<ImportResult | null>
+  importFromFile: () => Promise<FileImportOutcome | null>
   importSharedLink: (url: string) => Promise<SharedImportResult>
+  importArchiveCommit: (
+    previewId: string,
+    selection: BulkImportSelection,
+  ) => Promise<BulkImportCommitResult>
+  importArchiveCancel: (previewId: string) => Promise<void>
+  onArchiveImportProgress: (callback: (progress: BulkImportProgress) => void) => () => void
+
+  // Duplicate cleanup
+  duplicatesScan: () => Promise<DuplicateScanResult>
+  duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+
+  // Archive reset (Tools → Reset Archive)
+  archiveResetPreview: () => Promise<ArchiveResetPreview>
+  archiveReset: () => Promise<ArchiveResetResult>
 
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void

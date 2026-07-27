@@ -12,6 +12,7 @@ import { fetchJson, renderGemini } from './conversationFetcher'
 import { parseChatGPT } from './parsers/chatgptParser'
 import { parseCopilot } from './parsers/copilotParser'
 import { parseGemini } from './parsers/geminiParser'
+import { parseClaude } from './parsers/claudeParser'
 import { buildResult } from './buildResult'
 import { debugLog } from '../logger'
 import type { ParsedConversation, SharedImportResult } from './types'
@@ -31,7 +32,8 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
       'Unrecognized share link. Supported links look like:\n' +
         '• https://chatgpt.com/share/…\n' +
         '• https://gemini.google.com/share/… or https://share.gemini.google/…\n' +
-        '• https://copilot.microsoft.com/shares/…',
+        '• https://copilot.microsoft.com/shares/…\n' +
+        '• https://claude.ai/share/…',
     )
   }
 
@@ -59,6 +61,16 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
       title: (json as { conversationTitle?: string })?.conversationTitle ?? '',
     })
     convo = parseCopilot(json, rawUrl)
+  } else if (provider === 'claude') {
+    const json = await fetchJson(`https://claude.ai/api/chat_snapshots/${shareId}`)
+    debugLog('sharedLinkImport', 'claude payload summary', {
+      topLevelKeys: typeof json === 'object' && json !== null ? Object.keys(json as Record<string, unknown>) : [],
+      rawMessages: Array.isArray((json as { chat_messages?: unknown[] })?.chat_messages)
+        ? (json as { chat_messages?: unknown[] }).chat_messages?.length ?? 0
+        : 0,
+      title: (json as { snapshot_name?: string })?.snapshot_name ?? '',
+    })
+    convo = parseClaude(json, rawUrl)
   } else {
     const extract = await renderGemini(rawUrl)
     debugLog('sharedLinkImport', 'gemini extraction summary', {

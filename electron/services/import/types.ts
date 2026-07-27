@@ -7,11 +7,23 @@
 
 import type { QACreateData } from '../qaPairService'
 
-export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot' | 'claude'
 
 export interface ParsedMessage {
   role: 'user' | 'assistant'
   text: string
+  /**
+   * Provider-side stable identifier for this message (a message uuid), when the
+   * payload carries one. Used to build dedup keys — see `originId` below.
+   */
+  id?: string
+  /**
+   * When the provider says this message was sent (ISO). Absent when the payload
+   * carries no per-message time. Imported pairs are timestamped from this rather
+   * than from the moment of import, so an archived conversation keeps its real
+   * date — see `SharedImportQA.data.timestamp`.
+   */
+  createdAt?: string
 }
 
 /** Normalized shape every provider parser produces. */
@@ -25,12 +37,23 @@ export interface ParsedConversation {
   messages: ParsedMessage[]
   /** Provider-level anomalies surfaced to the user. */
   warnings: string[]
+  /** Provider-side conversation id (uuid), when known. Part of the dedup key. */
+  sourceId?: string
+  /** Conversation creation time as reported by the provider (ISO). '' when unknown. */
+  createdAt?: string
 }
 
 /** One QA pair ready for creation, plus any per-pair anomalies. */
 export interface SharedImportQA {
   data: QACreateData
   warnings: string[]
+  /**
+   * Stable cross-import identity: `<provider>:<conversationId>:<firstMessageId>`.
+   * Persisted to QA frontmatter as `origin_id` so a re-import of the same
+   * conversation is recognized instead of duplicated. Undefined when the
+   * provider payload carries no usable ids.
+   */
+  originId?: string
 }
 
 /** Result returned to the renderer, which creates the pairs + thread. */
@@ -48,4 +71,8 @@ export interface SharedImportResult {
   items: SharedImportQA[]
   /** File / conversation-level warnings. */
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when the payload has none. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when the payload has none. */
+  updatedAt: string
 }

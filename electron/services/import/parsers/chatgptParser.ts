@@ -68,7 +68,14 @@ export function parseChatGPT(json: any, url: string): ParsedConversation {
     if (role === 'assistant' && !model && typeof m?.metadata?.model_slug === 'string') {
       model = m.metadata.model_slug
     }
-    messages.push({ role, text })
+    // Both share payloads and account exports date messages in epoch seconds.
+    const createdAt = typeof m?.create_time === 'number' ? new Date(m.create_time * 1000).toISOString() : ''
+    messages.push({
+      role,
+      text,
+      ...(typeof m?.id === 'string' && m.id ? { id: m.id } : {}),
+      ...(createdAt ? { createdAt } : {}),
+    })
   }
 
   if (!model && typeof json?.default_model_slug === 'string') {
@@ -76,6 +83,23 @@ export function parseChatGPT(json: any, url: string): ParsedConversation {
   }
 
   const title = typeof json?.title === 'string' ? json.title.trim() : ''
+  // Account exports carry the conversation id; share payloads usually do not.
+  const sourceId =
+    (typeof json?.conversation_id === 'string' && json.conversation_id) ||
+    (typeof json?.id === 'string' && json.id) ||
+    ''
+  // Exports use epoch seconds for create_time.
+  const createdAt =
+    typeof json?.create_time === 'number' ? new Date(json.create_time * 1000).toISOString() : ''
 
-  return { provider: 'chatgpt', url, title, model, messages, warnings }
+  return {
+    provider: 'chatgpt',
+    url,
+    title,
+    model,
+    messages,
+    warnings,
+    ...(sourceId ? { sourceId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+  }
 }

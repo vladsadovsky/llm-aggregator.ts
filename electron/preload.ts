@@ -112,10 +112,126 @@ export interface ExportResult {
   savedPath: string
 }
 
-export type ProviderId = 'chatgpt' | 'gemini' | 'copilot'
+export type ProviderId = 'chatgpt' | 'gemini' | 'copilot' | 'claude'
 
 export interface SharedImportQA {
   data: QACreateData
+  warnings: string[]
+  originId?: string
+}
+
+// ─── Bulk (account export) import ────────────────────────────────────────────
+
+export type ArchiveFormatId =
+  | 'claude-account-export'
+  | 'chatgpt-account-export'
+  | 'gemini-takeout'
+  | 'copilot-activity-csv'
+
+export interface BulkImportThreadSummary {
+  sourceId: string
+  name: string
+  nameWasDerived: boolean
+  tags: string[]
+  pairCount: number
+  duplicateCount: number
+  createdAt: string
+  updatedAt: string
+  warnings: string[]
+}
+
+export interface BulkImportPreviewSummary {
+  previewId: string
+  format: ArchiveFormatId
+  formatLabel: string
+  provider: ProviderId
+  sourcePath: string
+  sourceEntry: string
+  threads: BulkImportThreadSummary[]
+  totalPairs: number
+  duplicatePairs: number
+  dateRange: { from: string; to: string }
+  warnings: string[]
+}
+
+export interface BulkImportSelection {
+  threadSourceIds: string[]
+  skipDuplicates: boolean
+}
+
+export interface BulkImportProgress {
+  processed: number
+  total: number
+  percent: number
+  etaSeconds: number | null
+  currentThreadName: string
+  currentItemTitle: string
+  threadsDone: number
+  threadsTotal: number
+}
+
+export interface BulkImportCommitResult {
+  createdPairs: number
+  skippedDuplicates: number
+  createdThreads: number
+  failed: number
+  threadNames: string[]
+  warnings: string[]
+}
+
+/** Import from file resolves to one of two pipelines — see fileImportService. */
+export type FileImportOutcome =
+  | { kind: 'markdown'; result: ImportResult }
+  | { kind: 'archive'; preview: BulkImportPreviewSummary }
+
+// ─── Duplicate cleanup ───────────────────────────────────────────────────────
+
+export type DuplicateMatchKind = 'origin-id' | 'content'
+
+export interface DuplicateMember {
+  id: string
+  title: string
+  source: string
+  timestamp: string
+  threadCount: number
+  keep: boolean
+}
+
+export interface DuplicateGroup {
+  key: string
+  matchKind: DuplicateMatchKind
+  members: DuplicateMember[]
+}
+
+export interface DuplicateScanResult {
+  scanned: number
+  groups: DuplicateGroup[]
+  removableCount: number
+}
+
+export interface DuplicateCleanupResult {
+  deleted: string[]
+  failed: Array<{ id: string; error: string }>
+  threadsUpdated: number
+}
+
+// ─── Archive reset ───────────────────────────────────────────────────────────
+
+export interface ArchiveResetPreview {
+  pairs: number
+  threads: number
+  tags: number
+  hasEmbeddings: boolean
+  dataDirectory: string
+}
+
+export interface ArchiveResetResult {
+  pairsRemoved: number
+  threadsRemoved: number
+  tagsRemoved: number
+  embeddingsRemoved: boolean
+  /** Folder everything was moved into — nothing is deleted outright. */
+  backupPath: string
   warnings: string[]
 }
 
@@ -128,6 +244,10 @@ export interface SharedImportResult {
   tags: string[]
   items: SharedImportQA[]
   warnings: string[]
+  /** Earliest message time in the conversation (ISO), '' when unknown. */
+  createdAt: string
+  /** Latest message time in the conversation (ISO), '' when unknown. */
+  updatedAt: string
 }
 
 export interface ElectronAPI {
@@ -197,8 +317,25 @@ export interface ElectronAPI {
   // Export / Import
   exportQA: (id: string) => Promise<ExportResult | null>
   exportThread: (threadId: string) => Promise<ExportResult | null>
-  importFromFile: () => Promise<ImportResult | null>
+  importFromFile: () => Promise<FileImportOutcome | null>
   importSharedLink: (url: string) => Promise<SharedImportResult>
+  /** Write the selected conversations from a previewed account export. */
+  importArchiveCommit: (
+    previewId: string,
+    selection: BulkImportSelection,
+  ) => Promise<BulkImportCommitResult>
+  /** Drop a preview the user backed out of, freeing its memory in main. */
+  importArchiveCancel: (previewId: string) => Promise<void>
+  /** Subscribe to bulk-import progress. Returns an unsubscribe function. */
+  onArchiveImportProgress: (callback: (progress: BulkImportProgress) => void) => () => void
+
+  // Duplicate cleanup
+  duplicatesScan: () => Promise<DuplicateScanResult>
+  duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+  /** Counts of what a reset would clear — read-only. */
+  archiveResetPreview: () => Promise<ArchiveResetPreview>
+  /** Move the archive, threads, tags and embeddings aside; returns the backup path. */
+  archiveReset: () => Promise<ArchiveResetResult>
 
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void
@@ -231,6 +368,10 @@ export interface QACreateData {
   tags: string[]
   question: string
   answer: string
+  /** Provider-side identity (`<provider>:<conversationId>:<messageId>`). Importers only. */
+  originId?: string
+  /** Provider-side creation time (ISO); drives both the stored timestamp and the id. */
+  timestamp?: string
 }
 
 export interface QAUpdateData {
@@ -350,6 +491,21 @@ const api: ElectronAPI = {
   exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
   importFromFile: () => ipcRenderer.invoke('import:file'),
   importSharedLink: (url) => ipcRenderer.invoke('import:sharedLink', url),
+  importArchiveCommit: (previewId, selection) =>
+    ipcRenderer.invoke('import:archiveCommit', previewId, selection),
+  importArchiveCancel: (previewId) => ipcRenderer.invoke('import:archiveCancel', previewId),
+
+  onArchiveImportProgress: (callback) => {
+    const handler = (_event: IpcRendererEvent, progress: BulkImportProgress) => callback(progress)
+    ipcRenderer.on('archive-import:progress', handler)
+    return () => ipcRenderer.removeListener('archive-import:progress', handler)
+  },
+
+  duplicatesScan: () => ipcRenderer.invoke('duplicates:scan'),
+  duplicatesDelete: (ids) => ipcRenderer.invoke('duplicates:delete', ids),
+
+  archiveResetPreview: () => ipcRenderer.invoke('archive:resetPreview'),
+  archiveReset: () => ipcRenderer.invoke('archive:reset'),
 
   onMenuAction: (callback) => {
     const handler = (_event: IpcRendererEvent, action: string) => callback(action)

@@ -10,9 +10,19 @@ playwright-report/
 coverage/
 test-results
 
+# Claude Code settings. Ignored wholesale for now; to share the project-wide
+# permission allow-list later, drop the second line and keep settings.local.json
+# (personal overrides) ignored.
+.claude/
+.claude/settings.local.json
+
 
 # Runtime data files (user-specific)
-settings.json
-threads.json
-archive/
+# Leading slash anchors these to the repo root: in dev the data directory
+# defaults to the CWD, so only the top-level archive/ is user data. An unanchored
+# "archive/" also matched electron/services/import/archive/ and silently kept
+# source files out of commits.
+/settings.json
+/threads.json
+/archive/
 .history
