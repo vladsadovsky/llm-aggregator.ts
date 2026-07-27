@@ -1,16 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(git add:*)",
-      "PowerShell(git stash:*)",
-      "PowerShell(npm install:*)",
-      "PowerShell(npm ci:*)",
-      "PowerShell(node -e:*)",
-      "Bash(git add:*)",
-      "Bash(git stash:*)",
-      "Bash(npm install:*)",
-      "Bash(npm ci:*)",
-      "Bash(node -e:*)",
+      "PowerShell(*)",
+      "Bash(*)",
       "Skill(update-config)",
       "Skill(update-config:*)"
     ]
