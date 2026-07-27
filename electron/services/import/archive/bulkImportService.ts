@@ -83,9 +83,14 @@ export function summarizePreview(preview: BulkImportPreview, previewId: string):
   }
 }
 
-/** Thread ids follow the existing `thread_YYYYMMdd_HHMMSS` convention. */
-function generateThreadId(offset: number): string {
-  const now = new Date(Date.now() + offset)
+/**
+ * Thread ids follow the existing `thread_YYYYMMdd_HHMMSS` convention, which only
+ * has second-level resolution. `offset` is in whole seconds so that a batch of
+ * threads created back-to-back in the same commit never collide on one id —
+ * a millisecond offset would not roll the seconds field over.
+ */
+function generateThreadId(offsetSeconds: number): string {
+  const now = new Date(Date.now() + offsetSeconds * 1000)
   const pad = (n: number, w = 2): string => String(n).padStart(w, '0')
   return (
     `thread_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
@@ -135,6 +140,14 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
     warnings.push(
       `${format.label} support has not been verified against a real export file yet. ` +
         'Review the imported threads and report anything that looks wrong.',
+    )
+  }
+
+  if (format.id === 'gemini-takeout') {
+    warnings.push(
+      'Google Takeout does not record which prompts belong to the same conversation — the threads ' +
+        'below are approximated by grouping prompts from the same UTC calendar day. A real conversation ' +
+        'may be split across two threads, or unrelated questions from the same day may be merged into one.',
     )
   }
 
@@ -226,8 +239,15 @@ export function commitArchiveImport(
   let processed = 0
   let threadsDone = 0
 
+  // Only meaningful for gemini-takeout, where a "thread" is a day-bucket, not a
+  // real conversation — the date is the one piece of structure the grouping
+  // actually has, so surfacing it is opt-in rather than assumed.
+  const applyDatePrefix = Boolean(selection.includeDateInThreadNames) && preview.format === 'gemini-takeout'
+
   for (const thread of selected) {
     const createdIds: string[] = []
+    const day = thread.createdAt.slice(0, 10)
+    const threadName = applyDatePrefix && day ? `${day} — ${thread.name}` : thread.name
 
     for (const item of thread.items) {
       // Duplicate check runs against a live index so duplicates *within* the
@@ -259,7 +279,7 @@ export function commitArchiveImport(
           total,
           percent: total > 0 ? Math.round((processed / total) * 100) : 100,
           etaSeconds,
-          currentThreadName: thread.name,
+          currentThreadName: threadName,
           currentItemTitle: item.data.title,
           threadsDone,
           threadsTotal,
@@ -269,11 +289,11 @@ export function commitArchiveImport(
 
     if (createdIds.length > 0) {
       const threadId = generateThreadId(threadsDone)
-      threads[threadId] = { name: thread.name, items: createdIds }
+      threads[threadId] = { name: threadName, items: createdIds }
       result.createdThreads += 1
-      result.threadNames.push(thread.name)
+      result.threadNames.push(threadName)
     } else if (thread.items.length > 0) {
-      result.warnings.push(`"${thread.name}" produced no new pairs (all duplicates or failed) — no thread created.`)
+      result.warnings.push(`"${threadName}" produced no new pairs (all duplicates or failed) — no thread created.`)
     }
     threadsDone += 1
   }

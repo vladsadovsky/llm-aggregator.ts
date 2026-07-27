@@ -194,6 +194,8 @@ export interface BulkImportPreviewSummary {
 export interface BulkImportSelection {
   threadSourceIds: string[]
   skipDuplicates: boolean
+  /** Prefix each created thread's name with its UTC calendar day (gemini-takeout only). */
+  includeDateInThreadNames?: boolean
 }
 
 export interface BulkImportProgress {
