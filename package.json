@@ -1,6 +1,11 @@
 {
   "name": "llm-aggregator",
   "version": "1.3.2",
+  "license": "MIT",
+  "author": {
+    "name": "Vlad Sadovsky",
+    "email": "sadovskyvlad@gmail.com"
+  },
   "description": "LLM Aggregator - Organize and search LLM conversation Q&A pairs",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -66,7 +71,5 @@
     "vite-plugin-electron-renderer": "^0.14.0",
     "vitest": "^2.0.0",
     "vue-tsc": "^2.0.0"
-  },
-  "author": "Vlad Sadovsky",
-  "license": "MIT"
+  }
 }
