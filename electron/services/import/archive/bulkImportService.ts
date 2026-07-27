@@ -149,8 +149,9 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
     throw new Error(
       hint
         ? hint.message
-        : 'This file was not recognized as a supported account export. Supported today: Claude ' +
-          '(conversations.json, or the .zip containing it) and ChatGPT.',
+        : 'This file was not recognized as a supported account export. Supported today: Claude and ' +
+          'ChatGPT (conversations.json, or the .zip containing it), Gemini (Google Takeout, HTML or ' +
+          'JSON), and Copilot (the privacy-dashboard activity CSV).',
     )
   }
 

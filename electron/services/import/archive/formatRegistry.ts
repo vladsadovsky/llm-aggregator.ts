@@ -140,17 +140,18 @@ export const ALL_PATH_HINTS: string[] = Array.from(
  */
 export const UNSUPPORTED_HINTS: Array<{ test: (basename: string, text: string) => boolean; message: string }> = [
   {
-    // The HTML variant is supported; the JSON variant is not parsed yet.
-    test: (basename) => /^myactivity\.json$/i.test(basename),
+    // Both Takeout variants parse, so reaching this hint means detection already
+    // rejected the file — it is a MyActivity export for some *other* product
+    // (YouTube, Chrome, Search…), which all share this basename.
+    //
+    // Deliberately does not re-test the text for "Gemini Apps": detection is the
+    // authority, and a substring check would wrongly exempt a YouTube page that
+    // merely mentions Gemini, dropping the user onto the generic message.
+    test: (basename) => /^myactivity\.(json|html)$/i.test(basename),
     message:
-      'This looks like the JSON variant of a Google Takeout "My Activity" export. Only the HTML ' +
-      'variant is supported today — re-run Takeout and choose HTML for Gemini Apps.',
-  },
-  {
-    test: (basename, text) => /^myactivity\.html$/i.test(basename) && !/Gemini Apps/.test(text),
-    message:
-      'This is a Google Takeout "My Activity" page, but not for Gemini Apps. Re-run Takeout and ' +
-      'select only Gemini under the Takeout product list.',
+      'This is a Google Takeout "My Activity" export, but not for Gemini Apps — a Takeout archive ' +
+      'contains one identically-named MyActivity file per product. Re-run Takeout selecting Gemini ' +
+      'Apps, or point at the archive that contains it. Either the HTML or the JSON variant works.',
   },
   {
     // Copilot CSV *is* supported; this only fires for a CSV we cannot read.

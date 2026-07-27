@@ -24,6 +24,7 @@ import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { useTagStore } from './stores/tagStore'
 import { debugError, debugLog } from './utils/logger'
+import { acceleratorRows, hintFor, styleForPlatform } from '../shared/accelerators'
 import type {
   ImportResult,
   SharedImportResult,
@@ -66,13 +67,19 @@ const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
 let disposeProgressListener: (() => void) | null = null
 
-const modKeyLabel = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'Cmd' : 'Ctrl'
+const isMacPlatform = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+const chordStyle = styleForPlatform(isMacPlatform)
+const modKeyLabel = isMacPlatform ? 'Cmd' : 'Ctrl'
+
+/** Shortcut rows for the in-app help dialog, rendered for this platform. */
+const shortcutRows = acceleratorRows(chordStyle)
 
 // ─── Central command registry ───────────────────────────────────────────────
 // Single source of truth for every end-user action. Both the command palette
 // and the native application menu (via the `menu-action` IPC channel) drive
-// these. Keyboard shortcuts remain owned by handleGlobalKeydown; `shortcut`
-// here is a display hint only.
+// these. Keyboard shortcuts remain owned by handleGlobalKeydown; the displayed
+// hint comes from `shared/accelerators.ts` via `hintFor(id)` — never hardcode a
+// shortcut string here, or it will drift from the handler again (issue #8).
 interface AppCommand {
   id: string
   label: string
@@ -80,39 +87,44 @@ interface AppCommand {
   run: () => void
 }
 
+/** `shortcut` is looked up, so a command and its hint cannot disagree. */
+function cmd(id: string, label: string, run: () => void): AppCommand {
+  return { id, label, shortcut: hintFor(id, chordStyle), run }
+}
+
 const appCommands: AppCommand[] = [
-  { id: 'search.focus', label: 'Focus Search', shortcut: `${modKeyLabel}+F`, run: focusSearch },
-  { id: 'qa.new', label: 'New Q&A', shortcut: `${modKeyLabel}+N`, run: openQAEditor },
-  { id: 'qa.edit', label: 'Edit Selected Q&A', shortcut: `${modKeyLabel}+E`, run: requestEditSelectedQA },
-  { id: 'qa.duplicate', label: 'Duplicate Selected Q&A', shortcut: `${modKeyLabel}+D`, run: requestDuplicateSelectedQA },
-  { id: 'qa.delete', label: 'Delete Selected Q&A', shortcut: 'Delete', run: requestDeleteSelectedQA },
-  { id: 'qa.save', label: 'Save Changes', shortcut: `${modKeyLabel}+S`, run: requestSaveCurrentEdit },
-  { id: 'qa.moveUp', label: 'Move Q&A Up in Thread', shortcut: 'Alt+Up', run: () => void moveSelectedQA(-1) },
-  { id: 'qa.moveDown', label: 'Move Q&A Down in Thread', shortcut: 'Alt+Down', run: () => void moveSelectedQA(1) },
-  { id: 'io.export', label: 'Export Selected Q&A / Thread', shortcut: 'X', run: requestExportSelected },
-  { id: 'io.importFile', label: 'Import from File', shortcut: `${modKeyLabel}+O`, run: () => void importFile() },
-  { id: 'io.importSharedLink', label: 'Import from Shared Link', shortcut: `${modKeyLabel}+Shift+O`, run: openSharedLinkImport },
-  { id: 'thread.new', label: 'New Thread', shortcut: '', run: requestNewThread },
-  { id: 'thread.rename', label: 'Rename Selected Thread', shortcut: 'F2', run: requestRenameSelectedThread },
-  { id: 'view.showAll', label: 'Show All Q&As', shortcut: '', run: requestShowAllQAs },
-  { id: 'view.showUnthreaded', label: 'Show Unthreaded Q&As', shortcut: '', run: requestShowUnthreaded },
-  { id: 'view.toggleThreads', label: 'Toggle Threads Panel', shortcut: '', run: toggleThreadsPanel },
-  { id: 'view.toggleList', label: 'Toggle List Panel', shortcut: '', run: toggleListPanel },
-  { id: 'view.zoomIn', label: 'Zoom Content In', shortcut: '', run: () => uiStore.zoomIn() },
-  { id: 'view.zoomOut', label: 'Zoom Content Out', shortcut: '', run: () => uiStore.zoomOut() },
-  { id: 'view.zoomReset', label: 'Reset Content Zoom', shortcut: '', run: () => uiStore.zoomReset() },
-  { id: 'view.darkMode', label: 'Toggle Dark Mode', shortcut: '', run: () => uiStore.toggleDarkMode() },
-  { id: 'view.lens', label: 'Toggle LLM Lens', shortcut: '', run: () => insightsPanelRef.value?.toggle() },
-  { id: 'view.status', label: 'Application Status', shortcut: '', run: () => { showApplicationStatus.value = true } },
-  { id: 'view.manageTags', label: 'Manage Tag Dictionary', shortcut: '', run: () => { showTagManager.value = true } },
-  { id: 'view.generateEmbeddings', label: 'Generate All Embeddings', shortcut: '', run: () => void generateAllEmbeddings() },
-  { id: 'view.annotationPass', label: 'Run Confidence Annotation Pass', shortcut: '', run: () => { showAnnotationDialog.value = true } },
-  { id: 'view.healthCheck', label: 'Run Archive Health Check', shortcut: '', run: () => { showHealthDialog.value = true } },
-  { id: 'tools.findDuplicates', label: 'Find Duplicate Q&As', shortcut: '', run: () => { showDuplicates.value = true } },
-  { id: 'tools.resetArchive', label: 'Reset Archive (Clear Everything)', shortcut: '', run: () => { showArchiveReset.value = true } },
-  { id: 'app.settings', label: 'Open Settings', shortcut: `${modKeyLabel}+,`, run: openSettings },
-  { id: 'app.commandPalette', label: 'Open Command Palette', shortcut: `${modKeyLabel}+K`, run: openCommandPalette },
-  { id: 'app.shortcuts', label: 'Keyboard Shortcuts', shortcut: '?', run: openShortcutsHelp },
+  cmd('search.focus', 'Focus Search', focusSearch),
+  cmd('qa.new', 'New Q&A', openQAEditor),
+  cmd('qa.edit', 'Edit Selected Q&A', requestEditSelectedQA),
+  cmd('qa.duplicate', 'Duplicate Selected Q&A', requestDuplicateSelectedQA),
+  cmd('qa.delete', 'Delete Selected Q&A', requestDeleteSelectedQA),
+  cmd('qa.save', 'Save Changes', requestSaveCurrentEdit),
+  cmd('qa.moveUp', 'Move Q&A Up in Thread', () => void moveSelectedQA(-1)),
+  cmd('qa.moveDown', 'Move Q&A Down in Thread', () => void moveSelectedQA(1)),
+  cmd('io.export', 'Export Selected Q&A / Thread', requestExportSelected),
+  cmd('io.importFile', 'Import from File', () => void importFile()),
+  cmd('io.importSharedLink', 'Import from Shared Link', openSharedLinkImport),
+  cmd('thread.new', 'New Thread', requestNewThread),
+  cmd('thread.rename', 'Rename Selected Thread', requestRenameSelectedThread),
+  cmd('view.showAll', 'Show All Q&As', requestShowAllQAs),
+  cmd('view.showUnthreaded', 'Show Unthreaded Q&As', requestShowUnthreaded),
+  cmd('view.toggleThreads', 'Toggle Threads Panel', toggleThreadsPanel),
+  cmd('view.toggleList', 'Toggle List Panel', toggleListPanel),
+  cmd('view.zoomIn', 'Zoom Content In', () => uiStore.zoomIn()),
+  cmd('view.zoomOut', 'Zoom Content Out', () => uiStore.zoomOut()),
+  cmd('view.zoomReset', 'Reset Content Zoom', () => uiStore.zoomReset()),
+  cmd('view.darkMode', 'Toggle Dark Mode', () => uiStore.toggleDarkMode()),
+  cmd('view.lens', 'Toggle LLM Lens', () => insightsPanelRef.value?.toggle()),
+  cmd('view.status', 'Application Status', () => { showApplicationStatus.value = true }),
+  cmd('view.manageTags', 'Manage Tag Dictionary', () => { showTagManager.value = true }),
+  cmd('view.generateEmbeddings', 'Generate All Embeddings', () => void generateAllEmbeddings()),
+  cmd('view.annotationPass', 'Run Confidence Annotation Pass', () => { showAnnotationDialog.value = true }),
+  cmd('view.healthCheck', 'Run Archive Health Check', () => { showHealthDialog.value = true }),
+  cmd('tools.findDuplicates', 'Find Duplicate Q&As', () => { showDuplicates.value = true }),
+  cmd('tools.resetArchive', 'Reset Archive (Clear Everything)', () => { showArchiveReset.value = true }),
+  cmd('app.settings', 'Open Settings', openSettings),
+  cmd('app.commandPalette', 'Open Command Palette', openCommandPalette),
+  cmd('app.shortcuts', 'Keyboard Shortcuts', openShortcutsHelp),
 ]
 
 function handleMenuAction(action: string) {
@@ -609,17 +621,29 @@ function toggleListPanel() {
   uiStore.toggleList()
 }
 
+/**
+ * The single source of truth for keyboard *behaviour*. Display hints live in
+ * `shared/accelerators.ts`; every branch below is tagged with an `// @accel <id>`
+ * marker so `tests/unit/accelerators.test.ts` can prove the two agree. Adding a
+ * branch without a marker, or a marker without a table row, fails the suite.
+ */
 function handleGlobalKeydown(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
   const isMod = event.ctrlKey || event.metaKey
   const target = event.target as HTMLElement
 
+  // The three below fire even while a text input holds focus — saving,
+  // cancelling, and the palette must work mid-edit. Everything after the
+  // isInputTarget gate must not, or typing would trigger actions.
+
+  // @accel qa.save
   if (isMod && key === 's') {
     event.preventDefault()
     requestSaveCurrentEdit()
     return
   }
 
+  // @accel app.escape
   if (event.key === 'Escape') {
     event.preventDefault()
     if (isInputTarget(target)) {
@@ -629,7 +653,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // The command palette is global: it must work even when an input retains focus.
+  // @accel app.commandPalette
   if (isMod && key === 'k') {
     event.preventDefault()
     openCommandPalette()
@@ -638,55 +662,49 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
   if (isInputTarget(target)) return
 
-  // Ctrl/Cmd + F and /: Focus search
+  // @accel search.focus — Ctrl/Cmd+F, or bare /
   if ((isMod && key === 'f') || (!event.shiftKey && !isMod && !event.altKey && event.key === '/')) {
     event.preventDefault()
     focusSearch()
     return
   }
 
-  // Ctrl/Cmd + N: New QA
+  // @accel qa.new
   if (isMod && key === 'n') {
     event.preventDefault()
     openQAEditor()
     return
   }
 
-  // Legacy fallback for older docs/behavior
-  if (event.altKey && key === 'n') {
-    event.preventDefault()
-    openQAEditor()
-    return
-  }
-
-  // Ctrl/Cmd + , : Open settings
+  // @accel app.settings
   if (isMod && event.key === ',') {
     event.preventDefault()
     openSettings()
     return
   }
 
-  // Alt + Up/Down: Move selected QA in current thread
+  // @accel qa.moveUp
   if (event.altKey && !isMod && !event.shiftKey && event.key === 'ArrowUp') {
     event.preventDefault()
     void moveSelectedQA(-1)
     return
   }
 
+  // @accel qa.moveDown
   if (event.altKey && !isMod && !event.shiftKey && event.key === 'ArrowDown') {
     event.preventDefault()
     void moveSelectedQA(1)
     return
   }
 
-  // F2: Rename selected thread
-  if (event.key === 'F2') {
+  // @accel thread.rename
+  if (event.key === 'F2' && !isMod && !event.altKey && !event.shiftKey) {
     event.preventDefault()
     requestRenameSelectedThread()
     return
   }
 
-  // Ctrl/Cmd+E: Edit selected QA
+  // @accel qa.edit
   if (isMod && !event.altKey && !event.shiftKey && key === 'e') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
@@ -694,7 +712,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Delete/Backspace: Delete selected QA
+  // @accel qa.delete — Backspace is accepted on every platform, not just macOS
   if ((event.key === 'Delete' || event.key === 'Backspace') && !isMod && !event.altKey && !event.shiftKey) {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
@@ -702,7 +720,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Ctrl/Cmd+D: Duplicate selected QA into create form
+  // @accel qa.duplicate
   if (isMod && !event.altKey && !event.shiftKey && key === 'd') {
     if (!qaStore.selectedPairId || uiStore.isEditing) return
     event.preventDefault()
@@ -710,8 +728,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // X: Export active selection (QA priority, falls back to thread)
-  if (!isMod && !event.altKey && !event.shiftKey && key === 'x') {
+  // @accel io.export — QA takes priority, falling back to the selected thread.
+  // Was a bare `X`; the shifted form cannot be typed into content by accident
+  // and pairs with Ctrl/Cmd+E edit.
+  if (isMod && event.shiftKey && !event.altKey && key === 'e') {
     if (uiStore.isEditing) return
     if (qaStore.selectedPairId || threadStore.selectedThreadId) {
       event.preventDefault()
@@ -720,22 +740,23 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     return
   }
 
-  // Ctrl/Cmd + Shift + O: Import from shared link
+  // @accel io.importSharedLink
   if (isMod && event.shiftKey && key === 'o') {
     event.preventDefault()
     openSharedLinkImport()
     return
   }
 
-  // Ctrl/Cmd + O: Import from file
+  // @accel io.importFile
   if (isMod && !event.shiftKey && key === 'o') {
     event.preventDefault()
     void importFile()
     return
   }
 
-  // ?: Show keyboard shortcuts
-  if (event.key === '?') {
+  // @accel app.shortcuts — `?` is Shift+/ on most layouts, so shift is not
+  // excluded here; Ctrl and Alt are.
+  if (event.key === '?' && !isMod && !event.altKey) {
     event.preventDefault()
     openShortcutsHelp()
   }
@@ -803,24 +824,20 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   >
     <div class="shortcuts-dialog">
       <h3>Keyboard Shortcuts</h3>
+      <!-- Rows come from shared/accelerators.ts so this list cannot drift from
+           the handler, the menu, or the README (issue #8). -->
       <table>
         <tbody>
-          <tr><td>{{ modKeyLabel }}+F or /</td><td>Focus search</td></tr>
-          <tr><td>{{ modKeyLabel }}+N</td><td>Create new QA</td></tr>
-          <tr><td>{{ modKeyLabel }}+S</td><td>Save while editing</td></tr>
-          <tr><td>{{ modKeyLabel }}+,</td><td>Open settings</td></tr>
-          <tr><td>Escape</td><td>Close dialog / cancel current action</td></tr>
-          <tr><td>F2 (Fn+F2 on some Macs)</td><td>Rename selected thread</td></tr>
-          <tr><td>Alt+Up / Alt+Down</td><td>Move selected QA in thread</td></tr>
-          <tr><td>{{ modKeyLabel }}+E</td><td>Edit selected QA</td></tr>
-          <tr><td>Delete (Backspace on many Macs)</td><td>Delete selected QA</td></tr>
-          <tr><td>{{ modKeyLabel }}+D</td><td>Duplicate selected QA into new form</td></tr>
-          <tr><td>{{ modKeyLabel }}+K</td><td>Open command palette</td></tr>
-          <tr><td>X</td><td>Export selected QA or thread to file</td></tr>
-          <tr><td>{{ modKeyLabel }}+O</td><td>Import from file</td></tr>
-          <tr><td>{{ modKeyLabel }}+Shift+O</td><td>Import from shared link</td></tr>
-          <tr><td>?</td><td>Show this help</td></tr>
-          <tr><td>{{ modKeyLabel }}+Enter</td><td>Submit QA form</td></tr>
+          <tr
+            v-for="row in shortcutRows"
+            :key="row.keys + row.description"
+          >
+            <td>{{ row.keys }}</td>
+            <td>{{ row.description }}</td>
+            <td class="shortcut-context">
+              {{ row.context }}
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1237,8 +1254,18 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 }
 
 .shortcuts-dialog td:first-child {
-  width: 45%;
+  width: 32%;
   color: var(--text-color-secondary);
+  white-space: nowrap;
+}
+
+/* Third column: where the binding is live, e.g. "Q&A selected". */
+.shortcuts-dialog .shortcut-context {
+  width: 24%;
+  text-align: right;
+  color: var(--text-color-secondary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 :deep(.p-splitter) {

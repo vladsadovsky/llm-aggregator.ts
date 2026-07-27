@@ -3,6 +3,32 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 
+/**
+ * Per-test isolation for the Electron app.
+ *
+ * Two directories must be isolated, and they are isolated by different means:
+ *
+ *  - **The data directory** (archive/, threads.json) — via `LLM_AGGREGATOR_DATA_DIR`,
+ *    which `settingsService.getDataDirectory()` honours ahead of settings.json.
+ *
+ *  - **`userData`** — via Chromium's `--user-data-dir` switch. This is where
+ *    `settings.json`, `secrets.enc.json`, `embeddings.json`, and the model
+ *    catalog cache all live.
+ *
+ * `--user-data-dir` is not interchangeable with environment variables here.
+ * Overriding `APPDATA`/`LOCALAPPDATA` does **nothing** on Windows: Electron
+ * resolves `appData` through the OS known-folder API (`SHGetKnownFolderPath`),
+ * which never consults the environment. Tests therefore used to read — and
+ * could have encrypted over — the developer's real `secrets.enc.json`, making
+ * every secrets-dependent assertion pass or fail based on whose machine ran it.
+ * See issue #4. `assertIsolated` below fails fast if that ever regresses.
+ */
+
+/** Sits directly under the temp root so the existing rmSync cleanup covers it. */
+function userDataDirFor(dataDir: string): string {
+    return path.join(path.dirname(dataDir), 'userdata');
+}
+
 export const test = base.extend<{
     electronApp: ElectronApplication;
     window: Page;
@@ -13,27 +39,26 @@ export const test = base.extend<{
         const dataDir = path.join(tempRoot, 'data');
         mkdirSync(dataDir, { recursive: true });
 
-        const appDataRoot = path.join(tempRoot, 'appdata');
-        const settingsPayload = JSON.stringify({ dataDirectory: dataDir }, null, 2);
-        for (const appName of ['LLM Aggregator', 'llm-aggregator', 'Electron']) {
-            const userDataDir = path.join(appDataRoot, appName);
-            mkdirSync(userDataDir, { recursive: true });
-            writeFileSync(path.join(userDataDir, 'settings.json'), settingsPayload, 'utf-8');
-        }
+        // With userData pinned by --user-data-dir, settings.json has exactly one
+        // possible location — no need to guess at app-name folders any more.
+        const userDataDir = userDataDirFor(dataDir);
+        mkdirSync(userDataDir, { recursive: true });
+        writeFileSync(
+            path.join(userDataDir, 'settings.json'),
+            JSON.stringify({ dataDirectory: dataDir }, null, 2),
+            'utf-8',
+        );
 
         await use(dataDir);
 
         rmSync(tempRoot, { recursive: true, force: true });
     },
     electronApp: async ({ dataDir }, use) => {
+        const userDataDir = userDataDirFor(dataDir);
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
             NODE_ENV: 'test',
             LLM_AGGREGATOR_DATA_DIR: dataDir,
-            APPDATA: path.join(path.dirname(dataDir), 'appdata'),
-            LOCALAPPDATA: path.join(path.dirname(dataDir), 'appdata'),
-            TEMP: path.join(path.dirname(dataDir), 'appdata'),
-            TMP: path.join(path.dirname(dataDir), 'appdata'),
         };
         // VS Code sets ELECTRON_RUN_AS_NODE=1 in terminals it spawns. Inherited, it
         // makes Electron start as plain Node: no window is ever created, and every
@@ -43,12 +68,31 @@ export const test = base.extend<{
         // Launch Electron application using the resolved executable path and absolute path to main.js
         const electronApp = await electron.launch({
             executablePath: require('electron'),
-            args: ['--no-sandbox', path.join(__dirname, '../../dist-electron/main.js')],
+            args: [
+                '--no-sandbox',
+                `--user-data-dir=${userDataDir}`,
+                path.join(__dirname, '../../dist-electron/main.js'),
+            ],
             cwd: dataDir,
             env,
             // Increase timeout for Electron startup
             timeout: 45000
         });
+
+        // Fail loudly rather than silently testing against the real profile.
+        const resolvedUserData = await electronApp.evaluate(({ app }) => app.getPath('userData'));
+        const withinTempRoot = path
+            .resolve(resolvedUserData)
+            .toLowerCase()
+            .startsWith(path.resolve(userDataDir).toLowerCase());
+        if (!withinTempRoot) {
+            await electronApp.close();
+            throw new Error(
+                `e2e isolation broken: Electron resolved userData to "${resolvedUserData}", ` +
+                `expected it under "${userDataDir}". Tests would read the real secrets.enc.json ` +
+                `and settings.json. Do not weaken this check — see issue #4.`,
+            );
+        }
 
         await use(electronApp);
 
