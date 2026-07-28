@@ -337,6 +337,10 @@ export interface ElectronAPI {
   /** Move the archive, threads, tags and embeddings aside; returns the backup path. */
   archiveReset: () => Promise<ArchiveResetResult>
 
+  // Open a rendered-content link in the system browser. Resolves { ok:false }
+  // when the URL is not an accepted https:/mailto: link.
+  openExternal: (url: string) => Promise<{ ok: boolean }>
+
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void
 }
@@ -506,6 +510,8 @@ const api: ElectronAPI = {
 
   archiveResetPreview: () => ipcRenderer.invoke('archive:resetPreview'),
   archiveReset: () => ipcRenderer.invoke('archive:reset'),
+
+  openExternal: (url) => ipcRenderer.invoke('openExternal', url),
 
   onMenuAction: (callback) => {
     const handler = (_event: IpcRendererEvent, action: string) => callback(action)
