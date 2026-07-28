@@ -28,6 +28,7 @@ import { acceleratorRows, hintFor, styleForPlatform } from '../shared/accelerato
 import type {
   ImportResult,
   SharedImportResult,
+  FileImportOutcome,
   BulkImportPreviewSummary,
   BulkImportProgress,
   BulkImportCommitResult,
@@ -336,7 +337,17 @@ async function exportSelectedThread() {
 }
 
 async function importFile() {
-  const outcome = await window.api.importFromFile()
+  let outcome: FileImportOutcome | null
+  try {
+    outcome = await window.api.importFromFile()
+  } catch (err) {
+    // e.g. an unrecognized/unsupported export — surface it instead of failing
+    // silently in the console (previously an uncaught promise rejection).
+    const detail = err instanceof Error ? err.message : String(err)
+    debugError('App', 'importFile failed', err)
+    toast?.add({ severity: 'error', summary: 'Import failed', detail, life: 8000 })
+    return
+  }
   if (!outcome) return // user cancelled
 
   // An account export opens the preview dialog instead of importing straight
