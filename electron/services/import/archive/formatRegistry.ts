@@ -35,6 +35,17 @@ export interface ArchiveFormat {
    */
   candidateEntries: string[]
   /**
+   * Regex patterns (matched against the lowercase basename) for exports whose
+   * conversations file is sharded — ChatGPT splits large exports into
+   * `conversations-000.json` … `conversations-00N.json`.
+   */
+  candidatePatterns?: RegExp[]
+  /**
+   * True when a single logical export is spread across several matching entries
+   * that must all be read and merged (see candidatePatterns).
+   */
+  sharded?: boolean
+  /**
    * Lowercase path fragments worth probing first inside a multi-product archive.
    * Ordering only — correctness comes from `matches`.
    */
@@ -91,10 +102,14 @@ export const ARCHIVE_FORMATS: ArchiveFormat[] = [
     id: 'chatgpt-account-export',
     label: 'ChatGPT account export',
     provider: 'chatgpt',
+    // Real exports shard conversations across `conversations-000.json` …
+    // `conversations-00N.json`; older/small exports may still be a single
+    // `conversations.json`. Both are supported.
     candidateEntries: ['conversations.json'],
-    // Reuses the share-link tree walker, which is well covered; the *envelope*
-    // (array of conversations) has not been checked against a real export yet.
-    validated: false,
+    candidatePatterns: [/^conversations-\d+\.json$/i],
+    sharded: true,
+    // Validated against a real export (675 conversations → 3453 pairs, July 2026).
+    validated: true,
     matches: (text) => looksLikeChatGPTAccountExport(safeJson(text)),
     parse: (text) => parseChatGPTAccountExport(safeJson(text)),
   },
@@ -128,6 +143,9 @@ export const ARCHIVE_FORMATS: ArchiveFormat[] = [
 export const CANDIDATE_ENTRY_NAMES: string[] = Array.from(
   new Set(ARCHIVE_FORMATS.flatMap((f) => f.candidateEntries)),
 )
+
+/** Every shard pattern worth probing when identifying an archive. */
+export const CANDIDATE_ENTRY_PATTERNS: RegExp[] = ARCHIVE_FORMATS.flatMap((f) => f.candidatePatterns ?? [])
 
 /** Path fragments to probe first, across all formats. */
 export const ALL_PATH_HINTS: string[] = Array.from(

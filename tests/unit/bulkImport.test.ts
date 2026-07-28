@@ -506,10 +506,18 @@ describe('formatRegistry', () => {
     expect(detectArchiveFormat('')).toBeNull()
   })
 
-  it('probes conversations.json and marks Claude as the validated format', () => {
+  it('probes conversations.json and marks Claude and ChatGPT as validated formats', () => {
     expect(CANDIDATE_ENTRY_NAMES).toContain('conversations.json')
     expect(ARCHIVE_FORMATS.find((f) => f.id === 'claude-account-export')?.validated).toBe(true)
-    expect(ARCHIVE_FORMATS.find((f) => f.id === 'chatgpt-account-export')?.validated).toBe(false)
+    // Validated against a real sharded export (see chatgptParser current_node walk).
+    expect(ARCHIVE_FORMATS.find((f) => f.id === 'chatgpt-account-export')?.validated).toBe(true)
+  })
+
+  it('registers the ChatGPT shard pattern so conversations-000.json is probed', () => {
+    const format = ARCHIVE_FORMATS.find((f) => f.id === 'chatgpt-account-export')
+    expect(format?.sharded).toBe(true)
+    expect(format?.candidatePatterns?.some((p) => p.test('conversations-000.json'))).toBe(true)
+    expect(format?.candidatePatterns?.some((p) => p.test('conversations.json'))).toBe(false)
   })
 
   it('probes both Takeout entry names', () => {

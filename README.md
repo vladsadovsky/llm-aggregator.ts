@@ -146,8 +146,9 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 #### Import a whole account export (bulk)
 - Point the same **Import from File** action at a vendor account export — the `.zip` as downloaded,
   the unzipped folder, or the conversations file inside it.
-- Supported: **Claude** and **Gemini** (Google Takeout, HTML or JSON) verified against real exports;
-  **ChatGPT** implemented but unverified, and flagged in the UI before importing.
+- Supported: **Claude**, **Gemini** (Google Takeout, HTML or JSON), and **ChatGPT** — all verified
+  against real exports. ChatGPT exports are sharded (`conversations-000.json …`); every shard is read
+  and merged automatically.
 - A preview shows the conversation count, Q&A count, and date range, with a per-conversation
   checklist. Nothing is written until you confirm; progress reports percentage, ETA, and current item.
 - Re-importing is safe: every imported QA records an `origin_id`, so pairs already in the archive
@@ -322,7 +323,7 @@ identifies the file by its **structure**, not its name or extension.
 | Claude | The export `.zip` (contains `conversations.json`) | Verified against a real export |
 | Gemini | The Google Takeout `.zip` (`My Activity/Gemini Apps/MyActivity.html`) | Verified against a real export |
 | Copilot | `copilot-activity-history.csv` from the Microsoft privacy dashboard | Verified against a real export |
-| ChatGPT | The export `.zip` (contains `conversations.json`) | Implemented but not yet verified — the app warns before importing |
+| ChatGPT | The export `.zip` (sharded `conversations-000.json … 00N.json`) | Verified against a real export (675 conversations → 3453 pairs) |
 
 A preview appears before anything is written: format, conversation count, Q&A count, date range,
 and a checklist of conversations with per-conversation pair counts. Deselect what you don't want,
@@ -330,6 +331,11 @@ then import. Progress shows percentage, ETA, and the item being written.
 
 Two provider-specific caveats:
 
+- **ChatGPT** exports are **sharded**: instead of a single `conversations.json`, a real export
+  contains `conversations-000.json … conversations-00N.json`. All shards are found and merged
+  automatically — select the `.zip`, the unzipped folder, or any one shard file. (Note also that
+  ChatGPT's export encodes the message tree differently from its share links — via `current_node`
+  rather than populated `children` — which the importer accounts for.)
 - **Claude** exports carry no model identifier, so pairs are tagged `claude` only.
 - **Copilot** exports as a CSV rather than an archive, and it *is* threaded — the `Conversation`
   column gives real thread names, so those are reconstructed rather than grouped by date. Get it

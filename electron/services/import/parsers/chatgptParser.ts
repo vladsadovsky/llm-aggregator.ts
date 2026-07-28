@@ -1,11 +1,16 @@
 /**
  * import/parsers/chatgptParser.ts
- * Pure: ChatGPT backend-api share JSON → ParsedConversation.
+ * Pure: a single ChatGPT conversation object → ParsedConversation.
  *
- * The share endpoint (`/backend-api/share/<id>`) returns a conversation tree in
- * `mapping` (node id → { message, parent, children }) plus a `title` and
- * `default_model_slug`. We walk the tree from the root following children and
- * keep only visible user/assistant text turns.
+ * Handles BOTH payload shapes, which differ in one crucial way:
+ *  - **Share API** (`/backend-api/share/<id>`): `mapping` nodes carry populated
+ *    `children` arrays.
+ *  - **Account export** (`conversations-NNN.json`): `children` arrays are EMPTY;
+ *    the tree exists only as `parent` pointers plus a `current_node`.
+ *
+ * So we recover order by walking the **active branch** from `current_node` up to
+ * the root via `parent`, then reversing — which works for both. A
+ * reconstruct-children fallback covers payloads with no `current_node`.
  */
 
 import type { ParsedConversation, ParsedMessage } from '../types'
@@ -28,20 +33,51 @@ function extractText(message: any): string {
     .trim()
 }
 
-export function parseChatGPT(json: any, url: string): ParsedConversation {
-  const warnings: string[] = []
-  const mapping = (json && json.mapping) || {}
-
-  // Find the root node (no parent).
-  let rootId: string | null = null
-  for (const [id, node] of Object.entries<any>(mapping)) {
-    if (node && !node.parent) {
-      rootId = id
-      break
+/**
+ * Recover conversation order from a `mapping` tree.
+ *
+ * Primary: walk the active branch from `current_node` up to the root via
+ * `parent`, then reverse. This is the branch the user actually sees, and — key
+ * for account exports — it does not rely on `children`, which exports leave empty.
+ *
+ * Fallback (no usable `current_node`): rebuild the child map from `parent`
+ * pointers (merging any explicit `children`), then depth-first from the root.
+ */
+function orderMessages(mapping: Record<string, any>, currentNode: unknown): any[] {
+  if (typeof currentNode === 'string' && mapping[currentNode]) {
+    const chain: any[] = []
+    const seen = new Set<string>()
+    let id: string | null | undefined = currentNode
+    while (id && mapping[id] && !seen.has(id)) {
+      seen.add(id)
+      const node: any = mapping[id]
+      if (node.message) chain.push(node.message)
+      id = node.parent
+    }
+    if (chain.length > 0) {
+      chain.reverse()
+      return chain
     }
   }
 
-  // Depth-first walk following children to recover display order.
+  const childrenOf = new Map<string, string[]>()
+  let rootId: string | null = null
+  for (const [id, node] of Object.entries<any>(mapping)) {
+    const parent = node?.parent
+    if (typeof parent === 'string' && parent) {
+      const arr = childrenOf.get(parent) ?? []
+      arr.push(id)
+      childrenOf.set(parent, arr)
+    } else if (!parent) {
+      rootId = id
+    }
+    if (Array.isArray(node?.children)) {
+      const arr = childrenOf.get(id) ?? []
+      for (const ch of node.children) if (typeof ch === 'string' && !arr.includes(ch)) arr.push(ch)
+      childrenOf.set(id, arr)
+    }
+  }
+
   const ordered: any[] = []
   const seen = new Set<string>()
   const visit = (id: string | null | undefined): void => {
@@ -50,10 +86,17 @@ export function parseChatGPT(json: any, url: string): ParsedConversation {
     const node = mapping[id]
     if (!node) return
     if (node.message) ordered.push(node.message)
-    const children = Array.isArray(node.children) ? node.children : []
-    for (const child of children) visit(child)
+    for (const child of childrenOf.get(id) ?? []) visit(child)
   }
   visit(rootId)
+  return ordered
+}
+
+export function parseChatGPT(json: any, url: string): ParsedConversation {
+  const warnings: string[] = []
+  const mapping = (json && json.mapping) || {}
+
+  const ordered = orderMessages(mapping, json?.current_node)
 
   const messages: ParsedMessage[] = []
   let model = ''

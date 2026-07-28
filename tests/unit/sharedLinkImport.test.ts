@@ -94,6 +94,27 @@ describe('parseChatGPT', () => {
       { role: 'assistant', text: 'First answer' },
     ])
   })
+
+  it('walks the active branch via current_node when children are empty (account-export shape)', () => {
+    // Real ChatGPT exports leave `children` empty and express the tree only
+    // through `parent` + `current_node`. A forward children-walk would extract
+    // nothing; the current_node → parent walk recovers the conversation.
+    const exportShape = {
+      title: 'Export shape',
+      default_model_slug: 'gpt-4o',
+      current_node: 'a1',
+      mapping: {
+        root: { id: 'root', parent: null, children: [], message: null },
+        u1: { id: 'u1', parent: 'root', children: [], message: { author: { role: 'user' }, content: { content_type: 'text', parts: ['Q1'] } } },
+        a1: { id: 'a1', parent: 'u1', children: [], message: { author: { role: 'assistant' }, content: { content_type: 'text', parts: ['A1'] } } },
+      },
+    }
+    const convo = parseChatGPT(exportShape, 'https://chatgpt.com/c/x')
+    expect(convo.messages).toEqual([
+      { role: 'user', text: 'Q1' },
+      { role: 'assistant', text: 'A1' },
+    ])
+  })
 })
 
 describe('parseCopilot', () => {

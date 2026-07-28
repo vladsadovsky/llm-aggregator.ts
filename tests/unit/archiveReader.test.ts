@@ -17,10 +17,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 
 import { writeZip } from './helpers/zipWriter'
 import {
+  chatgptConversationsJson,
   claudeConversationsJson,
   copilotCsv,
   decoyHtml,
@@ -28,10 +29,11 @@ import {
   geminiTakeoutJson,
   otherProductJson,
 } from './helpers/archiveFixtures'
-import { readArchiveEntry } from '../../electron/services/import/archive/archiveReader'
+import { readArchiveEntry, readMatchingEntries } from '../../electron/services/import/archive/archiveReader'
 import {
   detectArchiveFormat,
   CANDIDATE_ENTRY_NAMES,
+  CANDIDATE_ENTRY_PATTERNS,
   ALL_PATH_HINTS,
 } from '../../electron/services/import/archive/formatRegistry'
 
@@ -317,6 +319,58 @@ describe('case 7 — unzipped folders behave like their zips', () => {
   })
 })
 
+describe('case 8 — sharded ChatGPT export (conversations-000.json …)', () => {
+  // Real ChatGPT exports split conversations across conversations-000.json …
+  // conversations-00N.json; there is no plain conversations.json. All shards
+  // belong to one export and must be read and merged.
+  const shardEntries = () => [
+    { path: 'conversations-000.json', content: chatgptConversationsJson([{ id: 'c1', title: 'One', turns: [{ q: 'Q1', a: 'A1' }] }]) },
+    {
+      path: 'conversations-001.json',
+      content: chatgptConversationsJson([
+        { id: 'c2', title: 'Two', turns: [{ q: 'Q2', a: 'A2' }] },
+        { id: 'c3', title: 'Three', turns: [{ q: 'Q3', a: 'A3' }] },
+      ]),
+    },
+    { path: 'chat.html', content: '<html>ignore</html>' },
+    { path: 'user.json', content: '{}' },
+  ]
+
+  it('previewArchive reads and merges every shard from a zip', async () => {
+    const zipPath = writeZip(fixturePath('chatgpt-export.zip'), shardEntries())
+    const preview = await previewArchive(zipPath)
+    expect(preview.format).toBe('chatgpt-account-export')
+    expect(preview.threads).toHaveLength(3) // 1 + 2 conversations across shards
+    expect(preview.totalPairs).toBe(3)
+    expect(preview.threads.map((t) => t.name).sort()).toEqual(['One', 'Three', 'Two'])
+  })
+
+  it('readMatchingEntries collects every shard, not just the first accepted', async () => {
+    const zipPath = writeZip(fixturePath('chatgpt-export-2.zip'), shardEntries())
+    const entries = await readMatchingEntries(zipPath, {
+      candidateBasenames: ['conversations.json'],
+      candidatePatterns: CANDIDATE_ENTRY_PATTERNS,
+    })
+    expect(entries.map((e) => basename(e.entryPath)).sort()).toEqual([
+      'conversations-000.json',
+      'conversations-001.json',
+    ])
+  })
+
+  it('merges shards from an unzipped folder too', async () => {
+    const dir = fixtureFolder(shardEntries())
+    const preview = await previewArchive(dir)
+    expect(preview.format).toBe('chatgpt-account-export')
+    expect(preview.threads).toHaveLength(3)
+  })
+
+  it('pointing at one shard file pulls in its siblings', async () => {
+    const dir = fixtureFolder(shardEntries())
+    const preview = await previewArchive(join(dir, 'conversations-000.json'))
+    expect(preview.threads).toHaveLength(3)
+  })
+})
+
 describe('bare files the user points at directly', () => {
   it('trusts the choice whatever it is named, and lets detection decide', async () => {
     const csvPath = fixturePath('some-download.csv')
@@ -349,25 +403,29 @@ describe('opt-in checks against real account exports', () => {
    */
   const exportDir = process.env.LLM_AGG_TEST_EXPORT_DIR
 
-  it.skipIf(!exportDir)('recognizes every export in LLM_AGG_TEST_EXPORT_DIR', async () => {
-    const { readdirSync, statSync } = await import('fs')
-    const candidates = readdirSync(exportDir!)
-      .map((name) => join(exportDir!, name))
-      .filter((p) => statSync(p).isDirectory() || /\.(zip|json|html|csv)$/i.test(p))
+  it.skipIf(!exportDir)(
+    'previews every real export in LLM_AGG_TEST_EXPORT_DIR (zips, folders, and bare files)',
+    async () => {
+      const { readdirSync, statSync } = await import('fs')
+      const candidates = readdirSync(exportDir!)
+        .map((name) => join(exportDir!, name))
+        .filter((p) => statSync(p).isDirectory() || /\.(zip|json|html|csv)$/i.test(p))
 
-    expect(candidates.length, `No export files found in ${exportDir}`).toBeGreaterThan(0)
+      expect(candidates.length, `No export files found in ${exportDir}`).toBeGreaterThan(0)
 
-    for (const candidate of candidates) {
-      const entry = await readArchiveEntry(candidate, READER_OPTIONS)
-      expect(entry, `Nothing recognized inside ${candidate}`).not.toBeNull()
-
-      const format = detectArchiveFormat(entry!.text)
-      expect(format, `No format matched ${entry!.entryPath}`).not.toBeNull()
-
-      const conversations = format!.parse(entry!.text)
-      expect(conversations.length, `${format!.id} parsed 0 conversations`).toBeGreaterThan(0)
-      // Every conversation must carry at least one message, or pairing yields nothing.
-      expect(conversations.every((c) => c.messages.length > 0)).toBe(true)
-    }
-  })
+      for (const candidate of candidates) {
+        // Full pipeline: read (incl. sharded merge) → detect → parse → build.
+        // A count-free check, since it depends on whose export it is.
+        const preview = await previewArchive(candidate)
+        expect(preview.format, `No format for ${basename(candidate)}`).toBeTruthy()
+        expect(preview.threads.length, `${basename(candidate)} → 0 threads`).toBeGreaterThan(0)
+        expect(preview.totalPairs, `${basename(candidate)} → 0 pairs`).toBeGreaterThan(0)
+        // eslint-disable-next-line no-console
+        console.log(
+          `${basename(candidate)} → ${preview.format}: ${preview.threads.length} threads, ${preview.totalPairs} pairs`,
+        )
+      }
+    },
+    180000,
+  )
 })
