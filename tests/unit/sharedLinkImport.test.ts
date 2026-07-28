@@ -4,7 +4,7 @@
  * under the Node vitest config.
  */
 import { describe, it, expect } from 'vitest'
-import { detectProvider, normalizeTag } from '../../electron/services/import/providerDetection'
+import { detectProvider, normalizeTag, classifyShareUrl } from '../../electron/services/import/providerDetection'
 import { parseChatGPT } from '../../electron/services/import/parsers/chatgptParser'
 import { parseCopilot } from '../../electron/services/import/parsers/copilotParser'
 import { parseGemini } from '../../electron/services/import/parsers/geminiParser'
@@ -59,6 +59,26 @@ describe('detectProvider', () => {
     expect(detectProvider('not a url')).toBeNull()
     expect(detectProvider('ftp://chatgpt.com/share/abc')).toBeNull()
     expect(detectProvider('https://chatgpt.com/c/abc')).toBeNull()
+  })
+
+  it('rejects http (S6 — https only)', () => {
+    expect(detectProvider('http://chatgpt.com/share/abc')).toBeNull()
+    expect(detectProvider('http://gemini.google.com/share/dae2d696ce75')).toBeNull()
+  })
+})
+
+describe('classifyShareUrl (S6)', () => {
+  it('flags an http share link as insecure and accepts the https form', () => {
+    expect(classifyShareUrl('http://gemini.google.com/share/dae2d696ce75')).toEqual({ kind: 'insecure-scheme' })
+    expect(classifyShareUrl('https://gemini.google.com/share/dae2d696ce75')).toEqual({
+      kind: 'ok',
+      match: { provider: 'gemini', shareId: 'dae2d696ce75' },
+    })
+  })
+
+  it('distinguishes unsupported and malformed from insecure', () => {
+    expect(classifyShareUrl('https://example.com/x')).toEqual({ kind: 'unsupported' })
+    expect(classifyShareUrl('not a url')).toEqual({ kind: 'unsupported' })
   })
 })
 

@@ -28,7 +28,11 @@ export const PROVIDER_SOURCE: Record<ProviderId, string> = {
 
 /**
  * Detect the provider and share id from a shared-conversation URL.
- * Returns null for unrecognized / malformed URLs.
+ * Returns null for unrecognized / malformed / non-HTTPS URLs.
+ *
+ * HTTPS only (S6/SEC-03): a Gemini share URL is rendered in a hidden window, so
+ * a plaintext http: link could be modified in transit and then executed there.
+ * `classifyShareUrl` distinguishes that case for a clearer message.
  */
 export function detectProvider(rawUrl: string): ProviderMatch | null {
   let u: URL
@@ -37,7 +41,7 @@ export function detectProvider(rawUrl: string): ProviderMatch | null {
   } catch {
     return null
   }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+  if (u.protocol !== 'https:') return null
 
   const host = u.hostname.toLowerCase()
   const path = u.pathname
@@ -69,6 +73,28 @@ export function detectProvider(rawUrl: string): ProviderMatch | null {
   }
 
   return null
+}
+
+export type ShareUrlClassification =
+  | { kind: 'ok'; match: ProviderMatch }
+  | { kind: 'insecure-scheme' }
+  | { kind: 'unsupported' }
+
+/**
+ * Classify a share URL so the orchestrator can explain a rejection instead of
+ * returning a bare null. An `http:` URL is called out specifically — it is a
+ * different problem (use https) from a link we simply do not support.
+ */
+export function classifyShareUrl(rawUrl: string): ShareUrlClassification {
+  let u: URL
+  try {
+    u = new URL(rawUrl.trim())
+  } catch {
+    return { kind: 'unsupported' }
+  }
+  if (u.protocol === 'http:') return { kind: 'insecure-scheme' }
+  const match = detectProvider(rawUrl)
+  return match ? { kind: 'ok', match } : { kind: 'unsupported' }
 }
 
 /**
