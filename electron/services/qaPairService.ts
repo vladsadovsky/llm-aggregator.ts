@@ -177,6 +177,26 @@ export function getPair(id: string): QAPairData | null {
   return null
 }
 
+// CON, PRN, AUX, NUL, COM1-9, LPT1-9 are reserved device names on Windows.
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
+
+/**
+ * Sanitize a value used as a filename component (IPC-01 / S4). `source` reaches
+ * the filename from `qa:create` and from an imported .md file's `source:` header,
+ * neither of which is a trusted control. The same character class `firstWords`
+ * uses also strips path separators, NUL, control chars, and colon/drive syntax,
+ * so `join(dir, filename)` can no longer normalize a `..` out of the archive.
+ */
+function sanitizeFilenameComponent(value: string, fallback: string): string {
+  const cleaned = value
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .substring(0, 30)
+  if (!cleaned || WINDOWS_RESERVED.test(cleaned)) return fallback
+  return cleaned
+}
+
 export function createPair(data: QACreateData): QAPairData {
   const dir = getArchiveDir()
   // Importers supply the provider-side creation time; everything else is "now".
@@ -194,7 +214,7 @@ export function createPair(data: QACreateData): QAPairData {
     .replace(/\s+/g, '_')
     .substring(0, 30)
 
-  const sourceStr = data.source || 'unknown'
+  const sourceStr = sanitizeFilenameComponent(data.source || 'unknown', 'unknown')
   const filename = `${id}_00_${sourceStr}_${firstWords}.md`
   const filepath = join(dir, filename)
 
