@@ -36,7 +36,7 @@ import {
 import { pairMessages } from '../../electron/services/import/pairMessages'
 import { buildResult, buildOriginId } from '../../electron/services/import/buildResult'
 import { parseClaude } from '../../electron/services/import/parsers/claudeParser'
-import { fingerprintPair } from '../../electron/services/duplicateService'
+import { fingerprintPair, buildOriginIndex } from '../../electron/services/duplicateService'
 import { commitArchiveImport } from '../../electron/services/import/archive/bulkImportService'
 import { addTag } from '../../electron/services/tagDictionaryService'
 import type { BulkImportPreview, BulkImportThread } from '../../electron/services/import/archive/archiveTypes'
@@ -702,6 +702,53 @@ describe('commitArchiveImport', () => {
     const finalThreads = savedThreadsCalls.at(-1)!
     const names = Object.values(finalThreads).map((t) => t.name)
     expect(names).toEqual(['2026-07-26 — Thread a'])
+  })
+
+  it('recovers a crashed import on re-run: existing pairs get threaded, not duplicated (S5)', () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    // The origin index is what "already on disk" looks like; make it persist
+    // across both commit calls so run 2 sees run 1's pairs as duplicates.
+    const onDisk = new Map<string, string>()
+    vi.mocked(buildOriginIndex).mockReturnValue(onDisk)
+
+    const thread: BulkImportThread = {
+      sourceId: 'conv-1',
+      name: 'Conv 1',
+      nameWasDerived: false,
+      tags: ['bulk'],
+      items: [0, 1].map((i) => ({
+        data: { title: `t${i}`, source: 'chatgpt', url: '', tags: ['bulk'], question: `Q${i}`, answer: `A${i}` },
+        warnings: [],
+        originId: `chatgpt:conv-1:m${i}`,
+      })),
+      createdAt: '2026-07-26T00:00:00.000Z',
+      warnings: [],
+      duplicateCount: 0,
+    }
+    const preview = makePreview([thread])
+    const selection = { threadSourceIds: ['conv-1'], skipDuplicates: true }
+
+    // Run 1 — pairs are written and the origin index is populated. Simulate the
+    // crash by discarding the thread map it saved (threads.json never persisted).
+    const run1 = commitArchiveImport(preview, selection)
+    expect(run1.createdPairs).toBe(2)
+    const writtenAfterRun1 = createdPairCounter
+    savedThreadsCalls.length = 0
+
+    // Run 2 — the same import. Pairs are now duplicates: none are re-written, but
+    // the thread is reconstructed from the pairs already on disk.
+    const run2 = commitArchiveImport(preview, selection)
+    expect(run2.skippedDuplicates).toBe(2)
+    expect(run2.createdPairs).toBe(0)
+    expect(createdPairCounter).toBe(writtenAfterRun1) // no duplicate pairs written
+    expect(run2.createdThreads).toBe(1) // thread recovered, not skipped
+
+    const recovered = Object.values(savedThreadsCalls.at(-1)!)[0]
+    expect(recovered.items).toHaveLength(2)
+
+    vi.mocked(buildOriginIndex).mockReturnValue(new Map()) // restore for later tests
   })
 
   it('registers every imported tag in the tag dictionary, deduplicated', () => {
