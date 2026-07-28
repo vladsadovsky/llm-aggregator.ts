@@ -1,11 +1,13 @@
-import { app, BrowserWindow, Menu, dialog } from 'electron'
+import { app, BrowserWindow, Menu, dialog, session } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
 import { registerIpcHandlers } from './ipc/handlers'
 import { initSecretsStorage } from './services/secretsService'
 import { loadSettings } from './services/settingsService'
 import { addSettingsChangeListener } from './services/settingsEvents'
 import { ACCELERATORS, hintFor, renderKeys, styleForPlatform } from '../shared/accelerators'
+import { isSameAppNavigation, windowOpenAction } from './security/navigationPolicy'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -259,9 +261,48 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // On by default in Electron 33; set explicitly so the intended policy is
+      // visible in code and cannot be silently weakened.
+      sandbox: true,
     },
   }
   )
+
+  const wc = mainWindow.webContents
+
+  // ─── Navigation lockdown (SEC-01) ──────────────────────────────────────────
+  // The main window renders trusted local content and exposes window.api. Deny
+  // any navigation away from the app's own origin and deny renderer-created
+  // windows, so imported content (e.g. a Markdown link) can never pull this
+  // privileged renderer to a remote page that could then reach window.api.
+  const devUrl = process.env.VITE_DEV_SERVER_URL
+  const prodIndexPath = devUrl
+    ? undefined
+    : [join(__dirname, '../dist/index.html'), join(__dirname, '../index.html')].find((c) => existsSync(c))
+  const appOrigin = (() => {
+    try {
+      const href = devUrl ?? (prodIndexPath ? pathToFileURL(prodIndexPath).href : '')
+      return href ? new URL(href).origin : ''
+    } catch {
+      return ''
+    }
+  })()
+
+  const navPolicy = { devUrl, appOrigin }
+
+  wc.on('will-navigate', (event, url) => {
+    if (!isSameAppNavigation(url, navPolicy)) {
+      event.preventDefault()
+      console.error('[main] blocked main-frame navigation to', url)
+    }
+  })
+  wc.on('will-frame-navigate', (details) => {
+    if (!isSameAppNavigation(details.url, navPolicy)) {
+      details.preventDefault()
+      console.error('[main] blocked frame navigation to', details.url)
+    }
+  })
+  wc.setWindowOpenHandler(windowOpenAction)
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[main] Window failed to load:', { errorCode, errorDescription, validatedURL })
@@ -278,23 +319,15 @@ function createWindow() {
     console.error(`[renderer:${label}] ${sourceId}:${line} ${message}`)
   })
 
-  // In dev, load from Vite dev server
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+  // In dev, load from Vite dev server; in prod, the packaged index.html.
+  if (devUrl) {
+    mainWindow.loadURL(devUrl)
     // Uncomment to open DevTools in development automatically
     //mainWindow.webContents.openDevTools()
+  } else if (prodIndexPath) {
+    mainWindow.loadFile(prodIndexPath)
   } else {
-    const candidatePaths = [
-      join(__dirname, '../dist/index.html'),
-      join(__dirname, '../index.html'),
-    ]
-    const indexPath = candidatePaths.find((candidate) => existsSync(candidate))
-
-    if (!indexPath) {
-      console.error('[main] Renderer entry not found. Tried:', candidatePaths)
-    } else {
-      mainWindow.loadFile(indexPath)
-    }
+    console.error('[main] Renderer entry not found under', __dirname)
   }
 
   mainWindow.on('closed', () => {
@@ -304,10 +337,26 @@ function createWindow() {
 
 app.setName('LLM Aggregator');
 
+/**
+ * Deny web permissions on the default session (SEC-01). Scoped to the default
+ * session deliberately: the Gemini hidden import window shares it and therefore
+ * inherits the denial (a free SEC-03 gain). `clipboard-sanitized-write` is the
+ * one allowance — the Lens "Copy" actions need it and it only writes to the
+ * clipboard; everything else (geolocation, media, notifications, openExternal…)
+ * is refused.
+ */
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write'])
+function lockDownDefaultSession(): void {
+  const ses = session.defaultSession
+  ses.setPermissionRequestHandler((_wc, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)))
+  ses.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission))
+}
+
 app.whenReady().then(() => {
   // Must run before any secrets read: moves a legacy plaintext secrets.json aside
   // so live keys are not left sitting in clear text with nothing to clean them up.
   initSecretsStorage()
+  lockDownDefaultSession()
   createApplicationMenu()
   addSettingsChangeListener(() => createApplicationMenu())
   registerIpcHandlers()

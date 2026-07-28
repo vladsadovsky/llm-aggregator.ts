@@ -157,6 +157,7 @@ export const mockApi: ElectronAPI = {
         backupPath: '/mock/data/purged-20260101_100000',
         warnings: [],
     }),
+    openExternal: async () => ({ ok: true }),
     onMenuAction: () => () => {},
 
     secretsLoad: async () => mockSecretsStatus(),

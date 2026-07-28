@@ -1,4 +1,5 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { isExternallyOpenable } from '../security/navigationPolicy'
 import { loadThreads, saveThreads, ThreadMap } from '../services/threadService'
 import {
   listAllPairs,
@@ -71,6 +72,19 @@ import {
 import type { TagDictionary } from '../services/tagDictionaryService'
 
 export function registerIpcHandlers(): void {
+  // ─── Shell ─────────────────────────────────────────────────
+  // Open a rendered-content link in the system browser (SEC-01). The renderer
+  // never navigates; it hands the href here, and only a parsed https:/mailto:
+  // URL is passed to the OS — never the raw string.
+  ipcMain.handle('openExternal', async (_event, url: unknown): Promise<{ ok: boolean }> => {
+    const raw = String(url)
+    if (isExternallyOpenable(raw)) {
+      await shell.openExternal(new URL(raw).href)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
   // ─── Settings ──────────────────────────────────────────────
   ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
     return loadSettings()
