@@ -7,7 +7,7 @@
  * creates the QA pairs + thread (mirroring the existing file-import flow).
  */
 
-import { detectProvider, PROVIDER_LABEL } from './providerDetection'
+import { classifyShareUrl, PROVIDER_LABEL } from './providerDetection'
 import { fetchJson, renderGemini } from './conversationFetcher'
 import { parseChatGPT } from './parsers/chatgptParser'
 import { parseCopilot } from './parsers/copilotParser'
@@ -26,8 +26,14 @@ function summarizeRoles(messages: ParsedConversation['messages']): Record<string
 }
 
 export async function importSharedLink(rawUrl: string): Promise<SharedImportResult> {
-  const match = detectProvider(rawUrl)
-  if (!match) {
+  const classified = classifyShareUrl(rawUrl)
+  if (classified.kind === 'insecure-scheme') {
+    throw new Error(
+      'Share links must use https, not http. A plaintext link can be modified in transit before ' +
+        'it is rendered — paste the https:// version of the link.',
+    )
+  }
+  if (classified.kind === 'unsupported') {
     throw new Error(
       'Unrecognized share link. Supported links look like:\n' +
         '• https://chatgpt.com/share/…\n' +
@@ -37,7 +43,7 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
     )
   }
 
-  const { provider, shareId } = match
+  const { provider, shareId } = classified.match
   debugLog('sharedLinkImport', 'importing', {
     provider,
     shareId,
