@@ -19,6 +19,8 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 4. **Advanced search/filter depth** - source/date/url filters and highlights still missing
 5. **Undo/history and bulk actions** - still unimplemented
 
+**Re-assessment note (July 27, 2026):** Re-audited against the current codebase (not just doc claims). Items #1 (thread assignment), #2 (create&continue, duplicate, thread quick-create, source shortcuts, focus restoration, paste parser) and toast-based error feedback (9.1) are now implemented — see inline updates below. Accessibility (7.x), advanced search/filters (4.1/4.3/4.4), bulk ops (5.1), undo/history (6.1/6.2), and mobile responsiveness (8.x) remain the real gaps. Two doc items were previously mis-marked as not started: **11.8 Duplicate/Copy QA** and **11.9 Breadcrumb navigation** are both fully implemented.
+
 ---
 
 ## 1. KEYBOARD NAVIGATION ISSUES
@@ -82,17 +84,17 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 1.4 Tab Order Issues in Forms ⚠️
+### 1.4 Tab Order Issues in Forms ⚠️ Partial
 
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`  
-**Current State:** Tab order follows DOM order, but no skip links or focus management.  
-**Problem:** After creating/editing QA, focus is not returned to logical location.  
-**Recommendation:**
+**Current State (verified July 27, 2026):**
+- ✅ `Ctrl/Cmd+Enter` submits in `QAEditor.vue` (`handleKeydown`); `QAEditForm.vue` supports `Ctrl/Cmd+S`/Enter to save.
+- ✅ Focus after create returns via `QAListPanel.vue` `onQACreated()` → `selectPair()` + `focusQAList()`, landing on the list container so arrow keys work immediately.
+- ⚠️ Focus trap is inconsistent: `QAEditor.vue` uses PrimeVue's `v-focustrap`; `SettingsDialog.vue`/`ApplicationStatusDialog.vue`/`ArchiveResetDialog.vue` get it for free via PrimeVue `<Dialog>`. But `AnnotationDialog.vue`, `HealthReportDialog.vue`, and `TagManagerDialog.vue` are plain overlay `<div>`s with no focus-trap directive.
+- ⚠️ QA list items are plain non-focusable `<div>`s (no per-item `tabindex`) — focus lands on the list container, not the specific item.
 
-- Return focus to newly created QA item after creation
-- Trap focus within modal dialogs
-- Add `autofocus` directive to first input in forms (already exists in some places)
-- Implement `Ctrl+Enter` to submit forms quickly
+**Remaining Recommendation:**
+- Add focus-trap (`v-focustrap` or wrap in PrimeVue `Dialog`) to `AnnotationDialog.vue`, `HealthReportDialog.vue`, `TagManagerDialog.vue`
 
 **Difficulty:** ⭐ Easy
 
@@ -119,9 +121,10 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 ### 2.1 Last-Used Metadata Pre-fill (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/stores/uiStore.ts`, `src/components/SettingsDialog.vue`  
 **Current State:** Implemented. New QA pre-fills `source`, `tags`, and `url` from last create action; user can toggle "Remember last-used metadata" in Settings.  
-**Remaining Gap:** Values are currently store-memory only (reset on app restart).  
+**Update (verified July 27, 2026):** The persistence gap is closed — `uiStore.ts` now persists `lastUsedSource`/`lastUsedTags`/`lastUsedUrl`/`rememberLastMetadata`/`lastUsedThreadId` to `window.localStorage`, so values do survive app restarts.  
+**Remaining Gap:** Persistence is via renderer `localStorage`, not the app's `settings.json` (`electron/services/settingsService.ts`'s `AppSettings` has no such fields) — so these values aren't portable with data-directory backups/exports and aren't visible in `SettingsDialog.vue`. There is still no one-click "Clear remembered metadata" action.
 **Recommendation (next increment):**
-- Persist `lastUsedSource`, `lastUsedTags`, `lastUsedUrl`, and `rememberLastMetadata` to app settings/localStorage
+- Optionally move persistence into `settings.json` if portability across data directories matters
 - Add one-click "Clear remembered metadata" action in Settings
 
 **Feasibility:** High  
@@ -130,16 +133,10 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 2.2 Thread Assignment During Create Flow (Re-assessed) ⚠️
+### 2.2 Thread Assignment During Create Flow ✅ DONE
 **Location:** `src/components/QAEditor.vue`, `src/components/QAListPanel.vue`  
-**Current State:** If user creates QA from a selected thread, it is added to that thread on create. In "All QAs" mode, new QA remains unassigned (not added to any thread).  
-**Problem:** In all-QA workflow, users must do extra navigation/actions to file the QA into a thread.  
-**Recommendation:**
-- Add optional "Add to thread" selector inside QAEditor
-- Default to:
-  - selected thread when one is active
-  - last-used thread when in all-QA mode
-- Add quick options: "None", "Recent threads", "Create new thread and add"
+**Current State (verified July 27, 2026):** Implemented. `QAEditor.vue` always renders an "Add to Thread" `<Select>` (`data-testid="target-thread-select"`) with a "+ Create new thread…" inline option. `onMounted` falls back through `initialTargetThreadId` → `threadStore.selectedThreadId` → `uiStore.lastUsedThreadId`, so even from "All QAs" mode it defaults to the last-used thread while still allowing "None (unassigned)" or any other thread.  
+**Remaining Gap (minor):** No explicit "Recent threads" quick-pick list beyond the single last-used default — the full thread dropdown covers this adequately for now.
 
 **Feasibility:** High  
 **Difficulty:** ⭐⭐ Medium  
@@ -150,15 +147,14 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 ### 2.3 Smart Tag Suggestions (Re-assessed) ✅ Partial
 **Location:** `src/components/QAEditor.vue`, `src/components/QAEditForm.vue`, `src/stores/qaStore.ts`  
 **Current State:** Implemented with PrimeVue `AutoComplete` + multi-select suggestions from existing tags (`qaStore.allTags` frequency-sorted).  
-**Remaining Gaps:**
-- No explicit delimiter workflow (comma/enter behavior can feel inconsistent)
-- No "recent tags" quick-pick row
-- No tag normalization guidance (case/plural variants still possible)
+**Remaining Gaps (verified July 27, 2026):**
+- `commitPendingTags()` (`QAEditor.vue`, `QAEditForm.vue`) only parses comma-separated input at submit time, not live on comma/Tab keypress — mid-typing a comma still doesn't instantly spawn a chip
+- No "recent tags" quick-pick row (confirmed absent)
+- ✅ Casing normalization **is** implemented — `tagStore.resolveTag()` (`src/stores/tagStore.ts`) normalizes via `.trim().toLowerCase()`, and `TagManagerDialog.vue` (net-new, not in original doc scope) provides full canonical tag/alias management
 
 **Recommendation (next increment):**
-- Commit tag chip on comma/Enter/Tab consistently
+- Commit tag chip on comma/Enter/Tab consistently (live, not just on submit)
 - Add recent/popular tag chips below input for single-click insertion
-- Normalize and display canonical tag casing (e.g., preserve first-seen case)
 
 **Feasibility:** Medium-High  
 **Difficulty:** ⭐⭐ Medium  
@@ -166,11 +162,11 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 
 ---
 
-### 2.4 Section 2 Feasibility Snapshot (February 13, 2026)
+### 2.4 Section 2 Feasibility Snapshot (updated July 27, 2026)
 | Item | Status | Feasibility | Difficulty | Suggested Priority |
 |------|--------|-------------|------------|--------------------|
-| 2.1 Persist pre-fill across restarts | Not started | High | ⭐ Easy | P1 |
-| 2.2 Add thread selector in create form | Not started | High | ⭐⭐ Medium | P1 |
+| 2.1 Persist pre-fill across restarts | ✅ Done (via localStorage) | High | ⭐ Easy | — |
+| 2.2 Add thread selector in create form | ✅ Done | High | ⭐⭐ Medium | — |
 | 2.3 Improve tag commit/quick-pick behavior | Not started | Medium-High | ⭐⭐ Medium | P2 |
 | 2.1 Clear remembered metadata action | Not started | High | ⭐ Easy | P2 |
 
@@ -179,46 +175,37 @@ This document outlines comprehensive usability improvements for the LLM Aggregat
 ### 2.5 Additional Faster Data Entry Improvements (All Forms & Flows)
 Analysis covered: `QAEditor`, `QAEditForm`, `QAListPanel`, `ThreadsPanel`, `SettingsDialog`, `QAContentPanel`, and app-level shortcuts in `App.vue`.
 
-1. **Create + continue workflow (high ROI)**
-- Add "Create & Add Another" button in `QAEditor`
-- Keep metadata/thread selection, clear question/answer/title, keep focus in question field
-- Shortcut: `Ctrl/Cmd+Shift+Enter`
+**Status re-verified July 27, 2026 — 7 of 9 fully done, 1 partial, 1 not started:**
+
+1. **Create + continue workflow (high ROI)** ✅ DONE
+- `QAEditor.vue` "Create & Add Another" button wired to `create(true)`, keeps thread/metadata, clears question/answer/title, refocuses question field
+- Shortcut `Ctrl/Cmd+Shift+Enter` implemented
+
+2. **Duplicate current QA into pre-filled create form** ✅ DONE
+- `QAContentPanel.vue` `duplicateSelectedQA()` opens `QAEditor` pre-populated from selected QA (title suffixed `(copy)`)
+- Shortcut is **`Ctrl/Cmd+D`**, not bare `D` as originally proposed (`App.vue`)
+
+3. **Consistent validation parity between create and edit** ✅ DONE
+- `QAEditForm.vue` and `QAEditor.vue` both use identical `new URL()` try/catch validation with an `urlError` message and disabled save
+
+4. **Thread quick-create inside QAEditor** ✅ DONE
+- `QAEditor.vue`'s thread `<Select>` has a "+ Create new thread…" option with an inline "New Thread Name" field
+
+5. **Source quick-select shortcuts** ✅ DONE
+- `Alt+1..5` mapped to source options in both `QAEditor.vue` and `QAEditForm.vue`
+
+6. **Focus restoration after create/save** ✅ DONE
+- `nextTick` refocus of question textarea on create; `focusQAList()` after edit save/cancel in `QAContentPanel.vue`
+
+7. **Settings dialog keyboard ergonomics** ✅ DONE
+- `Ctrl/Cmd+Enter` saves in `SettingsDialog.vue`; `Escape` closes via PrimeVue `Dialog`'s `closeOnEscape`
+
+8. **Quick metadata cloning in edit form** ⚠️ Partial
+- Tags/URL/source *are* auto-prefilled from last-used metadata on mount (`uiStore.getLastUsedMetadata()`) when "Remember last-used metadata" is on, but there's no explicit user-triggered "Copy tags from last-used" button — it's implicit/automatic only, and "Use current URL as template" doesn't exist
 - **Difficulty:** ⭐⭐ Medium
 
-2. **Duplicate current QA into pre-filled create form**
-- Add action from `QAContentPanel` and shortcut (`D`) to open `QAEditor` pre-populated from selected QA
-- Speeds up variants/edits of similar prompts
-- **Difficulty:** ⭐⭐ Medium
-
-3. **Consistent validation parity between create and edit**
-- `QAEditForm` currently lacks URL validation parity with `QAEditor`
-- Add same inline URL validation + disabled save on invalid URL
-- **Difficulty:** ⭐ Easy
-
-4. **Thread quick-create inside QAEditor**
-- If desired thread does not exist, let user type and create thread inline without leaving form
-- **Difficulty:** ⭐⭐ Medium
-
-5. **Source quick-select shortcuts**
-- In `QAEditor`/`QAEditForm`, map `Alt+1..5` to source options (Claude, ChatGPT, Gemini, Copilot, DeepSeek)
-- **Difficulty:** ⭐ Easy
-
-6. **Focus restoration after create/save**
-- After create/save/cancel, restore focus to the selected QA list item (or to search if list is filtered)
-- Reduces mouse repositioning cost
-- **Difficulty:** ⭐⭐ Medium
-
-7. **Settings dialog keyboard ergonomics**
-- Add `Ctrl/Cmd+Enter` to save and `Escape` to close in `SettingsDialog`
-- **Difficulty:** ⭐ Easy
-
-8. **Quick metadata cloning in edit form**
-- Add one-click actions: "Copy tags from last-used", "Use current URL as source URL template"
-- **Difficulty:** ⭐⭐ Medium
-
-9. **Paste parser for structured imports (optional advanced)**
-- Detect pasted "Q:/A:" blocks in `QAEditor` and auto-split question/answer
-- **Difficulty:** ⭐⭐⭐ Hard
+9. **Paste parser for structured imports** ✅ DONE
+- `parseStructuredPaste()` in `QAEditor.vue` handles `Q:`/`A:` and `## Question`/`## Answer` blocks plus `title:`/`source:`/`url:`/`tags:` meta lines, with batch-entry support — implemented beyond the original "optional advanced" scope
 
 ---
 
@@ -327,10 +314,10 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 4.4 No Advanced Sorting Options ⚠️
+### 4.4 No Advanced Sorting Options ⚠️ Partial
 
-**Location:** `src/components/QAListPanel.vue` (lines 19-37)  
-**Current State:** Only date or title sorting.  
+**Location:** `src/components/QAListPanel.vue`  
+**Current State (verified July 27, 2026):** Confirmed still only date (fixed descending) or title (fixed ascending) sorting via a single global `uiStore.sortBy` setting — no per-context (thread vs. all-QAs) memory, no source/tag-count/length sort, no asc/desc toggle.  
 **Problem:** Cannot sort by source, tags, or relevance.  
 **Recommendation:**
 
@@ -361,17 +348,16 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 5.2 No Export/Import Functionality ❌
+### 5.2 No Export/Import Functionality ⚠️ Partial
 
-**Location:** None - missing entirely  
-**Current State:** No way to export QAs or threads.  
-**Problem:** Cannot backup, share, or migrate data easily.  
+**Location:** `electron/services/qaExportFormatService.ts`, `QAContentPanel.vue`, `ThreadsPanel.vue`  
+**Current State (verified July 27, 2026):** Export now exists — `formatQAExport`/`formatThreadExport` produce a Markdown document with a frontmatter-style header, wired to "Export" actions in `QAContentPanel.vue` and `ThreadsPanel.vue`. Import is comprehensive (see `electron/services/import/` — shared-link + bulk account-export pipelines documented in `CLAUDE.md`).  
+**Problem:** Export is Markdown-only — no JSON or CSV format, and no "export entire archive" bulk action.  
 **Recommendation:**
 
-- Export selected QAs as JSON/Markdown/CSV
-- Export entire thread as single document
-- Import QAs from external files
-- Add to Settings dialog or context menu
+- Add JSON export (for lossless re-import / interop)
+- Add CSV export (for spreadsheet workflows)
+- Add "export entire archive" bulk action
 
 **Difficulty:** ⭐⭐ Medium
 
@@ -535,17 +521,13 @@ watch(question, (newQuestion) => {
 
 ## 9. ERROR HANDLING & USER FEEDBACK
 
-### 9.1 Silent Failures ⚠️
+### 9.1 Silent Failures ✅ DONE
 
-**Location:** `src/App.vue` (lines 19-32), all store operations  
-**Current State:** Errors logged to console with `debugError` but user may not see feedback.  
-**Problem:** Users don't know when operations fail.  
-**Recommendation:**
-
-- Show toast notifications for all critical errors
-- Add error boundary components
-- Provide recovery actions in error messages ("Retry", "Report bug")
-- Add validation feedback in forms (required fields, format checks)
+**Location:** `src/App.vue`, `src/components/QAContentPanel.vue`, `src/components/QAListPanel.vue`, `src/components/ThreadsPanel.vue`, `src/components/TagManagerDialog.vue`  
+**Current State (verified July 27, 2026):** `useToast()` is used extensively on error paths — `App.vue`'s `onErrorCaptured`, load/import failures; per-component failures (AI metadata, tag sync, etc.) all surface toast notifications. Global `<Toast position="bottom-right" />` mounted in `App.vue`.  
+**Remaining Gap:** No dedicated error-boundary component and no "Retry"/"Report bug" action buttons embedded in error toasts (a plain retry does exist for IPC calls — see 9.4).  
+**Recommendation (residual):**
+- Add recovery actions in error toasts ("Retry", "Report bug") for the operations that support it
 
 **Difficulty:** ⭐⭐ Medium
 
@@ -584,17 +566,16 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 9.4 No Network/IPC Error Recovery ⚠️
+### 9.4 No Network/IPC Error Recovery ⚠️ Partial
 
-**Location:** All store IPC calls  
-**Current State:** Errors caught but no retry logic.  
-**Problem:** Transient failures require app restart.  
-**Recommendation:**
+**Location:** `src/utils/retry.ts`, `src/stores/qaStore.ts`, `src/stores/threadStore.ts`  
+**Current State (verified July 27, 2026):** Automatic retry **is** implemented — `withRetry()` (exponential backoff, 3 attempts) wraps `qaListAll`/`qaCreate`/`qaUpdate`/`qaDelete`/`searchQuery`/`searchSemantic` in `qaStore.ts` and `threadsLoad`/`threadsSave` in `threadStore.ts`.  
+**Problem:** No offline/connectivity indicator and no manual "Retry" button surfaced in error toasts; no queueing of failed operations for later retry.  
+**Recommendation (residual):**
 
-- Implement automatic retry with exponential backoff
-- Queue failed operations for retry
 - Show "offline" indicator if IPC fails repeatedly
 - Provide manual "Retry" button in error toasts
+- Queue failed operations for retry
 
 **Difficulty:** ⭐⭐ Medium
 
@@ -749,32 +730,19 @@ watch(question, (newQuestion) => {
 
 ---
 
-### 11.8 No Duplicate/Copy Functionality ❌
+### 11.8 No Duplicate/Copy Functionality ✅ DONE
 
-**Location:** Missing entirely  
-**Current State:** Cannot duplicate existing QA.  
-**Problem:** Must manually recreate similar QAs.  
-**Recommendation:**
-
-- Add "Duplicate" button in QAContentPanel action bar
-- Create copy with "(Copy)" suffix in title
-- Copy all metadata and content
-- Auto-open for editing after duplicate
+**Location:** `src/components/QAContentPanel.vue`  
+**Current State (verified July 27, 2026):** Implemented — an explicit "Duplicate" button (`data-testid="duplicate-qa-button"`) calls `duplicateSelectedQA()`, which opens `QAEditor` pre-filled with a `(copy)`-suffixed title, the same source/URL/tags/question/answer, and targeting the current thread. Bound to shortcut `Ctrl/Cmd+D`.
 
 **Difficulty:** ⭐ Easy
 
 ---
 
-### 11.9 No Breadcrumb Navigation ⚠️
+### 11.9 No Breadcrumb Navigation ✅ DONE
 
 **Location:** `src/App.vue`  
-**Current State:** Current location shown in panel titles only.  
-**Problem:** In deep thread, users lose context of location.  
-**Recommendation:**
-
-- Add breadcrumb bar: "Threads > Thread Name > QA Title"
-- Make breadcrumb segments clickable for quick navigation
-- Show breadcrumb in main content area header
+**Current State (verified July 27, 2026):** Implemented — a breadcrumb bar (`class="breadcrumb"`) shows "All QAs" / "Threads → {thread name}" / "Unthreaded", followed by the selected QA's title when applicable, with clickable `bc-item` segments for quick navigation.
 
 **Difficulty:** ⭐ Easy
 
@@ -801,57 +769,69 @@ watch(question, (newQuestion) => {
 ### ✅ COMPLETED
 
 - 1.1, 1.2, 1.3 Arrow key navigation & Global shortcuts
-- 1.4, 1.5 Keyboard access to action buttons & forms
-- 2.1 Field pre-filling
-- 2.3 Tag autocomplete
+- 1.5 Keyboard access to action buttons & forms (1.4 remains partial — see item)
+- 2.1 Field pre-filling (now persisted across restarts via localStorage)
+- 2.2 Thread assignment during create flow
+- 2.3 Tag autocomplete (casing normalization done; live comma/Tab commit + recent-tags row still pending)
+- 2.5.1 Create & Add Another
+- 2.5.2 Duplicate → pre-filled create form (`Ctrl/Cmd+D`)
+- 2.5.3 URL validation parity (create vs. edit)
+- 2.5.4 Thread quick-create inline
+- 2.5.5 Alt+1..5 source quick-select
+- 2.5.6 Focus restoration after create/save
+- 2.5.7 Settings dialog keyboard ergonomics
+- 2.5.9 Structured paste parser (Q:/A: blocks)
 - 3.1 Auto-title generation
 - 4.2 Real-time search
+- 9.1 Toast notifications for errors
 - 9.2 Loading states
 - 11.4 Dark mode toggle
 - 11.5 URL validation
 - 11.6 Shortcut help
+- 11.8 Duplicate/Copy QA functionality
+- 11.9 Breadcrumb navigation
 - 11.10 Global Search
+5. ~~Thread selector in editor (2.2)~~ — ✅ done, see item 2.2
+6. ~~Breadcrumb navigation (11.9)~~ — ✅ done, see item 11.9
+
+
+*(Re-verified against code July 27, 2026 — see inline "verified" notes on each item above for evidence.)*
 
 ---
 
 ### 🔴 PHASE 1: Core UX Refinement (Near-term)
 
 **Goal:** Address high-value usability gaps
-
-1. **Accessibility & ARIA labels** (7.1, 7.2, 7.3, 7.4)
-   - Impact: Essential for screen reader support
-2. **Search result highlighting** (4.3)
+1.  **Real time name filter in threads list **
+   - Impact: with very long list of threads easier navigation
+3. **Search result highlighting** (4.3)
    - Impact: Shows why items matched the search
-3. **Context menus** (11.7)
+4. **Context menus** (11.7)
    - Impact: Familiar right-click workflow
-4. **Duplicate QA functionality** (11.8)
+5. **Duplicate QA functionality** (11.8)
    - Impact: Create new QAs from templates
-5. **Markdown preview in editor** (11.3)
-   - Impact: WYSIWYG experience while editing
 6. **Recent/Favorites feature** (11.2)
    - Impact: Quick access to frequent QAs
-
+7. **compressible box for tags selectors above threads list ** 
+   - Impact: if too many tags for threads, box takes too much vertical room 
 ---
 
 ### 🟡 PHASE 2: Advanced Features (Mid-term)
 
 **Goal:** Power user capabilities
 
-1. **Bulk operations** (5.1)
+1. **Bulk operations** (5.1) — still not started
    - Impact: Manage multiple QAs/threads
-2. **Export/Import functionality** (5.2)
-   - Impact: Backup and share data
-   - Difficulty: ⭐⭐ Medium
-
-3. **Advanced search filters** (4.1)
-   - Impact: Filter by source, dateRange, etc.
-4. **Undo/Redo system** (6.1, 6.2)
+2. **Filter by date range in thread list ** 
+   - Impact: very long thread list is more manageable
+3. **Advanced search filters** (4.1) — still not started
+   - Imact: Filter by source, dateRange, etc.
+4. **Undo/Redo system** (6.1, 6.2) — still not started
    - Impact: Reversible actions
-5. **Thread selector in editor** (2.2)
-   - Impact: Assign thread during creation from "All QAs" mode
-6. **Breadcrumb navigation** (11.9)
-   - Impact: Better context in deep threads
-
+5. ** LLM generated titles for QAs and threads ** 
+   - Impact: for imported threads (Gemini) or constructed threads smarter title proposal 
+6. ** LLM generated tag list for QAs and threads ** 
+   - Impact: smarter tagging 
 ---
 
 ### 🔵 PHASE 3: Mobile & Polish (Long-term)
@@ -863,21 +843,43 @@ watch(question, (newQuestion) => {
 
 ---
 
+### 🔵 PHASE 4: Postponed indefinetely (Long-term)
+
+1. **Accessibility & ARIA labels** (7.1, 7.2, 7.3, 7.4)
+   - Impact: Essential for screen reader support
+2. **Markdown preview in editor** (11.3)
+   - Impact: WYSIWYG experience while editing
+3. **Export/Import functionality** (5.2) — export now partially done (Markdown-only); JSON/CSV export still open
+   - Impact: Backup and share data
+   - Difficulty: ⭐⭐ Medium
+
+
+
+---
+
 ## NOTES
 
 - **Total identified issues:** 67 improvements
-- **Critical gaps:** thread assignment flow, advanced data-entry acceleration, accessibility
-- **Quick wins available:** 15-20 easy fixes (1 week of work)
-- **Biggest ROI:** Auto-title + keyboard shortcuts + real-time search
-- **Architecture debt:** Undo/redo, mobile responsive, bulk operations
+- **Critical gaps remaining (as of July 27, 2026):** accessibility (7.1-7.4, essentially unaddressed), bulk operations (5.1), undo/redo (6.1/6.2), advanced search filters & highlighting (4.1/4.3), mobile responsiveness (8.1-8.3)
+- **Quick wins available:** title uniqueness check (3.2), search highlighting (4.3), "clear remembered metadata" action (2.1)
+- **Biggest ROI already realized:** Auto-title + keyboard shortcuts + real-time search + thread-assignment-on-create + duplicate/breadcrumb/toast feedback
+- **Architecture debt:** Undo/redo, mobile responsive, bulk operations, accessibility semantics
+
+**Out-of-scope net-new features found during the July 27, 2026 audit** (not covered by this doc, built independently of it — no action needed here, noted for completeness):
+- `AnnotationDialog.vue` — guided LLM confidence-annotation review workflow
+- `HealthReportDialog.vue` — archive health check (orphans, metadata gaps, duplicates, dead-ends)
+- `InsightsPanel.vue` ("LLM Lens") — AI-query panel (Brief/Prior Art/Steelman/Gaps/Concept Summary)
+- `TagManagerDialog.vue` — canonical tag/alias management with usage counts
+- `ApplicationStatusDialog.vue` — settings/secrets/provider/model-catalog status view
+- `ArchiveResetDialog.vue` — safe "reset to virgin state" (moves to a `purged-<stamp>` backup, deletes nothing)
 
 **Maintainer:** This doc should be updated as Phase 1 items are completed.
 
 ---
 
-**Document Version:** 1.1  
-**Last Updated:** February 13, 2026  
-**Status:** In progress (Phase 1 complete, Phase 2 planning/refinement)
+**Document Version:** 1.2  
+**Last Updated:** July 27, 2026 (re-audited against live codebase; Version 1.1 content from February 13, 2026 preserved with inline updates)  
+**Status:** In progress (Phase 1 complete; Phase 2 partially complete — thread assignment, duplicate, breadcrumb, toast feedback, retry logic done; bulk ops, undo/redo, advanced search, accessibility still open)
 
 
 ## Progress

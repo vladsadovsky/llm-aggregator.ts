@@ -80,7 +80,7 @@ Semantic search using precomputed embeddings (hashed strings) for QA pairs. Embe
 - Rank by cosine similarity, return top matches.
 
 ### UI Integration
-- "Semantic" search option in QAListPanel.
+- "Semantic" search option in QAListPanel. Possibly whole treads. 
 - Results ranked by similarity.
 
 ### Backend & Architecture
@@ -98,23 +98,18 @@ Semantic search using precomputed embeddings (hashed strings) for QA pairs. Embe
 
 ---
 
-## Implementation Phases & Estimate
-- Settings + LLM Service: 1 day
-- Settings UI: 0.5 day
-- Title Generation: 0.5 day
-- Tag Suggestion: 1 day
-- Semantic Search: 1–1.5 days
-- **Total:** 2–3 days for all features
+## Chapter 4: Fundamentals 
 
----
-
-## Future Extensibility
+Locally present LLM (ships with the product optionally), small, focused only on text
+Third party LLM provider in API calls (local or local network)
 - Support for Ollama, Claude, Azure OpenAI, custom prompts.
+Robust MCP/Skills interface
+Smart typization of QA (dead end, branch, closure)
+Smart thread compression (eg remove dead ends)
 
 ---
 
-## References
-- UI: QAEditor.vue, QAEditForm.vue, QAListPanel.vue, SettingsDialog.vue
-- Backend: electron/services/llmService.ts, electron/ipc/handlers.ts, electron/preload.ts, electron/services/settingsService.ts
-- Data: src/types/QAPair.ts, src/stores/qaStore.ts
-- Logging: electron/services/logger.ts
+## Implementation Phases & Estimate
+---
+
+
