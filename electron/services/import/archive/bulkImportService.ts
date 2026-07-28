@@ -321,6 +321,14 @@ export function commitArchiveImport(
       const isDuplicate = Boolean(item.originId && originIndex.has(item.originId))
       if (selection.skipDuplicates && isDuplicate) {
         result.skippedDuplicates += 1
+        // Thread the pair that already exists (S5 / IMP-01). Without this the
+        // duplicate's id never reaches createdIds, so the thread below is skipped
+        // by the `createdIds.length > 0` guard — which is why re-importing a
+        // crashed import (pairs written, threads.json not yet saved) produced
+        // zero threads and left the pairs permanently orphaned. Now a re-run
+        // reconstructs the thread from the pairs already on disk.
+        const existingId = item.originId ? originIndex.get(item.originId) : undefined
+        if (existingId) createdIds.push(existingId)
       } else {
         try {
           const created = createPair(item.data)
