@@ -230,7 +230,22 @@ not assume JSON. Adding a format = one registry entry + one pure parser + fixtur
 
 **Input shapes.** `archiveReader.ts` accepts the downloaded `.zip`, an unzipped folder, or the bare
 conversations file. Entries are matched by **basename** (Claude's zip is flat; Takeout nests several
-folders deep).
+folders deep), plus optional **shard patterns** (below).
+
+**ChatGPT exports are sharded.** A real ChatGPT export has no `conversations.json` — it splits
+conversations across `conversations-000.json … conversations-00N.json`. The format therefore
+declares `candidatePatterns: [/^conversations-\d+\.json$/]` and `sharded: true`; `previewArchive`
+reads the first accepted shard to identify the format, then `readMatchingEntries` reads **all**
+shards (each a JSON array of conversations) and concatenates them. Pointing at one shard file also
+pulls in its siblings. Non-sharded formats (Takeout must *not* read every `MyActivity.json`) parse
+the single accepted entry as before.
+
+**ChatGPT export vs. share `mapping` differ — walk `current_node`, not `children`.** The share API
+populates each node's `children` array; the account export leaves `children` **empty** and expresses
+the tree only through `parent` pointers + `current_node`. `chatgptParser.ts` orders messages by
+walking the active branch from `current_node` up via `parent` (then reversing), which works for
+both shapes; a reconstruct-children DFS is the fallback. A forward children-walk silently extracted
+**zero** messages from every export conversation — the original bug.
 
 **A basename match is not identification.** A Google Takeout archive contains
 `My Activity/<Product>/MyActivity.json` for *every* product — YouTube, Chrome, Search, Maps, Gemini
@@ -274,7 +289,7 @@ same conversation produce **identical** keys — verified by test.
 | Claude | `conversations.json` in a zip | **Validated** against a real export (11 conversations → 109 pairs) |
 | Gemini | Takeout `Gemini Apps/MyActivity.json` **or** `.html` | **Validated** against real exports of both variants (875 records each) |
 | Copilot | Privacy-dashboard `copilot-activity-history.csv` | **Validated** against a real export (2613 rows → 375 threads, 1286 pairs) |
-| ChatGPT | `conversations.json` (array of `mapping` trees) | Implemented by reusing `parseChatGPT`; `validated: false` until checked against a real file — the UI warns |
+| ChatGPT | Sharded `conversations-000.json … 00N.json` (arrays of `mapping` trees) | **Validated** against a real export (675 conversations → 3453 pairs). Ordered via the `current_node` walk (export `children` are empty) |
 
 **Gemini Takeout is not threaded.** Takeout exports an *activity log*: each record is a standalone
 prompt + response, and nothing links a follow-up to what preceded it. `geminiTakeout.ts` therefore

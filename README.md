@@ -146,8 +146,9 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 #### Import a whole account export (bulk)
 - Point the same **Import from File** action at a vendor account export — the `.zip` as downloaded,
   the unzipped folder, or the conversations file inside it.
-- Supported: **Claude** and **Gemini** (Google Takeout, HTML or JSON) verified against real exports;
-  **ChatGPT** implemented but unverified, and flagged in the UI before importing.
+- Supported: **Claude**, **Gemini** (Google Takeout, HTML or JSON), and **ChatGPT** — all verified
+  against real exports. ChatGPT exports are sharded (`conversations-000.json …`); every shard is read
+  and merged automatically.
 - A preview shows the conversation count, Q&A count, and date range, with a per-conversation
   checklist. Nothing is written until you confirm; progress reports percentage, ETA, and current item.
 - Re-importing is safe: every imported QA records an `origin_id`, so pairs already in the archive
@@ -322,7 +323,7 @@ identifies the file by its **structure**, not its name or extension.
 | Claude | The export `.zip` (contains `conversations.json`) | Verified against a real export |
 | Gemini | The Google Takeout `.zip` (`My Activity/Gemini Apps/MyActivity.html`) | Verified against a real export |
 | Copilot | `copilot-activity-history.csv` from the Microsoft privacy dashboard | Verified against a real export |
-| ChatGPT | The export `.zip` (contains `conversations.json`) | Implemented but not yet verified — the app warns before importing |
+| ChatGPT | The export `.zip` (sharded `conversations-000.json … 00N.json`) | Verified against a real export (675 conversations → 3453 pairs) |
 
 A preview appears before anything is written: format, conversation count, Q&A count, date range,
 and a checklist of conversations with per-conversation pair counts. Deselect what you don't want,
@@ -330,6 +331,11 @@ then import. Progress shows percentage, ETA, and the item being written.
 
 Two provider-specific caveats:
 
+- **ChatGPT** exports are **sharded**: instead of a single `conversations.json`, a real export
+  contains `conversations-000.json … conversations-00N.json`. All shards are found and merged
+  automatically — select the `.zip`, the unzipped folder, or any one shard file. (Note also that
+  ChatGPT's export encodes the message tree differently from its share links — via `current_node`
+  rather than populated `children` — which the importer accounts for.)
 - **Claude** exports carry no model identifier, so pairs are tagged `claude` only.
 - **Copilot** exports as a CSV rather than an archive, and it *is* threaded — the `Conversation`
   column gives real thread names, so those are reconstructed rather than grouped by date. Get it
@@ -432,33 +438,42 @@ in the Threads panel; optional LLM Lens, Dark Mode, and Settings top-right; Expo
 where relevant, right-click context menus. Toolbars and context menus deliberately carry only
 high-traffic actions — the Command Palette and menu bar are the complete reference.
 
-> Keyboard shortcuts are handled by the app itself (not by the OS menu), so context-sensitive keys
-> like `E` / `D` / `X` only fire when a Q&A is selected and you are not typing in a field. The menu
-> lists them as hints; clicking the menu item always runs the action regardless of focus.
+> Keyboard shortcuts are handled by the app itself (not by the OS menu), so context-sensitive
+> chords like `Ctrl/Cmd+E` / `Ctrl/Cmd+D` / `Ctrl/Cmd+Shift+E` only fire when a Q&A is selected and
+> you are not typing in a field. The menu lists them as hints; clicking the menu item always runs
+> the action regardless of focus.
 
 ---
 
 ## Keyboard Shortcuts
 
+<!-- Generated from shared/accelerators.ts. Do not hand-edit: tests/unit/accelerators.test.ts
+     compares this table against that module and prints the expected rows on failure. -->
+
 | Shortcut | Action | Context |
 |----------|--------|---------|
+| Ctrl/Cmd+S | Save while editing | Edit mode |
+| Escape | Close dialog / cancel current action | Global |
+| Ctrl/Cmd+K | Open command palette | Global |
 | Ctrl/Cmd+F or / | Focus search | Global |
-| Ctrl/Cmd+N | Create new QA | Global |
-| Ctrl/Cmd+S | Save current edit | Edit mode |
+| Ctrl/Cmd+N | Create new Q&A | Global |
 | Ctrl/Cmd+, | Open settings | Global |
-| Escape | Close dialog or cancel | Global |
-| F2 | Rename selected thread | Global |
-| Alt+Up / Alt+Down | Move selected QA | Thread mode |
-| Ctrl/Cmd+E | Edit selected QA | Global |
-| Delete | Delete selected QA (with confirmation) | Global |
-| Ctrl/Cmd+D | Duplicate selected QA into new form | Global |
-| X | Export selected QA or thread to file | Global |
+| F2 | Rename selected thread | Thread selected |
+| Ctrl/Cmd+E | Edit selected Q&A | Q&A selected |
+| Ctrl/Cmd+D | Duplicate selected Q&A into new form | Q&A selected |
+| Delete or Backspace | Delete selected Q&A (with confirmation) | Q&A selected |
+| Alt+Up | Move selected Q&A up in thread | Thread mode |
+| Alt+Down | Move selected Q&A down in thread | Thread mode |
+| Ctrl/Cmd+Shift+E | Export selected Q&A or thread to file | Q&A or thread selected |
 | Ctrl/Cmd+O | Import from file | Global |
 | Ctrl/Cmd+Shift+O | Import from shared link | Global |
-| Ctrl/Cmd+K | Open command palette | Global |
-| ? | Show keyboard help | Global |
-| Ctrl/Cmd+Enter | Submit form | QA editor |
-| Arrow Up / Down | Navigate lists | Thread or QA list |
+| ? | Show keyboard shortcuts | Global |
+| Ctrl/Cmd+Enter | Submit form | Q&A editor |
+| Up or Down | Navigate lists | Thread or Q&A list |
+
+`Ctrl/Cmd+Plus`, `Ctrl/Cmd+Minus`, and `Ctrl/Cmd+0` zoom the whole window — that is Electron's
+built-in behaviour, not an app binding. The **Zoom Content In / Out / Reset** commands under
+**View** scale only the Q&A pane and are reached from the menu or the Command Palette.
 
 ---
 

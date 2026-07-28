@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/core'
+import { HIGHLIGHT_LANGUAGES } from '../utils/highlightLanguages'
 
 const props = defineProps<{
   source: string
 }>()
+
+for (const [name, definition] of HIGHLIGHT_LANGUAGES) {
+  hljs.registerLanguage(name, definition)
+}
 
 const md: MarkdownIt = new MarkdownIt({
   html: false,

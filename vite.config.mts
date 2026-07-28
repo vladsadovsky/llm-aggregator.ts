@@ -14,7 +14,39 @@ function onRollupWarn(warning: { code?: string; id?: string | null }, warn: (war
   warn(warning)
 }
 
+/**
+ * Split the renderer's third-party code away from app code (issue #7).
+ *
+ * The whole app used to ship as one ~1.7 MB chunk that had to be parsed before
+ * anything rendered. Splitting does not reduce total bytes — the curated
+ * highlight.js language list in `src/utils/highlightLanguages.ts` is what does
+ * that — but it lets the browser parse these in parallel and keeps a vendor
+ * chunk stable across app-code edits.
+ *
+ * Keyed on path fragments rather than bare package names so a nested
+ * dependency (e.g. `node_modules/primevue/node_modules/...`) still lands in the
+ * right bucket.
+ */
+function manualChunks(id: string): string | undefined {
+  if (!id.includes('node_modules')) return undefined
+  if (id.includes('highlight.js')) return 'vendor-highlight'
+  // The Aura design-token set is its own ~200 kB and changes independently of
+  // the component code, so it earns a separate chunk.
+  if (id.includes('@primeuix')) return 'vendor-primevue-theme'
+  if (id.includes('primevue')) return 'vendor-primevue'
+  if (id.includes('markdown-it') || id.includes('turndown') || id.includes('entities')) {
+    return 'vendor-markdown'
+  }
+  if (id.includes('/vue/') || id.includes('@vue/') || id.includes('pinia')) return 'vendor-vue'
+  return 'vendor'
+}
+
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: { manualChunks },
+    },
+  },
   plugins: [
     vue(),
     electron([
