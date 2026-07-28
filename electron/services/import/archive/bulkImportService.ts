@@ -14,14 +14,16 @@
  */
 
 import { basename } from 'path'
-import { readArchiveEntry } from './archiveReader'
+import { readArchiveEntry, readMatchingEntries } from './archiveReader'
 import {
   detectArchiveFormat,
   CANDIDATE_ENTRY_NAMES,
+  CANDIDATE_ENTRY_PATTERNS,
   ALL_PATH_HINTS,
   UNSUPPORTED_HINTS,
   type ArchiveFormat,
 } from './formatRegistry'
+import type { ParsedConversation } from '../types'
 import { buildResult } from '../buildResult'
 import { buildOriginIndex } from '../../duplicateService'
 import { createPair } from '../../qaPairService'
@@ -132,6 +134,7 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
   // it finds one a format actually recognizes.
   const entry = await readArchiveEntry(sourcePath, {
     candidateBasenames: CANDIDATE_ENTRY_NAMES,
+    candidatePatterns: CANDIDATE_ENTRY_PATTERNS,
     pathHints: ALL_PATH_HINTS,
     accept: (text) => detectArchiveFormat(text) !== null,
   })
@@ -157,7 +160,21 @@ export async function previewArchive(sourcePath: string): Promise<BulkImportPrev
 
   debugLog('bulkImport', 'detected format', format.id, 'from', entry.entryPath)
 
-  const conversations = format.parse(entry.text)
+  // Sharded exports (ChatGPT) spread conversations across several matching
+  // entries. Read and merge them all; the first accepted entry above only
+  // identified the format. Non-sharded formats parse the single entry as-is.
+  let conversations: ParsedConversation[]
+  if (format.sharded) {
+    const entries = await readMatchingEntries(sourcePath, {
+      candidateBasenames: format.candidateEntries,
+      candidatePatterns: format.candidatePatterns,
+    })
+    debugLog('bulkImport', 'sharded read', entries.length, 'entries:', entries.map((e) => basename(e.entryPath)))
+    conversations = entries.flatMap((e) => format.parse(e.text))
+  } else {
+    conversations = format.parse(entry.text)
+  }
+
   const originIndex = buildOriginIndex()
   const warnings: string[] = []
 

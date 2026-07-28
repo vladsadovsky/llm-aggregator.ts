@@ -126,6 +126,72 @@ export function claudeConversationsJson(
   )
 }
 
+// ─── ChatGPT account export ──────────────────────────────────────────────────
+
+/**
+ * One conversation object in the shape a REAL account export uses: the `mapping`
+ * tree's `children` arrays are EMPTY, and the branch is expressed only through
+ * `parent` pointers plus `current_node`. (The share API, by contrast, populates
+ * `children`.) A parser that walks forward via `children` extracts nothing from
+ * this shape — which is exactly the bug these fixtures pin.
+ */
+export function chatgptExportConversation(opts: {
+  id: string
+  title: string
+  turns: Array<{ q: string; a: string }>
+  createTime?: number
+}) {
+  const mapping: Record<string, unknown> = {}
+  const rootId = `${opts.id}-root`
+  mapping[rootId] = { id: rootId, message: null, parent: null, children: [] }
+
+  let parent = rootId
+  let last = rootId
+  let t = opts.createTime ?? 1_700_000_000
+  opts.turns.forEach((turn, i) => {
+    const uId = `${opts.id}-u${i}`
+    mapping[uId] = {
+      id: uId,
+      parent,
+      children: [], // deliberately empty — the export shape
+      message: { id: uId, author: { role: 'user' }, create_time: t++, content: { content_type: 'text', parts: [turn.q] } },
+    }
+    parent = uId
+    const aId = `${opts.id}-a${i}`
+    mapping[aId] = {
+      id: aId,
+      parent,
+      children: [],
+      message: {
+        id: aId,
+        author: { role: 'assistant' },
+        create_time: t++,
+        metadata: { model_slug: 'gpt-4o' },
+        content: { content_type: 'text', parts: [turn.a] },
+      },
+    }
+    parent = aId
+    last = aId
+  })
+
+  return {
+    conversation_id: opts.id,
+    id: opts.id,
+    title: opts.title,
+    create_time: opts.createTime ?? 1_700_000_000,
+    default_model_slug: 'gpt-4o',
+    current_node: last,
+    mapping,
+  }
+}
+
+/** A ChatGPT `conversations.json` (or one shard of it): an array of the above. */
+export function chatgptConversationsJson(
+  conversations: Array<{ id: string; title: string; turns: Array<{ q: string; a: string }>; createTime?: number }>,
+): string {
+  return JSON.stringify(conversations.map((c) => chatgptExportConversation(c)))
+}
+
 // ─── Copilot privacy-dashboard CSV ───────────────────────────────────────────
 
 /** Rows are newest-first, as the dashboard exports them, and the file has a BOM. */

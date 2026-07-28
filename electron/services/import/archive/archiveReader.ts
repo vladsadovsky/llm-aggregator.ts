@@ -21,7 +21,7 @@
  */
 
 import { readFileSync, existsSync, statSync, readdirSync } from 'fs'
-import { join, basename as pathBasename, extname } from 'path'
+import { join, basename as pathBasename, dirname, extname } from 'path'
 import yauzl from 'yauzl'
 import { debugLog, debugError } from '../../logger'
 
@@ -38,6 +38,11 @@ export interface ReadArchiveOptions {
   /** Entry basenames (lowercase) worth probing. */
   candidateBasenames: string[]
   /**
+   * Regex patterns matched against the lowercase basename, for exports whose
+   * conversations file is sharded (ChatGPT: `conversations-000.json`, …).
+   */
+  candidatePatterns?: RegExp[]
+  /**
    * Structural check. The first candidate accepted is returned. When omitted,
    * the first candidate found is returned unchecked.
    */
@@ -47,6 +52,15 @@ export interface ReadArchiveOptions {
    * ordering optimization — correctness comes from `accept`.
    */
   pathHints?: string[]
+}
+
+/** Build a basename matcher from exact names plus optional shard patterns. */
+function makeMatcher(basenames: string[], patterns: RegExp[] = []): (entryPath: string) => boolean {
+  const wanted = new Set(basenames.map((n) => n.toLowerCase()))
+  return (entryPath: string): boolean => {
+    const base = pathBasename(entryPath).toLowerCase()
+    return wanted.has(base) || patterns.some((p) => p.test(base))
+  }
 }
 
 /** Rank candidates so hinted paths are probed before everything else. */
@@ -72,7 +86,10 @@ function orderCandidates<T extends { entryPath: string }>(items: T[], pathHints:
  * stashed and read later. Listing and fetching are therefore separate passes.
  * Each pass only costs a central-directory read.
  */
-function listZipCandidates(zipPath: string, wanted: Set<string>): Promise<Array<{ entryPath: string; size: number }>> {
+function listZipCandidates(
+  zipPath: string,
+  match: (entryPath: string) => boolean,
+): Promise<Array<{ entryPath: string; size: number }>> {
   return new Promise((resolve, reject) => {
     yauzl.open(zipPath, { lazyEntries: true }, (openErr, zipfile) => {
       if (openErr || !zipfile) {
@@ -83,7 +100,7 @@ function listZipCandidates(zipPath: string, wanted: Set<string>): Promise<Array<
       zipfile.on('error', reject)
       zipfile.on('entry', (entry) => {
         const name = entry.fileName
-        if (!name.endsWith('/') && wanted.has(pathBasename(name).toLowerCase())) {
+        if (!name.endsWith('/') && match(name)) {
           found.push({ entryPath: name, size: entry.uncompressedSize })
         }
         zipfile.readEntry()
@@ -141,8 +158,8 @@ function fetchZipEntry(zipPath: string, entryPath: string): Promise<string | nul
 
 /** Read matching zip entries in preference order, stopping at the first accepted. */
 async function readZipEntry(zipPath: string, options: ReadArchiveOptions): Promise<ArchiveEntryText | null> {
-  const wanted = new Set(options.candidateBasenames.map((n) => n.toLowerCase()))
-  const candidates = await listZipCandidates(zipPath, wanted)
+  const match = makeMatcher(options.candidateBasenames, options.candidatePatterns)
+  const candidates = await listZipCandidates(zipPath, match)
   debugLog('archiveReader', 'zip candidates:', candidates.map((c) => c.entryPath))
 
   for (const candidate of orderCandidates(candidates, options.pathHints ?? [])) {
@@ -163,7 +180,7 @@ async function readZipEntry(zipPath: string, options: ReadArchiveOptions): Promi
 }
 
 /** Collect candidate file paths under a folder, up to `maxDepth` levels deep. */
-function collectFolderCandidates(dir: string, wanted: Set<string>, maxDepth: number): string[] {
+function collectFolderCandidates(dir: string, match: (entryPath: string) => boolean, maxDepth: number): string[] {
   const found: string[] = []
 
   const walk = (current: string, depth: number): void => {
@@ -183,7 +200,7 @@ function collectFolderCandidates(dir: string, wanted: Set<string>, maxDepth: num
       }
       if (isDir) {
         if (depth > 0) walk(full, depth - 1)
-      } else if (wanted.has(name.toLowerCase())) {
+      } else if (match(full)) {
         found.push(full)
       }
     }
@@ -195,8 +212,8 @@ function collectFolderCandidates(dir: string, wanted: Set<string>, maxDepth: num
 
 /** Find an acceptable candidate inside an unzipped export folder. */
 function readFolderEntry(dir: string, options: ReadArchiveOptions): ArchiveEntryText | null {
-  const wanted = new Set(options.candidateBasenames.map((n) => n.toLowerCase()))
-  const candidates = collectFolderCandidates(dir, wanted, 4).map((entryPath) => ({ entryPath }))
+  const match = makeMatcher(options.candidateBasenames, options.candidatePatterns)
+  const candidates = collectFolderCandidates(dir, match, 4).map((entryPath) => ({ entryPath }))
   debugLog('archiveReader', 'folder candidates:', candidates.map((c) => c.entryPath))
 
   for (const { entryPath } of orderCandidates(candidates, options.pathHints ?? [])) {
@@ -248,4 +265,59 @@ export async function readArchiveEntry(
   // is named, and let detection decide.
   debugLog('archiveReader', 'reading plain file', sourcePath)
   return { entryPath: sourcePath, text: readFileSync(sourcePath, 'utf-8') }
+}
+
+function readFolderPaths(paths: string[]): ArchiveEntryText[] {
+  const out: ArchiveEntryText[] = []
+  for (const p of paths) {
+    try {
+      out.push({ entryPath: p, text: readFileSync(p, 'utf-8') })
+    } catch (err) {
+      debugError('archiveReader', 'could not read matching entry', p, err)
+    }
+  }
+  return out
+}
+
+/**
+ * Read EVERY entry matching the given basenames/patterns — used for sharded
+ * exports (ChatGPT splits its conversations across `conversations-000.json` …
+ * `conversations-00N.json`, which all belong to one logical export and must be
+ * merged). The caller already knows the format, so there is no `accept` step.
+ *
+ * For a bare file the user pointed at, the sibling shards in the same directory
+ * are picked up too, so choosing any one shard imports the whole export.
+ */
+export async function readMatchingEntries(
+  sourcePath: string,
+  options: { candidateBasenames: string[]; candidatePatterns?: RegExp[] },
+): Promise<ArchiveEntryText[]> {
+  if (!existsSync(sourcePath)) {
+    throw new Error(`File not found: ${sourcePath}`)
+  }
+  const match = makeMatcher(options.candidateBasenames, options.candidatePatterns)
+  const stats = statSync(sourcePath)
+
+  if (stats.isDirectory()) {
+    return readFolderPaths(collectFolderCandidates(sourcePath, match, 4))
+  }
+
+  if (extname(sourcePath).toLowerCase() === '.zip') {
+    const candidates = await listZipCandidates(sourcePath, match)
+    const out: ArchiveEntryText[] = []
+    for (const candidate of candidates) {
+      if (candidate.size > MAX_ENTRY_BYTES) {
+        debugLog('archiveReader', 'skipping oversized shard', candidate.entryPath, candidate.size)
+        continue
+      }
+      const text = await fetchZipEntry(sourcePath, candidate.entryPath)
+      if (text !== null) out.push({ entryPath: candidate.entryPath, text })
+    }
+    return out
+  }
+
+  // Bare file: read it plus any sibling shards in the same directory.
+  const siblings = collectFolderCandidates(dirname(sourcePath), match, 0)
+  const paths = Array.from(new Set([sourcePath, ...siblings]))
+  return readFolderPaths(paths)
 }
