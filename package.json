@@ -14,7 +14,7 @@
     "dev:debug": "set VITE_DEBUG_LEVEL=debug&& vite --config vite.config.mts",
     "dev:server": "vite --config vite.config.server.mts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
-    "check": "npm run typecheck && eslint . && npm test && vite build",
+    "check": "npm run typecheck && eslint . && npm test && vite build && npm audit --omit=dev --audit-level=high",
     "build:icons": "echo 'Generate icons from build/llm-aggregator.svg using electron-icon-builder or online tools. Output to public/icons. See build/README.md'",
     "electron:dev": "vite --config vite.config.mts",
     "electron:prod": "set NODE_ENV=production&& npm run build && electron .",
