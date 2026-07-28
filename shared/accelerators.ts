@@ -23,6 +23,22 @@
  * Shortcuts dialog row, and usage text all follow automatically. The README
  * table is checked (not generated) by the same test, which prints the expected
  * rows on failure.
+ *
+ * ── Modifier convention (issue #8) ─────────────────────────────────────────
+ * The rule, now enforced by `tests/unit/accelerators.test.ts` rather than left
+ * to inference:
+ *
+ *   1. A command action uses `Mod` (Ctrl on Win/Linux, Cmd on macOS) as its
+ *      primary modifier — `Mod+N`, `Mod+E`, `Mod+O`, `Mod+Enter`.
+ *   2. `Shift` combines with `Mod` for the secondary/opposite variant of a pair
+ *      — `Mod+O` import-from-file vs `Mod+Shift+O` import-from-link; `Mod+Shift+E`
+ *      export. No action is bound to a bare unmodified letter (that is how a lone
+ *      `X` ended up next to `Ctrl+X` in the Edit menu).
+ *   3. `Alt` is reserved for **positional** moves only — `Alt+Up` / `Alt+Down`.
+ *   4. A small set of standard keys stay unmodified because the OS/user expects
+ *      them that way: `Escape` (cancel), `F2` (rename), `Delete`/`Backspace`
+ *      (delete), `?` (help), `/` (focus search), and bare `Up`/`Down` (list
+ *      navigation).
  */
 
 /** How to spell modifier keys for a given audience. */

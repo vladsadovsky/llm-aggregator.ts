@@ -2,6 +2,7 @@ import { test as base, _electron as electron, type ElectronApplication, type Pag
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
+import { isSameUserDataDir } from './isolation';
 
 /**
  * Per-test isolation for the Electron app.
@@ -80,17 +81,19 @@ export const test = base.extend<{
         });
 
         // Fail loudly rather than silently testing against the real profile.
+        // Exact-path equality, not startsWith (issue #15): the fixture creates
+        // one exact directory, and a string prefix check would accept a sibling
+        // such as `<root>/userdata-old` for an expected `<root>/userdata`. This
+        // assertion is the barrier that keeps e2e off the developer's real
+        // secrets/settings, so it must fail closed.
         const resolvedUserData = await electronApp.evaluate(({ app }) => app.getPath('userData'));
-        const withinTempRoot = path
-            .resolve(resolvedUserData)
-            .toLowerCase()
-            .startsWith(path.resolve(userDataDir).toLowerCase());
-        if (!withinTempRoot) {
+        const expectedUserData = path.resolve(userDataDir);
+        if (!isSameUserDataDir(resolvedUserData, expectedUserData)) {
             await electronApp.close();
             throw new Error(
                 `e2e isolation broken: Electron resolved userData to "${resolvedUserData}", ` +
-                `expected it under "${userDataDir}". Tests would read the real secrets.enc.json ` +
-                `and settings.json. Do not weaken this check — see issue #4.`,
+                `expected exactly "${expectedUserData}". Tests would read the real secrets.enc.json ` +
+                `and settings.json. Do not weaken this check — see issues #4 and #15.`,
             );
         }
 
