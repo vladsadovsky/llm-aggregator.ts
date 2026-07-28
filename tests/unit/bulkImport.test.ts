@@ -38,6 +38,7 @@ import { buildResult, buildOriginId } from '../../electron/services/import/build
 import { parseClaude } from '../../electron/services/import/parsers/claudeParser'
 import { fingerprintPair } from '../../electron/services/duplicateService'
 import { commitArchiveImport } from '../../electron/services/import/archive/bulkImportService'
+import { addTag } from '../../electron/services/tagDictionaryService'
 import type { BulkImportPreview, BulkImportThread } from '../../electron/services/import/archive/archiveTypes'
 
 // commitArchiveImport writes real files via these three modules — mock them so
@@ -75,13 +76,22 @@ vi.mock('../../electron/services/duplicateService', async (importOriginal) => {
   return { ...actual, buildOriginIndex: vi.fn(() => new Map()) }
 })
 
+// Without this mock, registerImportTags() reaches tagDictionaryService →
+// app.getPath() under environment:'node' and throws; the throw is swallowed by
+// registerImportTags's catch, so the commit tests passed without ever proving
+// tags were registered. Mock it and assert the effect (D5 / TEST-01).
+vi.mock('../../electron/services/tagDictionaryService', () => ({
+  listTags: vi.fn(() => []),
+  addTag: vi.fn(),
+}))
+
 /** One BulkImportThread with `count` items, all with a distinct originId. */
-function makeThread(sourceId: string, count: number): BulkImportThread {
+function makeThread(sourceId: string, count: number, tags: string[] = []): BulkImportThread {
   return {
     sourceId,
     name: `Thread ${sourceId}`,
     nameWasDerived: false,
-    tags: [],
+    tags,
     items: Array.from({ length: count }, (_, i) => ({
       data: {
         title: `${sourceId} item ${i}`,
@@ -692,6 +702,22 @@ describe('commitArchiveImport', () => {
     const finalThreads = savedThreadsCalls.at(-1)!
     const names = Object.values(finalThreads).map((t) => t.name)
     expect(names).toEqual(['2026-07-26 — Thread a'])
+  })
+
+  it('registers every imported tag in the tag dictionary, deduplicated', () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+    vi.mocked(addTag).mockClear()
+
+    const preview = makePreview([
+      makeThread('a', 1, ['bulk', 'gemini']),
+      makeThread('b', 1, ['bulk', 'claude']),
+    ])
+    commitArchiveImport(preview, { threadSourceIds: ['a', 'b'], skipDuplicates: false })
+
+    // `bulk` appears on both threads but is registered once; no throw is swallowed.
+    const registered = vi.mocked(addTag).mock.calls.map((c) => c[0])
+    expect(new Set(registered)).toEqual(new Set(['bulk', 'gemini', 'claude']))
   })
 })
 
