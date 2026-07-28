@@ -1,8 +1,10 @@
 # Release Architecture, Stability, and Security Review
 
-**Date:** 2026-07-27  
-**Reviewed version:** `1.3.2`, branch `vlads-dev`, commit `49c42a7`  
-**Decision:** **Do not cut the release yet.** The feature direction is sound, but the privileged-window navigation/IPC boundary and the end-of-support Electron runtime are release blockers.
+**Date:** 2026-07-27
+
+**Reviewed version:** `1.3.2`, branch `vlads-dev`, commit `e3421bc`
+
+**Decision:** **Do not cut the release yet.** The feature direction is sound, but the privileged-window navigation/IPC boundary, the end-of-support Electron runtime, and fix-available vulnerable parsing dependencies on attacker-controlled content paths are release blockers.
 
 ## Executive takeaways
 
@@ -30,16 +32,19 @@ Reviewed:
 Validation performed:
 
 - `npm run build`: **passed** (`vue-tsc --noEmit` plus all Vite builds).
-- Tracked unit tests only, after the concurrent ChatGPT fixture work completed: **195 passed, 1 platform-dependent test skipped**.
+- `npm test`, after the concurrent ChatGPT fixture work completed: **195 passed, 1 platform-dependent test skipped**. Two passing bulk-import cases still emit a non-fatal tag-dictionary `TypeError`; see TEST-01.
+- `npx eslint .`: **0 errors, 23 warnings**. Most are type/cleanup debt; one is the expected `v-html` security warning on `MarkdownRenderer.vue`.
+- `npm audit --omit=dev`: **4 vulnerable package entries (3 high, 1 moderate)**. The runtime-reachable findings are detailed under DEP-01; the PostCSS entry is currently a build-time toolchain exposure.
 - Persistent Playwright/visual suites were not run, per repository instructions.
 
-The working tree changed externally during the review. ChatGPT sharded-export support, fixtures, tests, and documentation were completed after the initial baseline and committed as `49c42a7`. This document reviews that committed filesystem state but does not modify those files. Each concurrent pass was handled by re-reading only the changed files, their immediate contracts, and their focused tests; unrelated areas were not rescanned.
+The working tree changed externally during the review. ChatGPT sharded-export support, fixtures, tests, and documentation were completed after the initial baseline and committed as `49c42a7`. A final narrow UI fix in `e3421bc` now catches rejected file-import IPC calls and reports them to the user. This document reviews the resulting `e3421bc` filesystem state but does not modify those implementation files. Each concurrent pass was handled by re-reading only the changed files, their immediate contracts, and their focused tests; unrelated areas were not rescanned.
 
 ## Architecture assessment
 
 ### What is working well
 
 - **Import layering is directionally correct.** `formatRegistry.ts`, pure provider parsers, `archiveReader.ts`, `buildResult.ts`, and `bulkImportService.ts` separate recognition, parsing, normalization, and commit responsibilities. This is the best-modularized feature family in the repository. The latest ChatGPT pass also correctly reconstructs the selected `current_node` branch and covers sharded ZIP, extracted-folder, and bare-shard entry points.
+- **File-import rejection is now visible.** Commit `e3421bc` catches rejected import IPC calls at the UI coordinator and presents the error instead of leaving an unhandled promise rejection.
 - **Bulk preview keeps bodies out of the renderer.** The main process retains full content and exposes only summaries through a preview token.
 - **The Gemini Takeout implementation handles difficult real-world details.** It structurally distinguishes Gemini from other Takeout products, supports HTML and JSON, reports lossy cases, and avoids pretending the activity log contains real conversation grouping.
 - **Secret values are write-only from the renderer's perspective.** Status projections expose presence, provenance, and masked previews rather than raw stored values.
@@ -82,12 +87,13 @@ flowchart LR
 |---|---|---|---|
 | SEC-01 | P0 | The privileged main window can navigate to external content, while preload exposes mutating APIs and IPC handlers do not validate senders. | Remote content can reach archive/settings operations after a user follows an imported link. |
 | SEC-02 | P0 | Electron `33.4.11` is end-of-support. | The shipped Chromium/Node/Electron security base no longer receives supported fixes. |
+| DEP-01 | P0 | Runtime parsers used on imported content have fix-available algorithmic-complexity advisories. | A crafted imported answer or QA frontmatter can freeze the renderer or main process. |
 | TEST-01 | P1 | Unit tests are green, but the required build command and packaging scripts do not run them. | A later release build can succeed while tests fail. |
 | SET-01 | P1 | Settings save and connection testing use inconsistent draft/persisted state. | Partial saves, wrong-provider connection tests, and invalid provider/model pairs are possible. |
 | DATA-01 | P1 | Persistence is direct, non-atomic, and split between renderer and main. | Crashes or write failures can truncate files or leave pairs/threads inconsistent. |
 | IMP-01 | P1 | Bulk commit is not transactional or cancellable and has avoidable quadratic filesystem work. | Large real exports can block the main process and fail after partial writes. |
 | IMP-02 | P1 | Import resource limits, preview ownership/lifetime, and selection identity are incomplete. | Large/malicious archives can exhaust memory; previews can leak; idless/duplicate source IDs cannot be selected correctly. |
-| SEC-03 | P1 | The Gemini remote-render window follows navigation with the default session and no permission/window/redirect policy. | The remote-content surface is broader than required and share tokens are logged. |
+| SEC-03 | P1 | Shared-link transport lacks a common redirect/timeout/size policy; the Gemini remote-render window also uses the default session without permission/window containment. | Remote imports can consume unbounded resources, and the browser-backed surface is broader than required. |
 | SEC-04 | P1 | `safeStorage` availability is treated as equivalent to secure OS storage. Writes are non-atomic and legacy plaintext remains. | Linux `basic_text` can be mislabeled secure; a failed write can lose keys; plaintext backup risk persists. |
 | DATA-02 | P1 | Archive-scoped data is stored in inconsistent namespaces and the embedding schema lacks model/archive identity. | Switching data directories can mix indexes; model changes can reuse incompatible vectors. |
 | LLM-01 | P1 | Provider capabilities are represented as runtime exceptions and UI notes rather than enforceable contracts. | Anthropic can be selected for OpenAI-only paths; several reliability/accounting defects remain. |
@@ -95,6 +101,7 @@ flowchart LR
 | ARCH-01 | P2 | Contracts are duplicated across service, preload, global declarations, and renderer types. | Drift is already present and will increase with every provider/import option. |
 | ARCH-02 | P2 | Several UI components are feature coordinators rather than components. | Changes are hard to isolate and regression-test; global custom events create hidden coupling. |
 | DOC-01 | P2 | User guidance and build notes disagree with the current menu and feature behavior. | Operators are sent to nonexistent locations and maintainers get contradictory intent. |
+| REL-01 | P2 | Windows artifacts are unsigned and there is no checked-in release workflow for checksums/provenance. | Wider distribution will trigger publisher warnings and gives recipients no repository-defined artifact verification path. |
 
 ## Detailed findings and proposals
 
@@ -129,24 +136,46 @@ Electron's own security checklist specifically calls for limiting navigation/win
 
 ### SEC-02 — unsupported Electron runtime
 
-`package-lock.json` and the installed package resolve Electron to `33.4.11`. Electron's release page marks that line end-of-support, and Electron officially supports only the latest three stable major versions.
+`package-lock.json` and the installed package resolve Electron to `33.4.11`. Electron 33 reached end of life on 2025-04-29. As of this review, Electron officially supports only the latest three stable major versions: 41, 42, and 43.
 
 Required fix:
 
-- Upgrade one major at a time to a currently supported line and the latest patch/minor in that line.
+- Review breaking changes one major at a time, then land on a currently supported line and its latest patch/minor. On the review date, the newest stable patches are 41.10.3, 42.7.1, and 43.2.0; prefer the newest line compatible with the product's OS support policy.
 - Run build, unit, Electron E2E smoke, shared-link import, and Windows packaging checks after each major.
 - Add a scheduled dependency/Electron currency check to the release process.
 
-Sources: [Electron 33.4.11 release status](https://releases.electronjs.org/release/v33.4.11), [Electron support policy](https://www.electronjs.org/docs/latest/tutorial/electron-timelines).
+Sources: [Electron release/EOL schedule](https://releases.electronjs.org/schedule), [Electron support policy](https://www.electronjs.org/docs/latest/tutorial/electron-timelines), [current stable releases](https://releases.electronjs.org/?channel=stable).
+
+### DEP-01 — vulnerable parsers are reachable through imported content
+
+The dependency audit is not just generic lockfile noise:
+
+- `MarkdownRenderer.vue` instantiates `markdown-it@14.1.0` with both `typographer: true` and `linkify: true`.
+- Those exact paths reach the current quadratic-CPU advisories in `markdown-it` and its `linkify-it@5.0.0` dependency. A few hundred kilobytes of crafted quotes or repeated `mailto:` text can block the renderer event loop.
+- `qaPairService.ts` parses QA frontmatter with `gray-matter@4.0.3`, which resolves its own `js-yaml@3.14.2`. The affected merge-key path can consume quadratic CPU in the main process while loading a crafted archive file.
+- `postcss@8.5.6` also has high advisories. In this repository it is reached through Vite/Vue compilation, not application parsing at runtime; it still needs a toolchain update, but it is not equivalent to the two imported-content paths above.
+
+Required fix:
+
+- Regenerate the lockfile with patched versions: `markdown-it >= 14.2.0`, `linkify-it >= 5.0.2`, `js-yaml >= 3.15.0` for the gray-matter branch, and `postcss >= 8.5.18`.
+- Confirm the packaged bundle actually contains the patched parser versions, not only patched top-level declarations.
+- Add `npm audit --omit=dev` to the release gate with an explicit, reviewed exception mechanism for demonstrably build-only advisories.
+- Keep bounded input sizes even after upgrading; dependency fixes do not replace application-level import/render budgets.
+- Add small regression fixtures for the pathological quote, `mailto:`, and YAML merge-chain shapes with a conservative execution-time ceiling.
+
+Sources: [markdown-it smartquotes advisory](https://github.com/advisories/GHSA-6v5v-wf23-fmfq), [linkify-it `mailto:` advisory](https://github.com/advisories/GHSA-v245-v573-v5vm), [js-yaml merge-chain advisory](https://github.com/advisories/GHSA-52cp-r559-cp3m), [PostCSS source-map advisory](https://github.com/advisories/GHSA-r28c-9q8g-f849).
 
 ### TEST-01 — the tests improved, but the release gate does not enforce them
 
-The concurrent ChatGPT work added deterministic fixtures and updated tracked assertions; the current tracked unit suite is green. However, `npm run build` and the packaging scripts still do not require unit tests, so a future code/test mismatch would not block a canonical release build.
+The concurrent ChatGPT work added deterministic fixtures and updated tracked assertions; the current tracked unit suite is green. However, `npm run build` and the packaging scripts still do not require unit tests, so a future code/test mismatch would not block a canonical release build. There is also no checked-in CI workflow to enforce an equivalent gate outside a developer workstation.
+
+The green count also overstates one integration seam: two `commitArchiveImport` tests emit `tag dictionary update failed TypeError` because the Electron `app` dependency is not available in that test path. `registerImportTags()` catches the failure, so the tests pass without demonstrating that imported tags were registered. Expected negative-path logging in other tests is legitimate; this one is an unverified side effect.
 
 Proposal:
 
 - Preserve the new sanitized ChatGPT fixtures as the regression source of truth.
 - Preserve the new ZIP, extracted-folder, and bare-sibling sharded cases. Add assertions for deterministic numeric shard ordering, mixed matching/non-matching entries, aggregate limits, duplicate conversations across shards, and one unreadable or structurally corrupt shard.
+- Supply a complete Electron/settings test seam for bulk commit and assert tag-dictionary effects. Treat unexpected error logs as test failures unless the test explicitly expects them.
 - Add a non-mutating `npm run check` that runs typecheck, `eslint .`, unit tests, and build. Keep the existing expensive UI suites separate.
 - Make release packaging depend on `check`, not only `build`.
 
@@ -156,7 +185,7 @@ Three bugs share the same root:
 
 - `SettingsDialog.save()` persists settings first, emits the Lens change, then saves keys. If secure storage fails, the dialog stays open but settings are already active; pressing Cancel cannot undo them.
 - `testConnection()` saves a typed key, then calls `ai:testConnection` with no draft provider/model. The main process tests the previously persisted provider/model, not necessarily the provider currently selected in the dialog.
-- Provider changes load models asynchronously. Save is not gated by that load, so a provider can be persisted with a model from another provider.
+- Provider changes load models asynchronously. Save is not gated by that load, so a provider can be persisted with a model from another provider. `loadModelCatalog()` also reads `llmProvider.value` again after its `await`; a slower response for the previous provider can therefore be stored under the newly selected provider and replace the current model.
 
 Changing `dataDirectory` has the same partial-application problem: it becomes the active setting before the target is validated and loaded successfully.
 
@@ -174,12 +203,20 @@ Proposal:
 
 The renderer can also replace the entire thread map through `threads:save`. Shared-link and Markdown imports create pairs and then construct threads through many independent IPC calls. Bulk import does the same work in main through a separate path.
 
+Read-side failure semantics compound the risk:
+
+- Corrupt settings fall back to defaults; corrupt tags and embeddings fall back to empty stores. A later ordinary save can overwrite the recoverable corrupt file with that default/empty projection.
+- A malformed QA Markdown file is logged and omitted from `listAllPairs()`, while duplicate IDs silently replace one another in the returned object.
+- The control files and frontmatter are cast to TypeScript interfaces without schema/version validation, so structurally invalid but parseable data can travel farther before failing.
+
 Proposal:
 
 - Add main-owned `ArchiveRepository`, `SettingsRepository`, and `SecretRepository`.
 - Use validated commands (`CreateThread`, `AddPairsToThread`, `MovePair`, `CommitImport`) instead of whole-state replacement.
 - Serialize mutations per archive.
 - Write to a sibling temporary file, flush when warranted, then atomically replace; retain/recover a last-known-good copy for small JSON control files.
+- Quarantine parse failures instead of converting them into writable empty/default state. Report skipped QA paths and duplicate IDs as archive-health errors, and require an explicit repair decision before overwrite.
+- Version and runtime-validate every persisted control-file schema; perform migrations against a backup.
 - Return a commit ID/result only after every required control-file write succeeds.
 - Keep renderer stores as projections of committed state, not writable sources of truth.
 
@@ -226,9 +263,9 @@ Proposal:
 - Assign an internal unique `previewThreadId` to every row; keep `sourceId` only for dedup/provenance.
 - Stream or spill large preview bodies to a private temporary directory instead of retaining the complete object graph indefinitely.
 
-### SEC-03 — Gemini remote rendering needs containment
+### SEC-03 — shared-link transport and Gemini rendering need containment
 
-The supported direct Gemini hosts are more accurate than before, but `renderGemini()` loads a user-supplied URL in a hidden `BrowserWindow` with:
+The supported direct Gemini hosts are more accurate than before, but the documented `g.co/gemini/share/...` short-link form is still not resolved. `renderGemini()` loads a user-supplied URL in a hidden `BrowserWindow` with:
 
 - `http:` accepted as well as `https:`;
 - automatic navigation/redirect behavior;
@@ -239,13 +276,15 @@ The supported direct Gemini hosts are more accurate than before, but `renderGemi
 
 Both the main and renderer debug traces also log raw share URLs/IDs.
 
+The JSON transport has related resource-policy gaps: `fetchJson()` follows redirects automatically, has no request timeout, and buffers the complete response before parsing without a byte ceiling. Its current callers construct fixed provider API origins, which limits SSRF exposure, but the absence of one shared transport policy is fragile as more providers and aliases are added.
+
 Proposal:
 
 - Require HTTPS, no credentials, no non-default port, and an exact registered host/path.
 - Resolve documented short links through a bounded redirect resolver; validate every hop and the final canonical provider URL.
 - Use a unique non-persistent session partition, deny permissions, deny popups, and block off-policy main-frame navigation/redirects.
 - Redact share tokens from logs.
-- Limit network response sizes and add explicit request/load timeouts.
+- Apply redirect-hop, final-origin, response-size, and timeout limits to both JSON and browser-backed transports.
 - Return structured errors (`invalid-url`, `redirect-disallowed`, `private-or-expired`, `format-changed`).
 
 ### SEC-04 — safe storage is a good base, not a complete guarantee
@@ -353,7 +392,7 @@ Examples:
 
 - Runtime menu places archive maintenance under **Tools**, while README/build notes and `insightsService.noEmbeddingsMessage()` still point to **View** or **Settings → AI**.
 - Build notes claim the embeddings action is disabled for Anthropic; the command/menu remains available.
-- The import technical findings still say ChatGPT account export is unverified, while the current working tree marks it validated.
+- The import technical findings still say ChatGPT account export is unverified, while commit `49c42a7` marks it validated.
 - Older design notes describe desired behavior as if it were implemented.
 
 Proposal:
@@ -362,14 +401,27 @@ Proposal:
 - Add a short status banner to superseded review/design documents rather than rewriting historical analysis.
 - Keep `build-notes.md` behavioral and concise; keep dated architectural reviews immutable.
 
+### REL-01 — distribution integrity is deferred
+
+`electron-builder.yml` defines Windows installers, including MSI, but no signing configuration. README correctly states that the MSI is unsigned. The repository also has no checked-in release workflow that binds a commit to tested artifacts, hashes, or provenance.
+
+This is acceptable for a private local build when the operator understands the warning. It is not a good long-term distribution boundary for broader use.
+
+Proposal:
+
+- Define the intended release audience explicitly. Keep unsigned artifacts clearly labeled as development/private builds.
+- Before broader distribution, sign Windows installers and executables, notarize/sign macOS artifacts, and publish SHA-256 hashes plus the source commit and build environment.
+- Build release artifacts only after the non-mutating check gate passes; retain a release manifest covering version, commit, dependency lock hash, targets, and signatures.
+
 ## Recommended delivery sequence
 
 ### Phase 0 — release blockers
 
 1. Lock primary-window navigation/new-window behavior and validate every IPC sender.
 2. Upgrade Electron to a supported line.
-3. Add `npm run check` and make packaging depend on it.
-4. Run a focused Electron security smoke test and Windows package launch test.
+3. Upgrade the vulnerable Markdown/linkification/YAML dependencies and clear or explicitly triage the dependency audit.
+4. Add `npm run check` and make packaging depend on it.
+5. Run a focused Electron security smoke test and Windows package launch test.
 
 ### Phase 1 — release stabilization
 
@@ -392,6 +444,7 @@ Proposal:
 - [ ] Main window cannot navigate to remote content or create renderer windows.
 - [ ] All privileged IPC handlers reject an unexpected sender/frame and malformed payload.
 - [ ] Electron is on a supported major and current patch/minor.
+- [ ] Imported-content parser dependencies are on patched versions; the production audit has no untriaged high/critical result.
 - [ ] `npm run check` is green; no probe-only or failing tracked tests.
 - [ ] Settings connection test uses the visible draft provider/model/key.
 - [ ] Settings failure does not silently leave a partially applied state.
@@ -401,9 +454,10 @@ Proposal:
 - [ ] Linux `basic_text` is not reported as secure storage.
 - [ ] Switching data directories cannot reuse another archive's tag path or embedding index.
 - [ ] README, in-app guidance, menus, and build notes agree.
+- [ ] Any externally distributed artifact has a commit-linked manifest and appropriate platform signing, or is explicitly labeled a private unsigned build.
 
 ## Overall judgment
 
 The code is not a failed design; it is a promising feature set sitting on a persistence and privilege boundary that has not caught up with its scope. The pure import layers, secret resolver, UI improvements, and test seams are good foundations. The safest route is to finish the boundary work now—before more providers, export targets, or agent-like features multiply the number of privileged commands and partial-write paths.
 
-Once SEC-01 and SEC-02 are closed and the green test suite is enforced by the release gate, the release can be reconsidered. The Phase 1 items should be treated as the stability budget for broad use, with atomic persistence and settings correctness ahead of further feature additions.
+Once SEC-01, SEC-02, and DEP-01 are closed and the green test suite is enforced by the release gate, the release can be reconsidered. The Phase 1 items should be treated as the stability budget for broad use, with atomic persistence and settings correctness ahead of further feature additions.
