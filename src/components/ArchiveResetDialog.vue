@@ -145,7 +145,9 @@ function close() {
           <li><strong>{{ preview.pairs }}</strong> Q&amp;A {{ preview.pairs === 1 ? 'pair' : 'pairs' }}</li>
           <li><strong>{{ preview.threads }}</strong> {{ preview.threads === 1 ? 'thread' : 'threads' }}</li>
           <li><strong>{{ preview.tags }}</strong> tag dictionary {{ preview.tags === 1 ? 'entry' : 'entries' }}</li>
-          <li v-if="preview.hasEmbeddings">All generated embeddings</li>
+          <li v-if="preview.hasEmbeddings">
+            All generated embeddings
+          </li>
         </ul>
         <p class="intro">
           Your settings, data directory and API keys are kept. Everything cleared is

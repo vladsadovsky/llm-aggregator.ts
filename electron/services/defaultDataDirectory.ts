@@ -1,6 +1,6 @@
 import { existsSync } from 'fs'
 import { homedir } from 'os'
-import { join, win32 } from 'path'
+import { win32 } from 'path'
 
 const APP_DATA_FOLDER = 'LLM-Aggregator'
 const ONEDRIVE_ENV_KEYS = ['OneDrive', 'OneDriveConsumer', 'OneDriveCommercial'] as const

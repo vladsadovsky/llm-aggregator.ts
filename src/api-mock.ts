@@ -1,4 +1,4 @@
-import type { ElectronAPI, QAPairData, AppSettings, TagDictionary, SecretsStatus } from '../electron/preload'
+import type { ElectronAPI, AppSettings, TagDictionary, SecretsStatus } from '../electron/preload'
 
 /** Browser-mode stand-in: no keys stored, secure storage reported as usable. */
 function mockSecretsStatus(): SecretsStatus {
@@ -67,7 +67,7 @@ export const mockApi: ElectronAPI = {
             answer: 'You can use the "New Q&A" button in the sidebar.',
         },
     }),
-    qaGet: async (id: string) => null,
+    qaGet: async (_id: string) => null,
     qaCreate: async (data) => ({
         id: 'qa-' + Math.random().toString(36).substr(2, 9),
         filepath: '',

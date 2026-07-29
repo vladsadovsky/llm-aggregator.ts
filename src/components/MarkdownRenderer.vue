@@ -51,11 +51,14 @@ function onClick(event: MouseEvent): void {
 </script>
 
 <template>
+  <!-- content is markdown-it output built with html:false, so no raw/user HTML is injected; links are gated in onClick + openExternal (SEC-01). -->
+  <!-- eslint-disable vue/no-v-html -->
   <div
     class="markdown-body"
     @click="onClick"
     v-html="rendered"
   />
+  <!-- eslint-enable vue/no-v-html -->
 </template>
 
 <style>
