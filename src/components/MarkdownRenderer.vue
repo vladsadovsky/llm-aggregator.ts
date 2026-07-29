@@ -28,14 +28,32 @@ const md: MarkdownIt = new MarkdownIt({
   },
 })
 
+// Only these schemes may appear as clickable links (SEC-01). markdown-it's
+// default already blocks javascript:/vbscript:/data:; this narrows it further.
+md.validateLink = (url: string): boolean => {
+  const s = url.trim().toLowerCase()
+  return s.startsWith('https:') || s.startsWith('http:') || s.startsWith('mailto:')
+}
+
 const rendered = computed(() => {
   return md.render(props.source || '')
 })
+
+// Links never navigate the app window. Intercept the click and hand the href to
+// the main process, which opens only https:/mailto: in the system browser.
+function onClick(event: MouseEvent): void {
+  const anchor = (event.target as HTMLElement | null)?.closest('a')
+  if (!anchor) return
+  event.preventDefault()
+  const href = anchor.getAttribute('href')
+  if (href) void window.api.openExternal(href)
+}
 </script>
 
 <template>
   <div
     class="markdown-body"
+    @click="onClick"
     v-html="rendered"
   />
 </template>

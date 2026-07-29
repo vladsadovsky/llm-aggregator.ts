@@ -369,6 +369,9 @@ export interface ElectronAPI {
   archiveResetPreview: () => Promise<ArchiveResetPreview>
   archiveReset: () => Promise<ArchiveResetResult>
 
+  // Open a rendered-content link in the system browser (https:/mailto: only).
+  openExternal: (url: string) => Promise<{ ok: boolean }>
+
   // Native application menu → renderer. Returns an unsubscribe function.
   onMenuAction: (callback: (action: string) => void) => () => void
 }

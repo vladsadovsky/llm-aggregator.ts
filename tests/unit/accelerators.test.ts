@@ -71,6 +71,30 @@ describe('accelerator table', () => {
       }
     }
   })
+
+  it('follows the documented modifier convention (issue #8)', () => {
+    // The unmodified keys the convention permits (see shared/accelerators.ts).
+    const UNMODIFIED_ALLOWED = new Set(['Escape', 'F2', '?', '/', 'Delete', 'Backspace', 'Up', 'Down'])
+    for (const accelerator of ACCELERATORS) {
+      for (const chord of accelerator.keys) {
+        const tokens = chord.split('+')
+        if (tokens.length === 1) {
+          expect(
+            UNMODIFIED_ALLOWED.has(tokens[0]),
+            `${accelerator.id}: bare "${chord}" is not an approved unmodified key`,
+          ).toBe(true)
+        } else if (tokens[0] === 'Alt') {
+          // Alt is reserved for positional moves only.
+          expect(
+            ['Up', 'Down'].includes(tokens[tokens.length - 1]),
+            `${accelerator.id}: Alt is reserved for positional moves (Alt+Up/Down), not "${chord}"`,
+          ).toBe(true)
+        } else {
+          expect(tokens[0], `${accelerator.id}: multi-key chord "${chord}" must start with Mod`).toBe('Mod')
+        }
+      }
+    }
+  })
 })
 
 describe('chord rendering', () => {
@@ -141,6 +165,29 @@ describe('handler parity with src/App.vue', () => {
   it('leaves component-scoped accelerators out of the global handler', () => {
     for (const accelerator of ACCELERATORS.filter((a) => a.scope === 'component')) {
       expect(markers).not.toContain(accelerator.id)
+    }
+  })
+
+  it('gates each accelerator by isInputTarget exactly as worksInInput declares', () => {
+    // handleGlobalKeydown has one early-return guard: branches tagged above it
+    // fire while a text input holds focus; branches below it are gated. That
+    // must agree with the table's `worksInInput` flag, or a hint lies about
+    // when the shortcut is live.
+    const start = appVue.indexOf('function handleGlobalKeydown')
+    const body = appVue.slice(start)
+    const guardIdx = body.indexOf('isInputTarget(target)) return')
+    expect(guardIdx, 'isInputTarget early-return guard not found in handleGlobalKeydown').toBeGreaterThan(-1)
+
+    const globalById = new Map(ACCELERATORS.filter((a) => a.scope === 'global').map((a) => [a.id, a]))
+    for (const match of body.matchAll(/\/\/ @accel ([\w.]+)/g)) {
+      const accelerator = globalById.get(match[1])
+      if (!accelerator) continue // marker/table mismatch is caught by the tests above
+      const firesInInput = (match.index ?? 0) < guardIdx
+      expect(
+        firesInInput,
+        `${accelerator.id}: handler ${firesInInput ? 'fires before' : 'is gated by'} the isInputTarget ` +
+          `guard, but the table ${accelerator.worksInInput ? 'declares' : 'does not declare'} worksInInput.`,
+      ).toBe(Boolean(accelerator.worksInInput))
     }
   })
 })
