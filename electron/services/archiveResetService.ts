@@ -18,7 +18,7 @@ import { join, extname } from 'path'
 import { app } from 'electron'
 import { getDataDir } from './pathResolver'
 import { saveThreads } from './threadService'
-import { invalidateCache as invalidateTagCache } from './tagDictionaryService'
+import { invalidateCache as invalidateTagCache, getDictionaryPath } from './tagDictionaryService'
 import { debugLog, debugError } from './logger'
 
 export interface ArchiveResetResult {
@@ -92,7 +92,9 @@ export function previewArchiveReset(): ArchiveResetPreview {
   return {
     pairs: countMarkdownFiles(join(dataDir, 'archive')),
     threads: countJsonKeys(join(dataDir, 'threads.json')),
-    tags: countJsonKeys(join(dataDir, 'tag-dictionary.json'), 'tags'),
+    // The tag dictionary lives where tagDictionaryService writes it, not under
+    // getDataDir() — those differ when the archive folder itself was selected.
+    tags: countJsonKeys(getDictionaryPath(), 'tags'),
     hasEmbeddings: existsSync(getEmbeddingsPath()),
     dataDirectory: dataDir,
   }
@@ -123,14 +125,20 @@ export function resetArchive(): ArchiveResetResult {
   // Recreate it empty so the next listAllPairs() has somewhere to look.
   mkdirSync(archiveDir, { recursive: true })
 
-  for (const filename of ['threads.json', 'tag-dictionary.json']) {
-    const path = join(dataDir, filename)
-    if (!existsSync(path)) continue
+  // threads.json is under getDataDir(); the tag dictionary is under raw
+  // getDataDirectory() (see getDictionaryPath), so resolve each from its own
+  // service rather than assuming both share the same root.
+  const controlFiles: Array<{ source: string; backupName: string }> = [
+    { source: join(dataDir, 'threads.json'), backupName: 'threads.json' },
+    { source: getDictionaryPath(), backupName: 'tag-dictionary.json' },
+  ]
+  for (const { source, backupName } of controlFiles) {
+    if (!existsSync(source)) continue
     try {
-      movePath(path, join(backupPath, filename))
+      movePath(source, join(backupPath, backupName))
     } catch (err) {
-      debugError('archiveReset', 'could not move', filename, err)
-      warnings.push(`${filename} could not be moved aside: ${err instanceof Error ? err.message : String(err)}`)
+      debugError('archiveReset', 'could not move', backupName, err)
+      warnings.push(`${backupName} could not be moved aside: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

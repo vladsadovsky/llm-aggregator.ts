@@ -18,7 +18,14 @@ export interface TagDictionary {
 // Invalidated on every saveDictionary() and on explicit invalidateCache() call.
 let _cache: TagDictionary | null = null
 
-function getDictionaryPath(): string {
+/**
+ * Absolute path of the tag dictionary. Exported so other services (e.g. archive
+ * reset) locate it here rather than re-deriving it — it lives under raw
+ * `getDataDirectory()`, which differs from `getDataDir()` when the user has
+ * selected the `archive` folder itself, and a second copy of that logic drifted
+ * (issue: archive reset reported `tags: 0` and left the dictionary behind).
+ */
+export function getDictionaryPath(): string {
   return join(getDataDirectory(), 'tag-dictionary.json')
 }
 
