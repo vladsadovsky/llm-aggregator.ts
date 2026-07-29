@@ -8,8 +8,18 @@
 import type { QAPairData } from './qaPairService'
 import type { ThreadData } from './threadService'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 export const WRITER_APP = 'llm-aggregator'
+
+/**
+ * Marker separating QA blocks in a thread export. Bumped from a bare `---`
+ * line (schema v1) because that is also the single most common Markdown
+ * horizontal-rule token — real LLM answers routinely contain one as a
+ * section divider, which silently truncated the answer and fabricated a
+ * bogus empty QA block on reimport (issue #18). An HTML comment can't be
+ * confused with content a Markdown renderer would ever produce.
+ */
+export const QA_BLOCK_SEPARATOR = '<!-- llm-aggregator:qa-boundary -->'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,7 +115,7 @@ export function formatThreadExport(
     .filter((p): p is QAPairData => p !== undefined)
 
   const blocks = orderedPairs.map((p) => serializeQABlock(p))
-  const separator = '\n\n---\n\n'
+  const separator = `\n\n${QA_BLOCK_SEPARATOR}\n\n`
   const parts: string[] = [fileHeader('thread', thread.name), '', blocks.join(separator), '']
   return parts.join('\n')
 }

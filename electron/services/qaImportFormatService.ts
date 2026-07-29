@@ -10,11 +10,15 @@
  * - Missing per-QA metadata fields → filled with safe defaults.
  * - ## Question / ## Answer capitalisation variations and single-hash headers accepted.
  * - Inline q: / a: delimiters accepted (batch-ingest compat).
- * - Missing --- block separator in single-QA files → treated as one block.
+ * - Missing QA_BLOCK_SEPARATOR in single-QA files → treated as one block.
+ * - schema_version 1 files (bare `---` line as block separator) still parse via a
+ *   legacy fallback — but only when QA_BLOCK_SEPARATOR is entirely absent, since a
+ *   bare `---` line is also an ordinary Markdown horizontal rule and cannot safely
+ *   double as a delimiter once QA content is allowed to contain one (issue #18).
  */
 
 import type { QACreateData } from './qaPairService'
-import { SCHEMA_VERSION, WRITER_APP } from './qaExportFormatService'
+import { SCHEMA_VERSION, WRITER_APP, QA_BLOCK_SEPARATOR } from './qaExportFormatService'
 
 // ─── public types ─────────────────────────────────────────────────────────────
 
@@ -182,12 +186,37 @@ function parseBlock(blockText: string, blockIndex: number): ImportedQA {
 
 /**
  * Split export body into individual QA blocks.
- * Blocks are separated by `\n---\n` (Markdown horizontal rule) outside of
- * the per-QA metadata section.  A file with no separator is treated as
- * a single block.
+ *
+ * Blocks are separated by `QA_BLOCK_SEPARATOR`, an HTML comment marker that
+ * cannot be confused with QA content. A body containing no marker at all is
+ * either a single-QA export (correct: one block) or a schema_version 1
+ * thread export written before this marker existed, in which case `---`
+ * lines were (wrongly) used as the separator — see `splitBlocksLegacy`.
  */
-function splitBlocks(body: string): string[] {
-  // Split on lines that are exactly `---` (possibly with surrounding whitespace)
+function splitBlocks(body: string, schemaVersion: number | undefined): string[] {
+  if (body.includes(QA_BLOCK_SEPARATOR)) {
+    return body
+      .split(QA_BLOCK_SEPARATOR)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+  }
+
+  // No marker found. A current-schema file with no marker is genuinely a
+  // single block (formatQAExport never writes one) — only fall back to the
+  // fragile line-based split for files written before the marker existed,
+  // where it's the best available heuristic. Applying it unconditionally
+  // would reintroduce issue #18 for any current single-QA export whose
+  // answer happens to contain a Markdown horizontal rule.
+  if (schemaVersion === undefined || schemaVersion < SCHEMA_VERSION) {
+    return splitBlocksLegacy(body)
+  }
+
+  const trimmed = body.trim()
+  return trimmed.length > 0 ? [trimmed] : []
+}
+
+/** Pre-schema-v2 fallback: split on a line that is exactly `---`. */
+function splitBlocksLegacy(body: string): string[] {
   const parts = body.split(/\n[ \t]*---[ \t]*\n/)
   return parts.map((p) => p.trim()).filter((p) => p.length > 0)
 }
@@ -217,7 +246,7 @@ export function parseImportFile(fileContent: string): ImportResult {
   const threadName = header?.threadName
 
   // ── block parsing ──
-  const blocks = splitBlocks(body)
+  const blocks = splitBlocks(body, header?.schemaVersion)
   if (blocks.length === 0) {
     fileWarnings.push('No QA blocks found in file')
   }
