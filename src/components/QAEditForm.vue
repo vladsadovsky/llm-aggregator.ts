@@ -65,7 +65,7 @@ function searchTags(event: { query: string }) {
 }
 
 function commitPendingTags() {
-  const autoCompleteRoot = (tagsAutoCompleteRef.value as any)?.$el as HTMLElement | undefined
+  const autoCompleteRoot = (tagsAutoCompleteRef.value as { $el?: HTMLElement } | null)?.$el
   if (!autoCompleteRoot) return
 
   const input = autoCompleteRoot.querySelector('input') as HTMLInputElement | null

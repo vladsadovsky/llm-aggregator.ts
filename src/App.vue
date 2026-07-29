@@ -199,7 +199,7 @@ function handleImportSharedLinkEvent() {
   openSharedLinkImport()
 }
 
-onErrorCaptured((err: any) => {
+onErrorCaptured((err: unknown) => {
   debugError('App', 'Unhandled error:', err)
   toast?.add({ severity: 'error', summary: 'Error', detail: err instanceof Error ? err.message : String(err), life: 5000 })
   return false

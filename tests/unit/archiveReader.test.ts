@@ -420,7 +420,7 @@ describe('opt-in checks against real account exports', () => {
         expect(preview.format, `No format for ${basename(candidate)}`).toBeTruthy()
         expect(preview.threads.length, `${basename(candidate)} → 0 threads`).toBeGreaterThan(0)
         expect(preview.totalPairs, `${basename(candidate)} → 0 pairs`).toBeGreaterThan(0)
-        // eslint-disable-next-line no-console
+         
         console.log(
           `${basename(candidate)} → ${preview.format}: ${preview.threads.length} threads, ${preview.totalPairs} pairs`,
         )

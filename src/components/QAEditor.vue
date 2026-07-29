@@ -131,7 +131,7 @@ function searchTags(event: { query: string }) {
 }
 
 function commitPendingTags() {
-  const autoCompleteRoot = (tagsAutoCompleteRef.value as any)?.$el as HTMLElement | undefined
+  const autoCompleteRoot = (tagsAutoCompleteRef.value as { $el?: HTMLElement } | null)?.$el
   if (!autoCompleteRoot) return
 
   const input = autoCompleteRoot.querySelector('input') as HTMLInputElement | null
@@ -300,7 +300,7 @@ onMounted(async () => {
 
   // Focus the question textarea after DOM renders
   await nextTick()
-  const el = (questionRef.value as any)?.$el
+  const el = (questionRef.value as { $el?: HTMLElement } | null)?.$el
   if (el) {
     const textarea = el.tagName === 'TEXTAREA' ? el : el.querySelector('textarea')
     textarea?.focus()
@@ -375,7 +375,7 @@ async function create(continueAdding = false) {
     newThreadName.value = ''
 
     await nextTick()
-    const el = (questionRef.value as any)?.$el
+    const el = (questionRef.value as { $el?: HTMLElement } | null)?.$el
     if (el) {
       const textarea = el.tagName === 'TEXTAREA' ? el : el.querySelector('textarea')
       textarea?.focus()

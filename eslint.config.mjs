@@ -63,6 +63,9 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       'no-empty-pattern': 'off',
+      // Test mocks and partial fixtures legitimately use `any` (e.g. casting a
+      // partial object to a full domain type, or overriding an Electron method).
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 )

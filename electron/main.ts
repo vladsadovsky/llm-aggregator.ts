@@ -90,6 +90,7 @@ control and is reached from the menu or the Command Palette.`
   const showUsage = () =>
     dialog.showMessageBox({ type: 'info', title: 'LLM Aggregator Usage', message: 'LLM Aggregator — Usage', detail: usageDetail })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron menu template mixes role/separator/click item shapes; annotating each literal adds noise, not safety.
   const template: any[] = [
     ...(isMac ? [{
       label: app.name,

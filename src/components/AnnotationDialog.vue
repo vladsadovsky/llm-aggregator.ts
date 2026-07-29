@@ -24,7 +24,6 @@ const currentIndex = ref(0)
 
 const current = computed(() => proposals.value[currentIndex.value] ?? null)
 const total = computed(() => proposals.value.length)
-const remaining = computed(() => total.value - currentIndex.value)
 
 const confirmedCount = computed(() => {
   let n = 0
