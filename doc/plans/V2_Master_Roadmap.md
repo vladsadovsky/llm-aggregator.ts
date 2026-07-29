@@ -53,7 +53,50 @@ option). **Phase 0 exists to fix that once.**
 **Goal:** Build the shared infrastructure that every later phase depends on, so v2 features are
 additions to a platform rather than four one-off integrations.
 
+### 0.0 Release stabilization carry-over — **sequenced first**
+
+Deferred from 1.4 on 2026-07-28. Full rationale, per-item risk assessment, and the analytical record
+of where we diverged from the review's proposed remedies are in
+`doc/dev_process/Release_1.4_Implementation_Plan.md`; the findings themselves are in
+`doc/dev_process/Release_Architecture_and_Stability_Review_2026-07-27.md`.
+
+1.4 shipped only additive guards, single-expression fixes, and hygiene — navigation lockdown,
+HTTPS-only Gemini share links, the dependency bump, filename sanitization, bulk-import recoverability,
+the `npm run check` gate, and the outstanding GitHub issues (#8, #13, #14, #15). **Phase 0 therefore
+starts with an empty issue tracker.** Everything below needs automated and manual soak time, which is
+why it is here rather than in a patch release.
+
+**This subsection gates all of Phase 0 and everything after it.** Building the batch runner (0.2), the
+selection model (0.3), or the undo layer (0.4) on non-atomic writes and an unvalidated IPC boundary
+means building them twice.
+
+| Item | Review finding |
+|---|---|
+| Electron `^33 → ^43`; `electron-builder ^25 → ^26`. **Do this first, alone, on its own branch.** Known breaks: `main.ts:275` `console-message` signature (changed in E37) and the builder major. Gate on Windows OS support before merge. | SEC-02 |
+| Sender guard plus zod payload validation at the IPC boundary; canonical `shared/contracts/`. Also reconciles the drifted `includeDateInThreadNames` and `originId` declarations. | IPC-01, ARCH-01 |
+| Gemini hidden-window containment: non-persistent session partition, `https:` only, deny popups and permissions, allowlisted redirects, redacted share tokens. | SEC-03 |
+| `fetchJson` transport policy: manual redirect with a 3-hop cap, 20s timeout, response byte ceiling, structured error codes. | SEC-03 |
+| Atomic writes at all nine write sites; refuse-to-save after a failed load; `threadService.loadThreads` try/catch; report skipped and duplicate-ID pairs as archive health data. | DATA-01 |
+| One `ArchivePaths` authority; embedding namespacing by archive, record versioning with provider/model/dimensions, dimension guard before cosine similarity, GC for deleted pairs. | DATA-02 |
+| Bulk import: incremental `saveThreads`, hoisted ID allocation, `getPair` id→path map, async yielding commit, real cancellation. Removes the main-process freeze that currently invites a force-quit. | IMP-01 |
+| Aggregate import budgets; `crypto.randomUUID()` preview IDs; TTL and `webContents` ownership; `previewThreadId` row identity; numeric shard ordering. | IMP-02 |
+| `safeStorage.getSelectedStorageBackend()` (treat Linux `basic_text` as insecure); atomic envelope write; legacy-plaintext migrate/purge. Closes `CLAUDE.md` roadmap item #1. | SEC-04 |
+| Settings as one draft: reordered save, explicit `testConnection` config, stale-catalog guard, `validateDataDirectory`, `useSettingsDraft` composable. Needs a jsdom Vitest project. | SET-01 |
+| LLM capabilities as data; `@anthropic-ai/sdk` swap. Closes `CLAUDE.md` roadmap item #2 and reduces **0.1** to adapter work. | LLM-01 |
+| `useCommandRegistry`, `useImportCoordinator`; replace the 15 untyped `llm:*` window events with typed store actions. | ARCH-02 |
+| Documentation reconciliation across README, in-app help, `main.ts:73`, and `noEmbeddingsMessage()`. | DOC-01 |
+
+**Timebox the Electron upgrade.** Electron ships roughly every eight weeks, so the jump grows with
+delay (33→44, 33→45). It needs a committed date, not an open end. EOL also means an unpatched Node in
+main, which matters when `yauzl` inflates a zip a user downloaded.
+
 ### 0.1 Multi-provider LLM abstraction
+
+> **Partly delivered by 0.0.** The stabilization carry-over adds the `complete`/`embed` capability
+> matrix, splits `LLMProvider` into `CompletionProvider` / `EmbeddingProvider`, and replaces the
+> hand-rolled Anthropic client with `@anthropic-ai/sdk`. What remains here is the Ollama and Azure
+> OpenAI adapters against a contract that already exists, plus the `streaming` / `local` flags.
+
 Extend `providerRegistry.ts` / `providerFactory.ts` with a capability matrix (`complete`, `embed`,
 `streaming`, `local`) and add:
 - **Ollama** adapter (local, free, no key) — unblocks users without paid API keys and de-risks the
@@ -98,9 +141,10 @@ A thin per-session call counter + rough cost estimate, surfaced as a toast/statu
 multiply the number of call sites significantly (title, tags, compression, MCP tool calls); this
 should exist before, not after, that fan-out.
 
-**Sequencing note:** 0.1/0.2 gate all of Phase 2. 0.3/0.4/0.5 gate all of Phase 3. 0.6/0.7 gate
-Phase 2 and Phase 4 shipping safely. Phase 1 has no Phase-0 dependency and can run in parallel with
-Phase 0.
+**Sequencing note:** 0.0 gates everything — it is the stabilization floor the rest of Phase 0 is built
+on, and the Electron upgrade inside it should land first and alone. After that: 0.1/0.2 gate all of
+Phase 2. 0.3/0.4/0.5 gate all of Phase 3. 0.6/0.7 gate Phase 2 and Phase 4 shipping safely. Phase 1
+has no Phase-0 dependency and can run in parallel with Phase 0.
 
 ---
 
@@ -300,6 +344,39 @@ stabilized in Phase 2.
 
 ---
 
+## Phase 5 — Distribution integrity & code signing
+
+**Goal:** Make an artifact verifiable by someone who did not build it.
+
+**Deferred from the 1.4 stabilization release by explicit decision (2026-07-28).** Covers REL-01 of
+`doc/dev_process/Release_Architecture_and_Stability_Review_2026-07-27.md`, and everything downstream
+of signing:
+
+### 5.1 Platform signing
+- Windows Authenticode signing of the NSIS and MSI installers and the executable. `electron-builder.yml`
+  defines Windows installers today with no signing configuration at all.
+- macOS signing plus notarization.
+
+### 5.2 Artifact provenance
+- Published SHA-256 checksums per artifact.
+- A release manifest binding version, source commit, dependency-lockfile hash, build environment,
+  targets, and signatures. Packaging gated on the manifest being produced.
+
+### 5.3 Audience definition
+Decide and document the intended release audience. Until 5.1 and 5.2 land, artifacts stay explicitly
+labeled private, unsigned development builds — which the README already states correctly, and which
+is an acceptable boundary for a local build whose operator understands the publisher warning.
+
+**Note on what did *not* defer:** 1.4 ships the engineering half of the release gate — `npm run check`
+(typecheck + lint + unit tests + build) with CI enforcement, and packaging scripts depending on it.
+Only the artifact-integrity half is deferred here, because it is the half that depends on signing
+existing.
+
+**Sequencing:** independent of Phases 0–4. It gates *external distribution*, not development, so it
+can land at any point before the first release intended for an audience beyond the author.
+
+---
+
 ## Standing requirement across every phase
 
 **[Idea: "Expose all new functions via keyboard and menu"]** is not a phase deliverable — it's
@@ -323,7 +400,8 @@ Per the source docs, carried forward as future work, not part of this plan:
 ## Sequencing summary
 
 ```
-Phase 0 (foundation)  ──┬── unlocks ──> Phase 2 (LLM content intelligence)
-                         └── unlocks ──> Phase 3 (power-user UX infra) ──> Phase 4 (MCP)
+Phase 0.0 (stabilization) ──> Phase 0.1-0.7 (foundation) ──┬── unlocks ──> Phase 2 (LLM content intelligence)
+                                                            └── unlocks ──> Phase 3 (power-user UX infra) ──> Phase 4 (MCP)
 Phase 1 (near-term UX) ── runs in parallel with Phase 0, no dependency
+Phase 5 (distribution) ── independent; gates external distribution, not development
 ```
