@@ -4,7 +4,7 @@ import { loadSettings } from './settingsService'
 import { debugError, debugLog } from './logger'
 import { createEnvSecretsBackend } from './secrets/backends/envSecretsBackend'
 import { createSafeStorageSecretsBackend } from './secrets/backends/safeStorageSecretsBackend'
-import { cleanupLegacyPlaintextSecrets, type LegacyCleanupResult } from './secrets/legacyCleanup'
+import { migrateLegacyPlaintextSecrets, type LegacyMigrationResult } from './secrets/legacyMigration'
 import {
   buildSecretsStatus,
   findWriteTarget,
@@ -24,30 +24,41 @@ export { devEnvSecretVarNames } from './secrets/backends/envSecretsBackend'
 const ENCRYPTED_SECRETS_FILENAME = 'secrets.enc.json'
 
 /**
- * Result of the one-time legacy sweep, cached for the process lifetime so the
- * warning survives past the run that performed the rename.
+ * Result of the one-time legacy migration, cached for the process lifetime so the
+ * outcome warning survives past the run that performed it.
  */
-let legacyCleanup: LegacyCleanupResult | null = null
+let legacyMigration: LegacyMigrationResult | null = null
+
+function buildSafeStorageBackend(): SecretBackend {
+  return createSafeStorageSecretsBackend({
+    filePath: join(app.getPath('userData'), ENCRYPTED_SECRETS_FILENAME),
+    crypto: safeStorage,
+  })
+}
 
 /**
- * Moves any legacy plaintext `secrets.json` aside. Call once during app startup,
- * before the first secrets read.
+ * Migrates any legacy plaintext `secrets.json` into encrypted storage and purges
+ * it only after a verified round-trip. Call once during app startup, before the
+ * first secrets read.
  */
 export function initSecretsStorage(): void {
-  if (legacyCleanup) {
+  if (legacyMigration) {
     return
   }
-  legacyCleanup = cleanupLegacyPlaintextSecrets(app.getPath('userData'))
-  debugLog('secretsService', 'Legacy secrets sweep complete. Renamed:', legacyCleanup.renamed)
+  legacyMigration = migrateLegacyPlaintextSecrets({
+    userDataDir: app.getPath('userData'),
+    backend: buildSafeStorageBackend(),
+  })
+  debugLog('secretsService', 'Legacy secrets migration complete. Migrated:', legacyMigration.migrated)
 }
 
 function legacyWarnings(): SecretWarning[] {
   // Startup wiring should have called `initSecretsStorage`, but resolve lazily so
-  // a missed call degrades to a late sweep rather than a silent skip.
-  if (!legacyCleanup) {
+  // a missed call degrades to a late migration rather than a silent skip.
+  if (!legacyMigration) {
     initSecretsStorage()
   }
-  return legacyCleanup?.warnings ?? []
+  return legacyMigration?.warnings ?? []
 }
 
 /**
