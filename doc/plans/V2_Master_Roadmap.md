@@ -2,7 +2,8 @@
 
 **Status:** Proposal
 **Drafted:** July 27, 2026
-**Current version:** 1.3.2
+**Updated:** August 1, 2026
+**Current version:** 1.4.0
 
 ## Sources
 
@@ -143,14 +144,16 @@ should exist before, not after, that fan-out.
 
 **Sequencing note:** 0.0 gates everything — it is the stabilization floor the rest of Phase 0 is built
 on, and the Electron upgrade inside it should land first and alone. After that: 0.1/0.2 gate all of
-Phase 2. 0.3/0.4/0.5 gate all of Phase 3. 0.6/0.7 gate Phase 2 and Phase 4 shipping safely. Phase 1
-has no Phase-0 dependency and can run in parallel with Phase 0.
+Phase 2. 0.3/0.4/0.5 gate all of Phase 3. 0.6/0.7 gate Phase 2 and Phase 4 shipping safely. The audit
+follow-through defined in **0.8** below is the final Phase-0 gate before Phase 1 or Phase 2: Phase 1's
+shared filter UI must preserve the new metadata facets, and Phase 2 must consume the canonicalized,
+human-correctable metadata contract rather than extend the legacy one.
 
 ---
 
-## Observations from the audit (design constraints for Phase 2+)
+## Observations from the audit (accepted design decisions for Phase 0.8+)
 
-Tracing every consumer of the existing AI-metadata fields surfaced two patterns worth designing
+Tracing every consumer of the existing AI-metadata fields surfaced four patterns worth designing
 around, not just noting:
 
 **1. Every existing LLM feature is manual and low-visibility, and that's why it went unnoticed.**
@@ -199,10 +202,78 @@ Phase 2 (see below):
 
 ---
 
+## Phase 0.8 — AI metadata convergence & activation
+
+**Goal:** Resolve the audit observations before adding more UX or LLM-generated fields. Existing AI
+metadata becomes visible, human-correctable, queryable, and migration-safe; canonical tags become
+the only open-vocabulary label system. This phase adds no autonomous LLM calls and no Phase 2
+auto-title, auto-tag, learning, or compression behavior.
+
+The coding-agent-ready scope, task boundaries, invariants, migration rules, and regression matrix are
+in `doc/dev_process/V2_Phase_0_8_Implementation_Plan.md`.
+
+### 0.8.1 Human-owned workflow metadata
+
+- Add manual `aiStatus` and `aiConfidence` controls to the QA edit flow, including an explicit
+  unset value. Keep the existing bounded enums; do not invent a `branch` state here without first
+  deciding whether branching is a status or a relationship between QAs/threads.
+- Record whether each value is `manual` or `generated`. Missing provenance on an existing value is
+  treated as `legacy`, never guessed to be manual.
+- A generated proposal never overwrites a manual value without a specific user approval. Manual
+  labels are the future learning signal for Phase 2.3; Phase 0.8 does not train or tune a model.
+- Surface `aiSummary` directly instead of leaving it accessible only through an `aiTopic` tooltip.
+
+### 0.8.2 Canonical tags and legacy-label migration
+
+- Retire `aiTopic`/`aiConcepts` from new writes and generation contracts. `tags[]` is the sole
+  persisted open-vocabulary classification field; `aiStatus`/`aiConfidence` remain separate enums,
+  and `aiSummary` remains prose.
+- Preserve old archives with a pure read-side fallback. Opening or listing an archive must not write
+  files. On the next successful edit—or through an explicit previewable archive migration—normalize,
+  de-duplicate, and fold `ai_topic`/`ai_concepts` into `tags[]`, then omit the deprecated fields.
+- Make migration lossless, idempotent, atomic per QA, cancellable between QAs, and compatible with
+  tag-vocabulary review. Never silently truncate labels or auto-rewrite an entire archive on load.
+- Replace the health report's `missingTopic` concept with canonical tag coverage and counts of
+  records still awaiting legacy-label migration.
+
+### 0.8.3 First-class metadata facets
+
+- Extend the Phase 0.5 query AST and compiler with status and confidence sets plus explicit
+  include-missing semantics. Define stable enum ordering and deterministic tie-breaking before UI
+  code depends on it.
+- Expose status/confidence filters and sorts in the QA list. Keep filter state independent from the
+  threads list so Phase 1.1's shared filter-bar extraction cannot couple the two panels.
+- Make metadata coverage and filter behavior operate on the same canonical projection used by the
+  renderer, health report, and future Phase 2 consumers.
+
+### 0.8.4 Discoverable, no-surprise AI assistance
+
+- Add compact contextual affordances where the user encounters the need: set/suggest missing
+  workflow metadata beside the QA metadata, show semantic-index coverage and a generate/continue
+  action beside Semantic search, and expose confidence-review/migration actions in Application
+  Status. Menu and command-palette entries remain secondary access paths.
+- Replace the current generate-and-immediately-save metadata action with a read-only suggestion
+  envelope carrying target version/content hash. The user reviews and applies selected fields; stale
+  suggestions are rejected.
+- Showing readiness or missing-data hints is local and free. Provider calls still require an explicit
+  action, main-process feature enforcement, a usage estimate/guard, and an embed/complete-capable
+  provider. Merely selecting a QA or Semantic mode makes zero network calls.
+- Centralize readiness counts (embedding coverage, missing status/confidence, pending legacy labels,
+  provider capability) so the QA panel, search UI, health report, and Application Status do not
+  calculate contradictory states.
+
+**Outcome:** Phase 1 receives stable metadata facets to preserve in its shared list-filter UI. Phase
+2 receives one canonical label system, a human-authoritative workflow taxonomy, reusable suggestion
+and approval semantics, and measurable readiness. No new AI field can ship as a write-only chip or
+hidden command.
+
+---
+
 ## Phase 1 — Near-term UX refinement
 
-**Goal:** Ship the remaining low-risk, high-value UX gaps with no new architecture. Can run in
-parallel with Phase 0.
+**Goal:** Ship the remaining low-risk, high-value UX gaps with no new architecture. Start only after
+the Phase 0.8 contract and exit gate land. Phase 1.1 must preserve the status/confidence facets and
+independent QA/thread filter state.
 
 ### 1.1 Unified list filter/search UI — Threads + QA **[UX]**
 Bring the threads list up to the same real-time filter/search/sort standard the QA list already
@@ -261,8 +332,9 @@ Standalone — no dependency on the rest of the plan.
 ## Phase 2 — LLM content intelligence
 
 **Goal:** The features `LLM_Integration_Spec.md` was written for. Depends on Phase 0.1 (provider
-abstraction) and 0.2 (batch runner) — do not start before those land, or this becomes three
-redundant provider integrations.
+abstraction), 0.2 (batch runner), and the Phase 0.8 metadata/suggestion contract — do not start
+before those land, or this becomes three redundant provider integrations on top of a duplicate,
+non-correctable metadata model.
 
 ### 2.1 LLM auto-title generation **[LLM Ch.1]**
 Auto-generate titles for QAs and threads, including the UX plan's framing of smarter titles for
@@ -274,21 +346,23 @@ Observation 4. One LLM call, existing-vocabulary-aware with soft/hard limits, su
 approve-new-tags chip flow, writing into `tags[]` for both QAs and threads **[UX]**.
 
 **Implementation notes:**
-- Retires `aiTopic`/`aiConcepts` as separate fields.
-- Includes a one-time migration of existing `ai_topic`/`ai_concepts` frontmatter values into
-  `tags[]`, plus a read-side legacy fallback for un-migrated files — same pattern already used for
-  `## Question`/`## Answer` body markers.
+- Consumes the canonical tag and read-only suggestion contracts delivered by Phase 0.8; it does not
+  reintroduce `aiTopic`/`aiConcepts` or a second migration path.
+- Proposes existing-vocabulary and new-tag candidates through the established review flow. Only
+  approved tags are written.
 - `aiSummary` (prose, not a label) is kept as-is, untouched by this merge.
 
 ### 2.3 QA workflow typing **[Idea]**
-Explicit dead-end/branch/closure marking UI — the manual override that doesn't exist today
-(Observation 2) — plus "learn from my marking" auto-detection that improves over time.
+Build "learn from my marking" auto-detection from the manual labels and provenance delivered by
+Phase 0.8. If a distinct branch state is still wanted, decide whether it is an enum value or a QA/
+thread relationship before extending the persisted schema.
 
 **Implementation notes:**
 - Extends `aiStatus`/`metadataService.ts`, which stay separate enum fields rather than folding into
   tags (see Observation 4's rationale for keeping enums out of the tag array).
-- The manual-override UI is the prerequisite: it's also the only source of training signal the
-  "learn from my marking" loop would have to work with.
+- Uses explicitly manual labels as examples; legacy/unknown-provenance values are not silently
+  treated as ground truth.
+- Generated classifications remain proposals and cannot overwrite a manual value without approval.
 
 ### 2.4 Smart thread compression **[LLM Ch.4]**
 Propose removing dead-end branches from a thread view. Built on the batch runner (0.2) and the
@@ -400,8 +474,9 @@ Per the source docs, carried forward as future work, not part of this plan:
 ## Sequencing summary
 
 ```
-Phase 0.0 (stabilization) ──> Phase 0.1-0.7 (foundation) ──┬── unlocks ──> Phase 2 (LLM content intelligence)
-                                                            └── unlocks ──> Phase 3 (power-user UX infra) ──> Phase 4 (MCP)
-Phase 1 (near-term UX) ── runs in parallel with Phase 0, no dependency
+Phase 0.0 (stabilization) ──> Phase 0.1-0.7 (foundation) ──> Phase 0.8 (metadata convergence/activation)
+                                                                  ├── unlocks ──> Phase 1 (near-term UX)
+                                                                  └── unlocks ──> Phase 2 (LLM intelligence)
+Phase 0.3/0.4/0.5 ── unlocks ──> Phase 3 (power-user UX) ──> Phase 4 (MCP)
 Phase 5 (distribution) ── independent; gates external distribution, not development
 ```
