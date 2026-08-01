@@ -1,4 +1,5 @@
 import type { LLMProvider } from './types'
+import { recordUsage } from './usageLedger'
 
 const ANTHROPIC_API_BASE = 'https://api.anthropic.com/v1'
 const ANTHROPIC_VERSION = '2023-06-01'
@@ -10,6 +11,7 @@ interface AnthropicTextBlock {
 
 interface AnthropicMessageResponse {
   content?: AnthropicTextBlock[]
+  usage?: { input_tokens?: number; output_tokens?: number }
 }
 
 function isLikelyNetworkError(err: unknown): boolean {
@@ -90,6 +92,16 @@ export class AnthropicProvider implements LLMProvider {
         .filter((block) => block.type === 'text' && typeof block.text === 'string')
         .map((block) => block.text as string)
         .join('\n')
+
+      if (response.usage) {
+        recordUsage({
+          capability: 'complete',
+          provider: 'anthropic',
+          model: this.model,
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+        })
+      }
 
       return text
     } catch (err) {

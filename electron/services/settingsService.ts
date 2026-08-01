@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { debugLog, debugError } from './logger'
 import { getDefaultDataDirectory } from './defaultDataDirectory'
 import { atomicWriteJsonSync } from './persistence/atomicFile'
+import type { ExperimentalFeatures } from '../../shared/featureFlags'
 
 const isDev = process.env.NODE_ENV !== 'production'
 const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
@@ -29,6 +30,12 @@ export interface AppSettings {
    * The variable prefix is the fixed constant `LLM_AGG_`.
    */
   allowDevEnvSecrets: boolean
+  /**
+   * Experimental-feature toggles (id → boolean). Default-off; unknown ids are
+   * preserved for forward compatibility but resolve false. See
+   * `shared/featureFlags.ts`.
+   */
+  experimentalFeatures?: ExperimentalFeatures
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -57,6 +64,7 @@ export function loadSettings(): AppSettings {
     tagSoftLimit: 50,
     tagHardLimit: 100,
     allowDevEnvSecrets: false,
+    experimentalFeatures: {},
   }
 
   if (!existsSync(filepath)) {

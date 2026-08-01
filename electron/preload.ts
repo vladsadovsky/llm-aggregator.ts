@@ -32,6 +32,7 @@ export interface AppSettings {
   tagSoftLimit: number
   tagHardLimit: number
   allowDevEnvSecrets: boolean
+  experimentalFeatures?: Record<string, boolean>
 }
 
 export interface AppSecrets {

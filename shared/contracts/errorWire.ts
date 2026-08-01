@@ -15,6 +15,7 @@ export const IPC_ERROR_CODES = [
   'cancelled',
   'limit-exceeded',
   'needs-repair',
+  'feature-disabled',
   'internal',
 ] as const
 

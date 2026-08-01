@@ -12,6 +12,9 @@ export const AppSettingsSchema = z
     tagSoftLimit: boundedInt(0, 100_000),
     tagHardLimit: boundedInt(0, 100_000),
     allowDevEnvSecrets: z.boolean(),
+    // Experimental flags: id → boolean. Bounded so a hostile settings file cannot
+    // carry an unbounded map. Unknown ids are preserved but resolve false.
+    experimentalFeatures: z.record(boundedString(64), z.boolean()).optional(),
   })
   .strict()
 
