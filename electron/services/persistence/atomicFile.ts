@@ -89,6 +89,39 @@ export class AtomicWriteError extends Error {
   }
 }
 
+/** Transient errors where a same-directory rename can still succeed on retry (Windows AV/indexer locks). */
+const TRANSIENT_PROMOTE_CODES = new Set(['EPERM', 'EACCES', 'EBUSY', 'EEXIST'])
+const PROMOTE_MAX_RETRIES = 5
+const PROMOTE_BACKOFF_MS = 10
+
+/** Synchronous sleep (the service is sync); only ever reached on the rare retry path. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
+ * Promote the temp file over the target by rename. POSIX rename is an atomic
+ * replace, and on Windows a same-directory rename is too — but Windows can
+ * transiently fail it with EPERM/EACCES/EBUSY/EEXIST when an antivirus scanner
+ * or the search indexer holds a brief handle on the target (the plan's P0-D
+ * failure matrix). Retry a bounded number of times with a short backoff; a
+ * non-transient error (e.g. ENOENT) fails immediately without retrying.
+ */
+function promoteWithRetry(fops: FileOps, tmp: string, target: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fops.renameSync(tmp, target)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code
+      if (attempt >= PROMOTE_MAX_RETRIES || code === undefined || !TRANSIENT_PROMOTE_CODES.has(code)) {
+        throw err
+      }
+      sleepSync(PROMOTE_BACKOFF_MS * (attempt + 1))
+    }
+  }
+}
+
 function newTempPath(target: string): string {
   return `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
 }
@@ -180,9 +213,10 @@ export function atomicWriteFileSync(
     }
   }
 
-  // 6. Promote by same-directory rename (atomic replace on Windows and POSIX).
+  // 6. Promote by same-directory rename (atomic replace on Windows and POSIX),
+  //    retrying transient Windows AV/indexer locks a bounded number of times.
   try {
-    fops.renameSync(tmp, target)
+    promoteWithRetry(fops, tmp, target)
   } catch (err) {
     safeUnlink(fops, tmp)
     throw new AtomicWriteError('promote', err)

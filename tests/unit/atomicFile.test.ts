@@ -118,3 +118,49 @@ describe('atomicWriteJsonSync', () => {
     expect(tempFiles()).toEqual([])
   })
 })
+
+describe('atomicWriteFileSync — transient Windows promote retry', () => {
+  /** Real ops, but renameSync throws `code` on its first `failures` calls, then succeeds. */
+  function flakyRename(code: string, failures: number): { ops: FileOps; calls: () => number } {
+    let calls = 0
+    const ops: FileOps = {
+      ...nodeFileOps,
+      renameSync: (from, to) => {
+        calls += 1
+        if (calls <= failures) throw Object.assign(new Error(`transient ${code}`), { code })
+        nodeFileOps.renameSync(from, to)
+      },
+    }
+    return { ops, calls: () => calls }
+  }
+
+  it('retries a transient EPERM and eventually promotes', () => {
+    const target = join(dir, 'data.json')
+    writeFileSync(target, 'ORIGINAL')
+    const { ops, calls } = flakyRename('EPERM', 3)
+    const res = atomicWriteFileSync(target, 'UPDATED', { fileOps: ops })
+    expect(readFileSync(target, 'utf-8')).toBe('UPDATED')
+    expect(res.bytes).toBe(7)
+    expect(calls()).toBe(4) // 3 failures + 1 success
+    expect(tempFiles()).toEqual([])
+  })
+
+  it('gives up after the bounded retry budget and preserves the original', () => {
+    const target = join(dir, 'data.json')
+    writeFileSync(target, 'ORIGINAL')
+    const { ops, calls } = flakyRename('EBUSY', 999)
+    expect(() => atomicWriteFileSync(target, 'UPDATED', { fileOps: ops })).toThrow(AtomicWriteError)
+    expect(readFileSync(target, 'utf-8')).toBe('ORIGINAL') // last valid target survives
+    expect(calls()).toBe(6) // initial attempt + 5 retries
+    expect(tempFiles()).toEqual([])
+  })
+
+  it('does not retry a non-transient error (ENOENT fails immediately)', () => {
+    const target = join(dir, 'data.json')
+    writeFileSync(target, 'ORIGINAL')
+    const { ops, calls } = flakyRename('ENOENT', 999)
+    expect(() => atomicWriteFileSync(target, 'UPDATED', { fileOps: ops })).toThrow(AtomicWriteError)
+    expect(calls()).toBe(1) // no retries for a non-transient code
+    expect(readFileSync(target, 'utf-8')).toBe('ORIGINAL')
+  })
+})
