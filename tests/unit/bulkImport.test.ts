@@ -659,7 +659,7 @@ describe('buildResult origin ids', () => {
 })
 
 describe('commitArchiveImport', () => {
-  it('creates one distinct thread per selected conversation, not just the last', () => {
+  it('creates one distinct thread per selected conversation, not just the last', async () => {
     // Regression test: generateThreadId() used to offset Date.now() by the loop
     // index in *milliseconds*, but thread ids only have second resolution — a
     // batch committed within one second (the normal case) collided on a single
@@ -670,7 +670,7 @@ describe('commitArchiveImport', () => {
     const threads = [makeThread('a', 2), makeThread('b', 3), makeThread('c', 1)]
     const preview = makePreview(threads)
 
-    const result = commitArchiveImport(preview, {
+    const result = await commitArchiveImport(preview, {
       threadSourceIds: ['a', 'b', 'c'],
       skipDuplicates: false,
     })
@@ -688,12 +688,12 @@ describe('commitArchiveImport', () => {
     expect(itemCounts).toEqual([1, 2, 3])
   })
 
-  it('prefixes thread names with their UTC day only when requested, and only for gemini-takeout', () => {
+  it('prefixes thread names with their UTC day only when requested, and only for gemini-takeout', async () => {
     savedThreadsCalls.length = 0
     createdPairCounter = 0
 
     const preview = makePreview([makeThread('a', 1)])
-    commitArchiveImport(preview, {
+    await commitArchiveImport(preview, {
       threadSourceIds: ['a'],
       skipDuplicates: false,
       includeDateInThreadNames: true,
@@ -704,7 +704,7 @@ describe('commitArchiveImport', () => {
     expect(names).toEqual(['2026-07-26 — Thread a'])
   })
 
-  it('recovers a crashed import on re-run: existing pairs get threaded, not duplicated (S5)', () => {
+  it('recovers a crashed import on re-run: existing pairs get threaded, not duplicated (S5)', async () => {
     savedThreadsCalls.length = 0
     createdPairCounter = 0
 
@@ -732,14 +732,14 @@ describe('commitArchiveImport', () => {
 
     // Run 1 — pairs are written and the origin index is populated. Simulate the
     // crash by discarding the thread map it saved (threads.json never persisted).
-    const run1 = commitArchiveImport(preview, selection)
+    const run1 = await commitArchiveImport(preview, selection)
     expect(run1.createdPairs).toBe(2)
     const writtenAfterRun1 = createdPairCounter
     savedThreadsCalls.length = 0
 
     // Run 2 — the same import. Pairs are now duplicates: none are re-written, but
     // the thread is reconstructed from the pairs already on disk.
-    const run2 = commitArchiveImport(preview, selection)
+    const run2 = await commitArchiveImport(preview, selection)
     expect(run2.skippedDuplicates).toBe(2)
     expect(run2.createdPairs).toBe(0)
     expect(createdPairCounter).toBe(writtenAfterRun1) // no duplicate pairs written
@@ -751,7 +751,7 @@ describe('commitArchiveImport', () => {
     vi.mocked(buildOriginIndex).mockReturnValue(new Map()) // restore for later tests
   })
 
-  it('registers every imported tag in the tag dictionary, deduplicated', () => {
+  it('registers every imported tag in the tag dictionary, deduplicated', async () => {
     savedThreadsCalls.length = 0
     createdPairCounter = 0
     vi.mocked(addTag).mockClear()
@@ -760,11 +760,69 @@ describe('commitArchiveImport', () => {
       makeThread('a', 1, ['bulk', 'gemini']),
       makeThread('b', 1, ['bulk', 'claude']),
     ])
-    commitArchiveImport(preview, { threadSourceIds: ['a', 'b'], skipDuplicates: false })
+    await commitArchiveImport(preview, { threadSourceIds: ['a', 'b'], skipDuplicates: false })
 
     // `bulk` appears on both threads but is registered once; no throw is swallowed.
     const registered = vi.mocked(addTag).mock.calls.map((c) => c[0])
     expect(new Set(registered)).toEqual(new Set(['bulk', 'gemini', 'claude']))
+  })
+
+  it('persists threads.json incrementally — once per completed conversation (INV-IMPORT)', async () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const preview = makePreview([makeThread('a', 1), makeThread('b', 1), makeThread('c', 1)])
+    await commitArchiveImport(preview, { threadSourceIds: ['a', 'b', 'c'], skipDuplicates: false })
+
+    // threads.json is saved after each completed conversation (at least once per
+    // thread), not once at the very end — so a crash mid-import cannot lose the
+    // conversations already committed. (The old behavior saved exactly once.)
+    expect(savedThreadsCalls.length).toBeGreaterThanOrEqual(3)
+    // The final saved state holds all three threads.
+    expect(Object.keys(savedThreadsCalls.at(-1)!)).toHaveLength(3)
+  })
+
+  it('stops before the next durable unit when the signal is already aborted', async () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const preview = makePreview([makeThread('a', 2), makeThread('b', 2)])
+    const controller = new AbortController()
+    controller.abort()
+
+    const result = await commitArchiveImport(
+      preview,
+      { threadSourceIds: ['a', 'b'], skipDuplicates: false },
+      undefined,
+      controller.signal,
+    )
+
+    expect(result.cancelled).toBe(true)
+    expect(result.createdPairs).toBe(0)
+    expect(result.createdThreads).toBe(0)
+  })
+
+  it('cancels mid-import: completed conversations survive, the rest are left recoverable', async () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const preview = makePreview([makeThread('a', 2), makeThread('b', 2)])
+    const controller = new AbortController()
+
+    // Abort once the first conversation is done and the second has started.
+    const result = await commitArchiveImport(
+      preview,
+      { threadSourceIds: ['a', 'b'], skipDuplicates: false },
+      (progress) => {
+        if (progress.threadsDone >= 1) controller.abort()
+      },
+      controller.signal,
+    )
+
+    expect(result.cancelled).toBe(true)
+    // First conversation committed and durably saved; second not promoted.
+    expect(result.createdThreads).toBe(1)
+    expect(Object.keys(savedThreadsCalls.at(-1)!)).toHaveLength(1)
   })
 })
 

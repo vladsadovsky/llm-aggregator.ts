@@ -15,7 +15,8 @@ import { exportQAToFile, exportThreadToFile } from '../services/fileExportServic
 import { importFromFile } from '../services/fileImportService'
 import {
   commitArchiveImport,
-  getPreview,
+  beginCommit,
+  cancelCommit,
   releasePreview,
 } from '../services/import/archive/bulkImportService'
 import { findDuplicateGroups, deleteDuplicates } from '../services/duplicateService'
@@ -48,7 +49,7 @@ import {
   syncFromArchive,
   invalidateCache as invalidateTagCache,
 } from '../services/tagDictionaryService'
-import { CH, EVENT_CH, ipcError } from '../../shared/contracts'
+import { CH, EVENT_CH } from '../../shared/contracts'
 import { createRegistrar } from './registerValidatedHandler'
 import type { SenderPolicy } from './senderPolicy'
 
@@ -128,25 +129,30 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
 
   // ─── Bulk (account export) import ───────────────────────────
   r.handle(CH.importArchiveCommit, async (event, previewId, selection) => {
-    const preview = getPreview(previewId)
-    if (!preview) {
-      throw ipcError('not-found', 'This import preview has expired. Please choose the file again.')
-    }
+    // Claims the preview or throws a coded error on a missing/double commit, and
+    // yields the abort signal cancellation drives.
+    const { preview, signal } = beginCommit(previewId)
     try {
       // Progress is pushed to the window that asked for the import; the renderer
       // never polls.
-      return await commitArchiveImport(preview, selection, (progress) => {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send(EVENT_CH.archiveImportProgress, progress)
-        }
-      })
+      return await commitArchiveImport(
+        preview,
+        selection,
+        (progress) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send(EVENT_CH.archiveImportProgress, progress)
+          }
+        },
+        signal,
+      )
     } finally {
       releasePreview(previewId)
     }
   })
 
   r.handle(CH.importArchiveCancel, (_event, previewId) => {
-    releasePreview(previewId)
+    // Abort an in-flight commit (or drop an uncommitted preview).
+    cancelCommit(previewId)
   })
 
   // ─── Duplicate cleanup ──────────────────────────────────────

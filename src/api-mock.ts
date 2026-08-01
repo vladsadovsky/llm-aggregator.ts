@@ -113,6 +113,7 @@ export const mockApi: ElectronAPI = {
         failed: 0,
         threadNames: [],
         warnings: [],
+        cancelled: false,
     }),
     importArchiveCancel: async () => undefined,
     onArchiveImportProgress: () => () => undefined,

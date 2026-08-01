@@ -131,4 +131,6 @@ export interface BulkImportCommitResult {
   /** Names of threads that were created, in order. */
   threadNames: string[]
   warnings: string[]
+  /** True when the commit stopped early on user cancellation. */
+  cancelled: boolean
 }

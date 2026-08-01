@@ -30,6 +30,7 @@ import { createPair } from '../../qaPairService'
 import { loadThreads, saveThreads } from '../../threadService'
 import { addTag, listTags } from '../../tagDictionaryService'
 import { debugLog, debugError } from '../../logger'
+import { ipcError } from '../../../../shared/contracts/errorWire'
 import type {
   BulkImportPreview,
   BulkImportPreviewSummary,
@@ -39,12 +40,38 @@ import type {
   BulkImportCommitResult,
 } from './archiveTypes'
 
+import { randomUUID } from 'crypto'
+
 /**
  * Previews awaiting a commit decision, keyed by `previewId`. Full previews hold
  * the entire archive text, so they are dropped as soon as the user commits or
- * cancels — see `releasePreview`.
+ * cancels (see `releasePreview`) or when their TTL expires — an abandoned preview
+ * must not pin megabytes of archive text in main forever.
  */
-const pendingPreviews = new Map<string, BulkImportPreview>()
+interface PendingPreview {
+  preview: BulkImportPreview
+  createdAt: number
+  /** Set while a commit is running so it can be aborted and not double-committed. */
+  committing: boolean
+  abort?: AbortController
+}
+
+const pendingPreviews = new Map<string, PendingPreview>()
+
+/** Uncommitted previews expire after this long. */
+const PREVIEW_TTL_MS = 10 * 60 * 1000
+
+// Unref'd sweeper: drop expired, not-committing previews without holding the
+// event loop open.
+const sweeper = setInterval(() => {
+  const now = Date.now()
+  for (const [id, entry] of pendingPreviews) {
+    if (!entry.committing && now - entry.createdAt > PREVIEW_TTL_MS) {
+      pendingPreviews.delete(id)
+    }
+  }
+}, 60_000)
+if (typeof sweeper.unref === 'function') sweeper.unref()
 
 /**
  * Applied to every thread and pair produced by an account-export import, on top
@@ -54,17 +81,47 @@ const pendingPreviews = new Map<string, BulkImportPreview>()
 export const BULK_TAG = 'bulk'
 
 export function storePreview(preview: BulkImportPreview): string {
-  const previewId = `preview_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  pendingPreviews.set(previewId, preview)
+  // Opaque, unguessable id (INV-IMPORT).
+  const previewId = randomUUID()
+  pendingPreviews.set(previewId, { preview, createdAt: Date.now(), committing: false })
   return previewId
 }
 
 export function getPreview(previewId: string): BulkImportPreview | null {
-  return pendingPreviews.get(previewId) ?? null
+  return pendingPreviews.get(previewId)?.preview ?? null
 }
 
 export function releasePreview(previewId: string): void {
+  const entry = pendingPreviews.get(previewId)
+  entry?.abort?.abort()
   pendingPreviews.delete(previewId)
+}
+
+/**
+ * Claim a preview for commit. Returns its abort signal, or throws on a missing or
+ * already-committing preview so a duplicate commit cannot run twice.
+ */
+export function beginCommit(previewId: string): { preview: BulkImportPreview; signal: AbortSignal } {
+  const entry = pendingPreviews.get(previewId)
+  if (!entry) {
+    throw ipcError('not-found', 'This import preview has expired. Please choose the file again.')
+  }
+  if (entry.committing) {
+    throw ipcError('cancelled', 'This import is already being committed.')
+  }
+  entry.committing = true
+  entry.abort = new AbortController()
+  return { preview: entry.preview, signal: entry.abort.signal }
+}
+
+/** Abort a running commit if one is in flight; otherwise release the preview. */
+export function cancelCommit(previewId: string): void {
+  const entry = pendingPreviews.get(previewId)
+  if (entry?.committing && entry.abort) {
+    entry.abort.abort()
+  } else {
+    pendingPreviews.delete(previewId)
+  }
 }
 
 /** Strip the pair bodies so only display data crosses the IPC bridge. */
@@ -272,17 +329,32 @@ function registerImportTags(tags: string[]): void {
   }
 }
 
+/** Yield a turn to Electron's event loop so a large import never freezes main. */
+function yieldToLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
+/** Yield after roughly this many processed pairs (one frame's worth of work). */
+const YIELD_EVERY = 64
+
 /**
  * Write the selected conversations. Emits a progress tick per pair.
  *
- * Failures are isolated per pair: one unwritable file must not abandon the rest
- * of a 500-conversation import.
+ * A conversation is the durable unit (INV-IMPORT): its pairs are written, then
+ * threads.json is saved atomically before the conversation is declared complete.
+ * The loop yields to the event loop periodically so main stays responsive, and
+ * honors an AbortSignal — cancellation stops before the next durable unit and
+ * never promotes a half-written thread. Pairs from an aborted mid-thread are
+ * recoverable on re-run through their origin_id.
+ *
+ * Per-pair failures are isolated: one unwritable file must not abandon the rest.
  */
-export function commitArchiveImport(
+export async function commitArchiveImport(
   preview: BulkImportPreview,
   selection: BulkImportSelection,
   onProgress?: (progress: BulkImportProgress) => void,
-): BulkImportCommitResult {
+  signal?: AbortSignal,
+): Promise<BulkImportCommitResult> {
   const wanted = new Set(selection.threadSourceIds)
   const selected = preview.threads.filter((t) => wanted.has(t.sourceId))
 
@@ -297,6 +369,7 @@ export function commitArchiveImport(
     failed: 0,
     threadNames: [],
     warnings: [],
+    cancelled: false,
   }
 
   const threads = loadThreads()
@@ -310,12 +383,18 @@ export function commitArchiveImport(
   // actually has, so surfacing it is opt-in rather than assumed.
   const applyDatePrefix = Boolean(selection.includeDateInThreadNames) && preview.format === 'gemini-takeout'
 
-  for (const thread of selected) {
+  outer: for (const thread of selected) {
     const createdIds: string[] = []
     const day = thread.createdAt.slice(0, 10)
     const threadName = applyDatePrefix && day ? `${day} — ${thread.name}` : thread.name
 
     for (const item of thread.items) {
+      // Stop before the next durable pair; the current thread is left unpromoted.
+      if (signal?.aborted) {
+        result.cancelled = true
+        break outer
+      }
+
       // Duplicate check runs against a live index so duplicates *within* the
       // same import are caught too, not just ones already on disk.
       const isDuplicate = Boolean(item.originId && originIndex.has(item.originId))
@@ -359,6 +438,8 @@ export function commitArchiveImport(
           threadsTotal,
         })
       }
+
+      if (processed % YIELD_EVERY === 0) await yieldToLoop()
     }
 
     if (createdIds.length > 0) {
@@ -373,14 +454,20 @@ export function commitArchiveImport(
           ? { updatedAt: thread.updatedAt || thread.createdAt }
           : {}),
       }
+      // Durable unit: persist threads.json before declaring this conversation
+      // done, so a crash after this point cannot lose the thread linkage.
+      saveThreads(threads)
       result.createdThreads += 1
       result.threadNames.push(threadName)
     } else if (thread.items.length > 0) {
       result.warnings.push(`"${threadName}" produced no new pairs (all duplicates or failed) — no thread created.`)
     }
     threadsDone += 1
+    await yieldToLoop()
   }
 
+  // Final save is a no-op-safe backstop (incremental saves already persisted each
+  // completed thread); still needed when nothing triggered an incremental save.
   saveThreads(threads)
   registerImportTags(selected.flatMap((t) => t.tags))
 
@@ -389,6 +476,7 @@ export function commitArchiveImport(
     skippedDuplicates: result.skippedDuplicates,
     createdThreads: result.createdThreads,
     failed: result.failed,
+    cancelled: result.cancelled,
   })
 
   return result

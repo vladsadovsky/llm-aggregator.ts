@@ -8,14 +8,23 @@
  */
 
 import { classifyShareUrl, PROVIDER_LABEL } from './providerDetection'
-import { fetchJson, renderGemini } from './conversationFetcher'
+import { fetchJson, renderGemini, RemoteTransportError } from './conversationFetcher'
+import { redactUrl } from './remoteUrlPolicy'
 import { parseChatGPT } from './parsers/chatgptParser'
 import { parseCopilot } from './parsers/copilotParser'
 import { parseGemini } from './parsers/geminiParser'
 import { parseClaude } from './parsers/claudeParser'
 import { buildResult } from './buildResult'
 import { debugLog } from '../logger'
+import { ipcError, type IpcErrorCode } from '../../../shared/contracts/errorWire'
 import type { ParsedConversation, SharedImportResult } from './types'
+
+/** Map a bounded-transport failure to a coded, user-safe error. */
+function transportToIpcError(err: RemoteTransportError) {
+  const code: IpcErrorCode =
+    err.code === 'response-too-large' || err.code === 'redirect-limit' ? 'limit-exceeded' : 'not-found'
+  return ipcError(code, err.message)
+}
 
 function summarizeRoles(messages: ParsedConversation['messages']): Record<string, number> {
   return messages.reduce<Record<string, number>>((acc, message) => {
@@ -28,13 +37,15 @@ function summarizeRoles(messages: ParsedConversation['messages']): Record<string
 export async function importSharedLink(rawUrl: string): Promise<SharedImportResult> {
   const classified = classifyShareUrl(rawUrl)
   if (classified.kind === 'insecure-scheme') {
-    throw new Error(
+    throw ipcError(
+      'invalid-payload',
       'Share links must use https, not http. A plaintext link can be modified in transit before ' +
         'it is rendered — paste the https:// version of the link.',
     )
   }
   if (classified.kind === 'unsupported') {
-    throw new Error(
+    throw ipcError(
+      'invalid-payload',
       'Unrecognized share link. Supported links look like:\n' +
         '• https://chatgpt.com/share/…\n' +
         '• https://gemini.google.com/share/… or https://share.gemini.google/…\n' +
@@ -44,12 +55,25 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
   }
 
   const { provider, shareId } = classified.match
-  debugLog('sharedLinkImport', 'importing', {
-    provider,
-    shareId,
-    rawUrl,
-  })
+  // Redact: never log the share token (INV-OBS).
+  debugLog('sharedLinkImport', 'importing', { provider, url: redactUrl(rawUrl) })
 
+  let convo: ParsedConversation
+  try {
+    convo = await fetchAndParse(provider, shareId, rawUrl)
+  } catch (err) {
+    if (err instanceof RemoteTransportError) throw transportToIpcError(err)
+    throw err
+  }
+
+  return finalizeImport(convo, provider)
+}
+
+async function fetchAndParse(
+  provider: ParsedConversation['provider'],
+  shareId: string,
+  rawUrl: string,
+): Promise<ParsedConversation> {
   let convo: ParsedConversation
   if (provider === 'chatgpt') {
     const json = await fetchJson(`https://chatgpt.com/backend-api/share/${shareId}`)
@@ -86,7 +110,13 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
     })
     convo = parseGemini(extract, rawUrl)
   }
+  return convo
+}
 
+function finalizeImport(
+  convo: ParsedConversation,
+  provider: ParsedConversation['provider'],
+): SharedImportResult {
   debugLog('sharedLinkImport', 'parsed conversation summary', {
     provider: convo.provider,
     title: convo.title,
@@ -103,7 +133,8 @@ export async function importSharedLink(rawUrl: string): Promise<SharedImportResu
   })
 
   if (convo.messages.length === 0) {
-    throw new Error(
+    throw ipcError(
+      'not-found',
       `No conversation content could be extracted from this ${PROVIDER_LABEL[provider]} share link. ` +
         'The link may be private, expired, or the page format may have changed.',
     )
