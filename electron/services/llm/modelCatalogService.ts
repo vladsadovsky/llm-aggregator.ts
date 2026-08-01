@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { app } from 'electron'
 import OpenAI from 'openai'
 import type { AppSecrets } from '../secretsService'
 import { debugError, debugLog } from '../logger'
 import { getProviderDescriptor, listProviderDescriptors } from './providerRegistry'
+import { atomicWriteJsonSync } from '../persistence/atomicFile'
 
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
 export type LatencyTier = 'fast' | 'medium' | 'slow' | 'unknown'
@@ -201,12 +202,7 @@ function loadCatalogCache(): CatalogCache {
  */
 function saveCatalogCache(cache: CatalogCache): void {
   try {
-    const cachePath = getCatalogCachePath()
-    const dir = dirname(cachePath)
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true })
-    }
-    writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf-8')
+    atomicWriteJsonSync(getCatalogCachePath(), cache)
   } catch (err) {
     debugError('modelCatalogService', 'Failed to persist model catalog cache:', err)
   }

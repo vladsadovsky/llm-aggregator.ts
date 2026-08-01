@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { debugLog, debugError } from './logger'
 import { getDefaultDataDirectory } from './defaultDataDirectory'
+import { atomicWriteJsonSync } from './persistence/atomicFile'
 
 const isDev = process.env.NODE_ENV !== 'production'
 const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
@@ -84,12 +85,9 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(settings: AppSettings): void {
-  const filepath = getSettingsPath()
-  const dir = join(filepath, '..')
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
-  }
-  writeFileSync(filepath, JSON.stringify(settings, null, 2), 'utf-8')
+  // Atomic + last-known-good: a crash or disk-full during save can never replace
+  // a valid settings.json with a truncated one (INV-DATA).
+  atomicWriteJsonSync(getSettingsPath(), settings, { keepLastKnownGood: true })
 }
 
 export function getDataDirectory(): string {

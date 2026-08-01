@@ -1,9 +1,11 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { join, extname, basename } from 'path'
 import matter from 'gray-matter'
 import yaml from 'js-yaml'
 import { getDataDir } from './pathResolver'
 import { debugLog } from './logger'
+import { atomicWriteFileSync } from './persistence/atomicFile'
+import { aggregateScan, type ScannedFile, type ArchiveScan } from './persistence/qaIndex'
 
 /** Serialize a metadata object + answer body into a .md file string. */
 function serializeQAFile(frontmatter: Record<string, unknown>, answer: string): string {
@@ -145,22 +147,35 @@ function parseQAFile(filepath: string): QAPairData | null {
   }
 }
 
-export function listAllPairs(): Record<string, QAPairData> {
+/**
+ * Scan the archive once, returning the pairs map plus health diagnostics:
+ * every file that failed to parse and every duplicate-id collision. Duplicate
+ * ids no longer silently overwrite earlier entries — the first (in path-sorted
+ * order) wins and the rest are reported (`INV-DATA`).
+ */
+export function scanArchive(): ArchiveScan {
   const dir = getArchiveDir()
-  debugLog('qaPairService', 'listAllPairs from:', dir)
-  const result: Record<string, QAPairData> = {}
-
   const files = readdirSync(dir).filter((f) => extname(f) === '.md')
-  debugLog('qaPairService', 'found', files.length, '.md files')
-  for (const file of files) {
+  const scanned: ScannedFile[] = files.map((file) => {
     const filepath = join(dir, file)
-    const pair = parseQAFile(filepath)
-    if (pair) {
-      result[pair.id] = pair
-    }
-  }
-  debugLog('qaPairService', 'loaded', Object.keys(result).length, 'pairs')
-  return result
+    return { path: filepath, pair: parseQAFile(filepath) }
+  })
+  const scan = aggregateScan(scanned)
+  debugLog(
+    'qaPairService',
+    'scanArchive:',
+    Object.keys(scan.pairs).length,
+    'pairs,',
+    scan.duplicates.length,
+    'dup ids,',
+    scan.skipped.length,
+    'skipped',
+  )
+  return scan
+}
+
+export function listAllPairs(): Record<string, QAPairData> {
+  return scanArchive().pairs
 }
 
 export function getPair(id: string): QAPairData | null {
@@ -233,7 +248,7 @@ export function createPair(data: QACreateData): QAPairData {
 
   const content = serializeQAFile(metadata, data.answer)
 
-  writeFileSync(filepath, content, 'utf-8')
+  atomicWriteFileSync(filepath, content)
 
   return {
     id,
@@ -281,7 +296,9 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
 
   const content = serializeQAFile(metadata, updatedPair.answer)
 
-  writeFileSync(pair.filepath, content, 'utf-8')
+  // Atomic replace: the original file stays intact until the new content is
+  // fully written and promoted, so a crash mid-write cannot corrupt the pair.
+  atomicWriteFileSync(pair.filepath, content)
 
   return { ...updatedPair, version: newVersion }
 }
