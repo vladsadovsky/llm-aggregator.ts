@@ -38,6 +38,12 @@ export type SecretErrorCode =
   | 'ENV_MALFORMED'
   /** OS-backed encryption is not available on this machine. */
   | 'SAFE_STORAGE_UNAVAILABLE'
+  /** Linux selected the `basic_text` backend — obfuscation, not real encryption. */
+  | 'SAFE_STORAGE_INSECURE_BACKEND'
+  /** A legacy plaintext file was migrated into encrypted storage and purged. */
+  | 'LEGACY_MIGRATED'
+  /** A legacy plaintext file was found but migration could not be verified. */
+  | 'LEGACY_MIGRATION_FAILED'
   /** The encrypted file exists but could not be read. */
   | 'SAFE_STORAGE_READ_FAIL'
   /** The encrypted file was read but could not be decrypted or parsed. */

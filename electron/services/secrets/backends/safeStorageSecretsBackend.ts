@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { existsSync, readFileSync } from 'fs'
 import type {
   AppSecrets,
   SecretBackend,
   SecretWarning,
 } from '../secretBackendTypes'
 import { debugError } from '../../logger'
+import { atomicWriteFileSync } from '../../persistence/atomicFile'
 
 /** Bump when the on-disk envelope shape changes. */
 const ENVELOPE_VERSION = 1
@@ -27,12 +27,20 @@ export interface SafeStorageCrypto {
   isEncryptionAvailable(): boolean
   encryptString(plainText: string): Buffer
   decryptString(encrypted: Buffer): string
+  /**
+   * Linux only: which OS backend safeStorage selected. `basic_text` means the
+   * payload is merely obfuscated, not encrypted, so we refuse to treat it as
+   * secure storage. Optional — absent on Windows/macOS builds.
+   */
+  getSelectedStorageBackend?(): string
 }
 
 export interface SafeStorageBackendOptions {
   /** Absolute path to the encrypted secrets file. */
   filePath: string
   crypto: SafeStorageCrypto
+  /** Injected for tests; defaults to the host platform. */
+  platform?: NodeJS.Platform
 }
 
 function isEnvelope(value: unknown): value is SecretsEnvelope {
@@ -56,10 +64,9 @@ function isEnvelope(value: unknown): value is SecretsEnvelope {
  */
 export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptions): SecretBackend {
   const { filePath, crypto } = options
+  const platform = options.platform ?? process.platform
 
-  // Local rather than `this.isAvailable()` so the backend keeps working if a
-  // caller destructures its methods.
-  const available = (): boolean => {
+  const encAvailable = (): boolean => {
     try {
       return crypto.isEncryptionAvailable()
     } catch (err) {
@@ -67,6 +74,28 @@ export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptio
       return false
     }
   }
+
+  /**
+   * True when Linux selected the `basic_text` backend, which obfuscates rather
+   * than encrypts. We must not present it as secure storage or silently save
+   * real keys through it.
+   */
+  const isInsecureBackend = (): boolean => {
+    if (platform !== 'linux' || typeof crypto.getSelectedStorageBackend !== 'function') {
+      return false
+    }
+    try {
+      return crypto.getSelectedStorageBackend() === 'basic_text'
+    } catch (err) {
+      debugError('safeStorageSecrets', 'getSelectedStorageBackend threw:', err)
+      return false
+    }
+  }
+
+  // Local rather than `this.isAvailable()` so the backend keeps working if a
+  // caller destructures its methods. An insecure backend is treated as
+  // unavailable for both read and write.
+  const available = (): boolean => encAvailable() && !isInsecureBackend()
 
   return {
     id: 'safe-storage',
@@ -77,10 +106,20 @@ export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptio
     load() {
       const warnings: SecretWarning[] = []
 
-      if (!available()) {
+      if (!encAvailable()) {
         warnings.push({
           code: 'SAFE_STORAGE_UNAVAILABLE',
           message: 'OS-backed secure storage is unavailable on this machine, so saved API keys cannot be read.',
+        })
+        return { secrets: {}, warnings }
+      }
+
+      if (isInsecureBackend()) {
+        warnings.push({
+          code: 'SAFE_STORAGE_INSECURE_BACKEND',
+          message:
+            'Your Linux session offers only basic_text storage, which does not encrypt secrets. ' +
+            'Install a system keyring (GNOME Keyring or KWallet) to store API keys securely.',
         })
         return { secrets: {}, warnings }
       }
@@ -134,8 +173,14 @@ export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptio
     },
 
     save(secrets: AppSecrets) {
-      if (!available()) {
+      if (!encAvailable()) {
         throw new Error('Secure storage is unavailable on this machine, so API keys cannot be saved.')
+      }
+      if (isInsecureBackend()) {
+        throw new Error(
+          'Refusing to save API keys through Linux basic_text, which does not encrypt them. ' +
+            'Install a system keyring (GNOME Keyring or KWallet) first.',
+        )
       }
 
       const envelope: SecretsEnvelope = {
@@ -145,11 +190,21 @@ export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptio
         updatedAt: new Date().toISOString(),
       }
 
-      const dir = dirname(filePath)
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true })
-      }
-      writeFileSync(filePath, JSON.stringify(envelope, null, 2), 'utf-8')
+      // Atomic + last-known-good, and validate by decrypting the just-written
+      // temp before promotion — a save that cannot be read back never replaces a
+      // good envelope (INV-SECRET, INV-DATA).
+      atomicWriteFileSync(filePath, JSON.stringify(envelope, null, 2), {
+        keepLastKnownGood: true,
+        validate: (written) => {
+          const parsed: unknown = JSON.parse(written.toString('utf-8'))
+          if (!isEnvelope(parsed)) throw new Error('Envelope shape invalid after write.')
+          const plain = crypto.decryptString(Buffer.from(parsed.ciphertext, 'base64'))
+          const decoded: unknown = JSON.parse(plain)
+          if (typeof decoded !== 'object' || decoded === null) {
+            throw new Error('Decrypted payload invalid after write.')
+          }
+        },
+      })
     },
   }
 }

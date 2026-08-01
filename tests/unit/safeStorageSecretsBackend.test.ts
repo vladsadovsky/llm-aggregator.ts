@@ -105,6 +105,78 @@ describe('safeStorage secrets backend', () => {
 
     expect(backend.load()).toEqual({ secrets: {}, warnings: [] })
   })
+
+  it('promotes atomically — a valid envelope survives a save whose readback cannot decrypt', () => {
+    const filePath = join(dir, 'secrets.enc.json')
+    // First, a good save.
+    createSafeStorageSecretsBackend({ filePath, crypto: fakeCrypto() }).save({
+      openaiApiKey: 'sk-good',
+      anthropicApiKey: '',
+    })
+    const before = readFileSync(filePath, 'utf-8')
+
+    // A crypto that encrypts to something it cannot itself decrypt fails the
+    // decrypt-before-promote validation, so the original envelope is untouched.
+    const brokenCrypto: SafeStorageCrypto = {
+      isEncryptionAvailable: () => true,
+      encryptString: () => Buffer.from('unreadable', 'utf-8'),
+      decryptString: () => {
+        throw new Error('cannot decrypt')
+      },
+    }
+    expect(() =>
+      createSafeStorageSecretsBackend({ filePath, crypto: brokenCrypto }).save({
+        openaiApiKey: 'sk-new',
+        anthropicApiKey: '',
+      }),
+    ).toThrow()
+    expect(readFileSync(filePath, 'utf-8')).toBe(before)
+  })
+})
+
+describe('Linux basic_text rejection', () => {
+  function linuxCrypto(backendName: string): SafeStorageCrypto {
+    return { ...fakeCrypto(), getSelectedStorageBackend: () => backendName }
+  }
+
+  it('treats basic_text as unavailable and warns instead of reading', () => {
+    const backend = createSafeStorageSecretsBackend({
+      filePath: join(dir, 'secrets.enc.json'),
+      crypto: linuxCrypto('basic_text'),
+      platform: 'linux',
+    })
+    expect(backend.isAvailable()).toBe(false)
+    expect(backend.load().warnings.map((w) => w.code)).toContain('SAFE_STORAGE_INSECURE_BACKEND')
+  })
+
+  it('refuses to save through basic_text', () => {
+    const backend = createSafeStorageSecretsBackend({
+      filePath: join(dir, 'secrets.enc.json'),
+      crypto: linuxCrypto('basic_text'),
+      platform: 'linux',
+    })
+    expect(() => backend.save({ openaiApiKey: 'sk', anthropicApiKey: '' })).toThrow(/basic_text/)
+  })
+
+  it('accepts a real keyring backend on Linux', () => {
+    const backend = createSafeStorageSecretsBackend({
+      filePath: join(dir, 'secrets.enc.json'),
+      crypto: linuxCrypto('gnome_libsecret'),
+      platform: 'linux',
+    })
+    expect(backend.isAvailable()).toBe(true)
+    backend.save({ openaiApiKey: 'sk-keyring', anthropicApiKey: '' })
+    expect(backend.load().secrets.openaiApiKey).toBe('sk-keyring')
+  })
+
+  it('ignores the selected backend on non-Linux platforms', () => {
+    const backend = createSafeStorageSecretsBackend({
+      filePath: join(dir, 'secrets.enc.json'),
+      crypto: linuxCrypto('basic_text'),
+      platform: 'win32',
+    })
+    expect(backend.isAvailable()).toBe(true)
+  })
 })
 
 describe('legacy plaintext cleanup', () => {
