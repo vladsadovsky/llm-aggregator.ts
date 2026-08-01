@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
-  test: {
-    // Unit tests for Electron main-process code run in Node.js (no DOM, no electron-renderer shims)
-    environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
-  },
-})
+/**
+ * Root Vitest config. Test projects (Node "unit" + jsdom "renderer") are defined
+ * in `vitest.workspace.ts`, which Vitest auto-detects; this file exists so Vitest
+ * resolves its root config here rather than falling back to `vite.config.mts`
+ * (which carries the Electron build plugins).
+ */
+export default defineConfig({})
