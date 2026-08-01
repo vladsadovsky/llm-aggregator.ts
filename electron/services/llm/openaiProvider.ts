@@ -1,6 +1,6 @@
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError } from 'openai'
 import type { LLMProvider } from './types'
-import { addLlmTokens, addEmbeddingTokens } from './tokenTracker'
+import { recordUsage } from './usageLedger'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 
@@ -55,7 +55,13 @@ export class OpenAIProvider implements LLMProvider {
         ],
       })
       if (response.usage) {
-        addLlmTokens(response.usage.prompt_tokens, response.usage.completion_tokens)
+        recordUsage({
+          capability: 'complete',
+          provider: 'openai',
+          model: this.model,
+          inputTokens: response.usage.prompt_tokens,
+          outputTokens: response.usage.completion_tokens,
+        })
       }
       return response.choices[0]?.message?.content ?? ''
     } catch (err) {
@@ -70,7 +76,12 @@ export class OpenAIProvider implements LLMProvider {
         input: text,
       })
       if (response.usage) {
-        addEmbeddingTokens(response.usage.prompt_tokens)
+        recordUsage({
+          capability: 'embed',
+          provider: 'openai',
+          model: EMBEDDING_MODEL,
+          inputTokens: response.usage.prompt_tokens,
+        })
       }
       const embedding = response.data[0]?.embedding
       if (!embedding) throw new Error('Embedding API returned an empty response.')
