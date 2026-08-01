@@ -1,9 +1,14 @@
 # V2 Phase 0.8 — AI Metadata Convergence and Activation
 
-**Status:** Proposed implementation and regression plan  
+**Status:** Deferred optional design reference — not approved implementation scope
 **Date:** August 1, 2026  
 **Scope:** `V2_Master_Roadmap.md` Phase 0.8  
-**Sequence:** Complete after the original Phase 0 gate and before Phase 1 or Phase 2
+**Sequence:** No phase dependency; revisit only as separately approved tactical improvements
+
+> **Decision update (August 1, 2026):** Do not implement this document as one program. Its direction
+> remains useful, but the aggregate architecture, migration, UI, and test scope is disproportionate
+> for the application's current needs. Phase 1 and Phase 2 are not blocked by this document. When a
+> concrete issue is selected, extract the smallest useful behavior and write a new, bounded handoff.
 
 ## 1. Goal and completion contract
 
@@ -592,7 +597,6 @@ Final Phase 0.8 acceptance checklist:
 - [ ] Automated gates and the focused manual soak pass are green.
 - [ ] README, in-app help, menus, health report, Application Status, build notes, and roadmap agree.
 
-Phase 1 starts only after this checklist is green; its shared filter-bar work must preserve the new
-facets. Phase 2 starts only after this checklist is green; its title/tag/workflow features must use
-the canonical tags, provenance, suggestion, approval, readiness, and no-surprise-call contracts
-defined here.
+This checklist is retained as analytical reference only. It is not a release or phase gate. Phase 1
+and Phase 2 may proceed without it. Any future implementation must be re-scoped and approved as a
+small tactical change rather than inheriting this document's full completion contract.

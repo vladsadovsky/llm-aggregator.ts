@@ -730,7 +730,7 @@ Run after all Phase 0 PRs merge to a stabilization candidate. Use copied/sanitiz
 
 Record archive size, OS, filesystem/sync mode, Electron version, durations, memory high-water mark, failures, and recovery result. Minimum soak: two normal work sessions plus one forced termination during a copied-archive bulk import.
 
-## 15. Merge gates and Phase 0.8 readiness
+## 15. Merge gates and Phase 1 readiness
 
 Each Phase 0 PR must include:
 
@@ -764,4 +764,4 @@ Final Phase 0 acceptance checklist:
 - [ ] Full user-run Electron E2E, affected visual suites, Windows packaging, and manual soak pass are complete.
 - [ ] README, in-app help, menus, build notes, and provider capability messages agree.
 
-The original Phase 0 acceptance gate unlocks the audit follow-through in Phase 0.8, not Phase 1 or Phase 2 directly. Continue with `doc/dev_process/V2_Phase_0_8_Implementation_Plan.md` only while this gate remains green. Phase 0.8 then establishes the canonical metadata/filter/suggestion contract that Phase 1 and Phase 2 consume. A red persistence, IPC, security, or clean-install gate blocks Phase 0.8 and later-phase release even if an individual feature appears unrelated.
+Phase 1 may proceed independently in source-control terms, as the master roadmap permits, but it should merge into a v2 release line only while the Phase 0 acceptance gate remains green. A red persistence, IPC, security, or clean-install gate blocks Phase 1 release even if the Phase 1 feature itself is unrelated. The former comprehensive Phase 0.8 proposal is deferred and optional; it does not gate Phase 1 or Phase 2, and any future work from it must be re-scoped as a small tactical change.
