@@ -76,6 +76,13 @@ export interface SecretsStatus {
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
 export type LatencyTier = 'fast' | 'medium' | 'slow' | 'unknown'
 
+export interface ProviderCapabilities {
+  complete: boolean
+  embed: boolean
+  streaming: boolean
+  local: boolean
+}
+
 export interface ProviderDescriptor {
   id: string
   label: string
@@ -84,6 +91,8 @@ export interface ProviderDescriptor {
   comingSoon?: boolean
   apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
   supportsModelDiscovery: boolean
+  /** Declared capabilities — the UI selects features by these, not provider name. */
+  capabilities?: ProviderCapabilities
   notes?: string
 }
 
