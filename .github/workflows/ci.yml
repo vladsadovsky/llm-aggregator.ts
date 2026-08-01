@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master, vlads-dev, release/1.x]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Clean install and check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Report locked parser baseline
+        run: npm run check:dependencies
+      - run: npm run check
+
+  electron-smoke:
+    name: Electron smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 is GitHub's standard Apple Silicon runner.
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:e2e:smoke

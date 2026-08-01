@@ -26,6 +26,8 @@ const md = new MarkdownIt({ html: false, linkify: true, typographer: true })
  * still failing loudly if quadratic behavior is ever reintroduced.
  */
 const CEILING_MS = 2000
+const SCALE_RATIO_CEILING = 6
+const SAMPLE_COUNT = 5
 
 function elapsed(fn: () => void): number {
   const start = performance.now()
@@ -33,13 +35,32 @@ function elapsed(fn: () => void): number {
   return performance.now() - start
 }
 
+function medianElapsed(fn: () => void): number {
+  const samples = Array.from({ length: SAMPLE_COUNT }, () => elapsed(fn)).sort((a, b) => a - b)
+  return samples[Math.floor(samples.length / 2)]
+}
+
+function expectRepeatableScaling(makeInput: (size: number) => string, render: (value: string) => void): void {
+  const small = makeInput(15_000)
+  const large = makeInput(30_000)
+  render(makeInput(100)) // exclude parser/JIT cold start from the measured samples
+  const smallMedian = medianElapsed(() => render(small))
+  const largeMedian = medianElapsed(() => render(large))
+  expect(largeMedian).toBeLessThan(Math.max(smallMedian, 1) * SCALE_RATIO_CEILING)
+}
+
 describe('parser budgets (imported-content DoS guards)', () => {
   it('markdown-it smartquotes stays linear on a wall of quotes', () => {
+    expectRepeatableScaling((size) => '"a" '.repeat(size), (value) => { md.render(value) })
     const evil = '"a" '.repeat(60000)
     expect(elapsed(() => md.render(evil))).toBeLessThan(CEILING_MS)
   })
 
   it('linkify mailto validator stays linear on repeated mailto text', () => {
+    expectRepeatableScaling(
+      (size) => `${'mailto:'.repeat(size)}user@example.com`,
+      (value) => { md.render(value) },
+    )
     const evil = `${'mailto:'.repeat(40000)}user@example.com`
     expect(elapsed(() => md.render(evil))).toBeLessThan(CEILING_MS)
   })

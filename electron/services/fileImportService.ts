@@ -46,6 +46,15 @@ const ARCHIVE_EXTENSIONS = new Set(['.json', '.zip', '.csv'])
  * format. Real exports are far below this; anything bigger is not worth probing.
  */
 const MAX_SNIFF_BYTES = 256 * 1024 * 1024
+export const MAX_MARKDOWN_IMPORT_BYTES = 64 * 1024 * 1024
+
+function readMarkdownImport(path: string): string {
+  const size = statSync(path).size
+  if (size > MAX_MARKDOWN_IMPORT_BYTES) {
+    throw new Error(`Markdown import exceeds the ${MAX_MARKDOWN_IMPORT_BYTES / 1024 / 1024} MiB limit.`)
+  }
+  return readFileSync(path, 'utf-8')
+}
 
 /** Discriminated so the renderer knows which dialog to open next. */
 export type FileImportOutcome =
@@ -93,7 +102,7 @@ export async function importFromPath(chosen: string): Promise<FileImportOutcome>
 
   // Markdown is the documented export format, so trust the extension.
   if (ext === '.md') {
-    return { kind: 'markdown', result: parseImportFile(readFileSync(chosen, 'utf-8')) }
+    return { kind: 'markdown', result: parseImportFile(readMarkdownImport(chosen)) }
   }
 
   // Unknown extension (or none): let the archive registry look at the content
@@ -101,7 +110,7 @@ export async function importFromPath(chosen: string): Promise<FileImportOutcome>
   // particular end up with extensionless or oddly-named downloads.
   if (looksLikeArchiveContent(chosen)) return asArchive()
 
-  return { kind: 'markdown', result: parseImportFile(readFileSync(chosen, 'utf-8')) }
+  return { kind: 'markdown', result: parseImportFile(readMarkdownImport(chosen)) }
 }
 
 /** Content probe for a file whose extension tells us nothing. */

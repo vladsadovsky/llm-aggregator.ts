@@ -7,6 +7,9 @@
     "email": "sadovskyvlad@gmail.com"
   },
   "description": "LLM Aggregator - Organize and search LLM conversation Q&A pairs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "set VITE_DEBUG_LEVEL=warning&& vite --config vite.config.mts",
@@ -14,7 +17,8 @@
     "dev:debug": "set VITE_DEBUG_LEVEL=debug&& vite --config vite.config.mts",
     "dev:server": "vite --config vite.config.server.mts --host localhost --port 5173 --no-open",
     "build": "vue-tsc --noEmit && vite build",
-    "check": "npm run typecheck && eslint . && npm test && vite build && npm audit --omit=dev --audit-level=high",
+    "check": "npm run check:dependencies && npm run typecheck && eslint . && npm test && vite build && npm audit --omit=dev --audit-level=high",
+    "check:dependencies": "node scripts/check-dependency-baseline.mjs",
     "build:icons": "echo 'Generate icons from build/llm-aggregator.svg using electron-icon-builder or online tools. Output to public/icons. See build/README.md'",
     "electron:dev": "vite --config vite.config.mts",
     "electron:prod": "set NODE_ENV=production&& npm run build && electron .",
@@ -29,6 +33,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "playwright test --project=electron",
+    "test:e2e:smoke": "playwright test --project=electron --grep @smoke",
     "test:e2e:debug": "playwright test --project=electron --debug",
     "test:e2e:ui": "playwright test --project=electron --ui",
     "test:e2e:report": "playwright show-report",
@@ -57,12 +62,13 @@
     "@types/js-yaml": "^4.0.0",
     "@types/markdown-it": "^14.0.0",
     "@types/turndown": "^5.0.6",
+    "@types/yauzl": "^3.4.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/tsconfig": "^0.5.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "eslint-plugin-vue": "^10.7.0",
     "typescript": "^5.0.0",
@@ -72,5 +78,9 @@
     "vite-plugin-electron-renderer": "^0.14.0",
     "vitest": "^2.0.0",
     "vue-tsc": "^2.0.0"
+  },
+  "allowScripts": {
+    "electron@43.2.0": true,
+    "electron-winstaller@5.4.0": true
   }
 }

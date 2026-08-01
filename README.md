@@ -481,9 +481,20 @@ built-in behaviour, not an app binding. The **Zoom Content In / Out / Reset** co
 
 ### Prerequisites
 
-- Node.js 18+ (LTS recommended)
-- npm 9+
+- Node.js 22.12+ (Node.js 24 LTS recommended)
+- npm 11+
 - VS Code extension Vue - Official (vue.volar) for Vue breakpoint/debug support
+
+Supported V2 release targets:
+
+- Windows 11 on x64
+- macOS 12 Monterey or newer on Apple Silicon (ARM64); Intel Mac artifacts are not shipped
+
+The retained Linux packaging commands are best-effort development outputs and are outside this
+P0-B support commitment.
+
+The P0-B application runtime is Electron 43.2.0. At implementation time Electron 44 was still a
+prerelease and would also raise the macOS floor.
 
 ### Install and run
 
@@ -510,11 +521,14 @@ You can switch data directory from Settings inside the app.
 | npm run dev | Start Vite + Electron (hot reload) |
 | npm run dev:server | Start Vite server only |
 | npm run build | Typecheck + production build |
+| npm run check | Clean-install dependency baseline, typecheck, lint, unit tests, build, and production audit |
+| npm run check:dependencies | Verify installed imported-content parsers match the lockfile and security floors |
 | npm run typecheck | Type check only |
 | npm run lint | ESLint with auto-fix |
 | npm run test | Run Vitest once |
 | npm run test:watch | Run Vitest watch mode |
 | npm run test:e2e | Run Electron Playwright tests |
+| npm run test:e2e:smoke | Run focused Electron launch, preload, QA round-trip, and navigation security checks |
 | npm run test:e2e:debug | Playwright debug mode |
 | npm run test:e2e:ui | Playwright UI mode |
 | npm run test:e2e:report | Open Playwright report |
@@ -658,9 +672,9 @@ npm run electron:build:linux
 
 Expected artifact families:
 
-- Windows: NSIS installer and portable executable; the MSI-only command builds a native,
+- Windows 11 x64: NSIS installer and portable executable; the MSI-only command builds a native,
   assisted, per-user MSI for managed Windows Installer deployments
-- macOS: DMG and ZIP
+- macOS 12+ Apple Silicon: ARM64 DMG and ZIP (no Intel artifacts)
 - Linux: AppImage and DEB
 
 Cross-platform packaging can require host-specific signing/toolchain setup.
