@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-import { getProvider } from './llm/providerFactory'
+import { getEmbeddingProvider } from './llm/providerFactory'
 import { getPair, listAllPairs } from './qaPairService'
 import { debugLog, debugError } from './logger'
 
@@ -68,7 +68,7 @@ export async function generateEmbedding(id: string): Promise<void> {
   }
 
   debugLog('embeddingService', 'generating embedding for:', id)
-  const provider = getProvider()
+  const provider = getEmbeddingProvider()
   const text = `${pair.question}\n\n${pair.answer}`
   const vector = await provider.embed(text)
 
@@ -84,7 +84,7 @@ export async function generateEmbedding(id: string): Promise<void> {
 export async function generateAllEmbeddings(): Promise<{ total: number; generated: number; skipped: number }> {
   const pairs = listAllPairs()
   const store = loadStore()
-  const provider = getProvider()
+  const provider = getEmbeddingProvider()
 
   let generated = 0
   let skipped = 0
@@ -117,7 +117,7 @@ export async function generateAllEmbeddings(): Promise<{ total: number; generate
  * Find the top-K most similar QA ids to the given query text.
  */
 export async function semanticSearch(query: string, topK: number): Promise<string[]> {
-  const provider = getProvider()
+  const provider = getEmbeddingProvider()
   const queryVector = await provider.embed(query)
 
   const store = loadStore()
