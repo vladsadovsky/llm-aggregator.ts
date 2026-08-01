@@ -262,7 +262,7 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // On by default in Electron 33; set explicitly so the intended policy is
+      // Keep explicit even though it is the current default, so the intended policy is
       // visible in code and cannot be silently weakened.
       sandbox: true,
     },
@@ -314,10 +314,10 @@ function createWindow() {
   mainWindow.webContents.on('unresponsive', () => {
     console.error('[main] Renderer became unresponsive')
   })
-  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    const levels = ['debug', 'info', 'warn', 'error']
-    const label = levels[level] ?? `level-${level}`
-    console.error(`[renderer:${label}] ${sourceId}:${line} ${message}`)
+  mainWindow.webContents.on('console-message', (details) => {
+    console.error(
+      `[renderer:${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`,
+    )
   })
 
   // In dev, load from Vite dev server; in prod, the packaged index.html.

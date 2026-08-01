@@ -10,16 +10,28 @@ files:
 mac:
   icon: public/icons/llm-aggregator.icns
   category: public.app-category.productivity
+  # V2 support policy: macOS 12+ on Apple Silicon. Intel artifacts are not shipped.
+  minimumSystemVersion: "12.0"
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
   artifactName: "${productName}-${version}-mac.${ext}"
 win:
   icon: public/icons/llm-aggregator.ico
   target:
-    - nsis
-    - portable
-    - msi
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+    - target: msi
+      arch:
+        - x64
   # nsis and portable both emit .exe, so each target sets its own artifactName
   # below to avoid identical filenames overwriting each other. (Do NOT use a
   # win-level "${target}" macro — it is not a valid electron-builder macro and
