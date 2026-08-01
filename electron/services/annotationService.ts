@@ -1,6 +1,8 @@
-import { getProvider } from './llm/providerFactory'
+import { z } from 'zod'
+import { getCompletionProvider } from './llm/providerFactory'
 import { listAllPairs, updatePair } from './qaPairService'
-import { debugLog, debugError } from './logger'
+import { runBatchJob, type BatchItem, type BatchJobSpec } from './llm/batchRunner'
+import { debugLog } from './logger'
 import type { QAPairData } from './qaPairService'
 
 export type ConfidenceLevel = 'speculative' | 'working' | 'confident' | 'validated'
@@ -14,6 +16,12 @@ export interface AnnotationProposal {
 }
 
 const BATCH_SIZE = 20
+const VALID_LEVELS: ConfidenceLevel[] = ['speculative', 'working', 'confident', 'validated']
+
+/** Strict per-record schema for the model output (rejects wrong shapes). */
+const AnnotationRecordSchema = z
+  .object({ id: z.string(), confidence: z.string(), rationale: z.string().optional() })
+  .passthrough()
 
 const SYSTEM_PROMPT = `You are annotating Q&A pairs from a personal research archive with confidence levels.
 
@@ -30,79 +38,56 @@ For each Q&A entry, return a JSON array element with:
 
 Respond with ONLY a valid JSON array. No markdown, no prose, no explanation outside the array.`
 
-function buildBatchPrompt(pairs: QAPairData[]): string {
-  const entries = pairs
-    .map(
-      (p, i) =>
-        `[${i + 1}] id: ${p.id}\nTitle: ${p.title}\nQuestion: ${p.question.slice(0, 400)}\nAnswer: ${p.answer.slice(0, 600)}`,
-    )
-    .join('\n\n---\n\n')
-
-  return `Annotate the following ${pairs.length} Q&A entries:\n\n${entries}`
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const result: T[][] = []
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size))
-  }
-  return result
+function formatPairContent(p: QAPairData): string {
+  return `id: ${p.id}\nTitle: ${p.title}\nQuestion: ${p.question.slice(0, 400)}\nAnswer: ${p.answer.slice(0, 600)}`
 }
 
 /**
- * Generate confidence annotation proposals for all QAs (or a subset).
- * Processes in batches of BATCH_SIZE to avoid token limits.
+ * Generate confidence annotation proposals for all QAs (or a subset), through the
+ * generic batch runner: read-only, cancellable, metered, and validated. A failed
+ * batch is skipped rather than aborting the whole pass.
  */
-export async function generateAnnotations(ids?: string[]): Promise<AnnotationProposal[]> {
+export async function generateAnnotations(
+  ids?: string[],
+  signal?: AbortSignal,
+): Promise<AnnotationProposal[]> {
   const allPairs = listAllPairs()
-  const targets = ids
-    ? ids.map((id) => allPairs[id]).filter(Boolean)
-    : Object.values(allPairs)
-
+  const targets = ids ? ids.map((id) => allPairs[id]).filter(Boolean) : Object.values(allPairs)
   if (targets.length === 0) return []
 
   debugLog('annotationService', `generating annotations for ${targets.length} QAs`)
 
-  const provider = getProvider()
-  const proposals: AnnotationProposal[] = []
-  const batches = chunk(targets, BATCH_SIZE)
+  const items: BatchItem[] = targets.map((p) => ({
+    id: p.id,
+    content: formatPairContent(p),
+    contentHash: '', // annotation apply goes through the legacy IPC; hash unused here
+  }))
 
-  for (const batch of batches) {
-    const prompt = buildBatchPrompt(batch)
-    const raw = await provider.complete(prompt, SYSTEM_PROMPT)
-
-    // Strip markdown fences if present
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
-
-    let parsed: Array<{ id: string; confidence: string; rationale: string }>
-    try {
-      parsed = JSON.parse(cleaned)
-    } catch (err) {
-      debugError('annotationService', 'Failed to parse batch response:', cleaned.slice(0, 300), err)
-      // Skip failed batch rather than aborting everything
-      continue
-    }
-
-    for (const item of parsed) {
+  const spec: BatchJobSpec<AnnotationProposal> = {
+    batchSize: BATCH_SIZE,
+    systemPrompt: SYSTEM_PROMPT,
+    buildPrompt: (batch) =>
+      `Annotate the following ${batch.length} Q&A entries:\n\n${batch
+        .map((it, i) => `[${i + 1}] ${it.content}`)
+        .join('\n\n---\n\n')}`,
+    parseResponse: (text) => z.array(AnnotationRecordSchema).parse(JSON.parse(text)),
+    toProposal: (record, item) => {
       const pair = allPairs[item.id]
-      if (!pair) continue
-
-      const confidence = item.confidence as ConfidenceLevel
-      const valid: ConfidenceLevel[] = ['speculative', 'working', 'confident', 'validated']
-      if (!valid.includes(confidence)) continue
-
-      proposals.push({
+      const confidence = record.confidence as ConfidenceLevel
+      if (!pair || !VALID_LEVELS.includes(confidence)) return null
+      return {
         id: item.id,
         title: pair.title,
         currentConfidence: pair.aiConfidence,
         proposedConfidence: confidence,
-        rationale: item.rationale ?? '',
-      })
-    }
+        rationale: typeof record.rationale === 'string' ? record.rationale : '',
+      }
+    },
   }
 
-  debugLog('annotationService', `generated ${proposals.length} proposals`)
-  return proposals
+  const result = await runBatchJob(spec, items, getCompletionProvider(), { signal })
+  debugLog('annotationService', `generated ${result.proposals.length} proposals`)
+  return result.proposals
 }
 
 /**
