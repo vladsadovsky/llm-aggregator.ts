@@ -200,6 +200,8 @@ export interface BulkImportCommitResult {
   failed: number
   threadNames: string[]
   warnings: string[]
+  /** True when the commit stopped early on user cancellation. */
+  cancelled: boolean
 }
 
 /** Import from file resolves to one of two pipelines — see fileImportService. */
