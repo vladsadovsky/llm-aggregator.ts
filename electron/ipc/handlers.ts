@@ -1,62 +1,41 @@
-import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { dialog, BrowserWindow, shell } from 'electron'
 import { isExternallyOpenable } from '../security/navigationPolicy'
-import { loadThreads, saveThreads, ThreadMap } from '../services/threadService'
+import { loadThreads, saveThreads } from '../services/threadService'
 import {
   listAllPairs,
   getPair,
   createPair,
   updatePair,
   deletePair,
-  QACreateData,
-  QAUpdateData,
 } from '../services/qaPairService'
 import { search } from '../services/searchService'
-import { loadSettings, saveSettings, AppSettings } from '../services/settingsService'
+import { loadSettings, saveSettings } from '../services/settingsService'
 import { notifySettingsChanged } from '../services/settingsEvents'
 import { exportQAToFile, exportThreadToFile } from '../services/fileExportService'
-import { importFromFile, type FileImportOutcome } from '../services/fileImportService'
+import { importFromFile } from '../services/fileImportService'
 import {
   commitArchiveImport,
   getPreview,
   releasePreview,
 } from '../services/import/archive/bulkImportService'
-import type {
-  BulkImportSelection,
-  BulkImportCommitResult,
-} from '../services/import/archive/archiveTypes'
-import {
-  findDuplicateGroups,
-  deleteDuplicates,
-  type DuplicateScanResult,
-  type DuplicateCleanupResult,
-} from '../services/duplicateService'
-import {
-  previewArchiveReset,
-  resetArchive,
-  type ArchiveResetPreview,
-  type ArchiveResetResult,
-} from '../services/archiveResetService'
+import { findDuplicateGroups, deleteDuplicates } from '../services/duplicateService'
+import { previewArchiveReset, resetArchive } from '../services/archiveResetService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
-import type { SharedImportResult } from '../services/import/types'
 import {
   devEnvSecretVarNames,
   getSecretsStatus,
   loadSecrets,
   recheckSecretsStorage,
   saveSecrets,
-  type AppSecrets,
-  type SecretsStatus,
 } from '../services/secretsService'
 import { generateMetadata } from '../services/metadataService'
 import { generateEmbedding, generateAllEmbeddings, semanticSearch } from '../services/embeddingService'
 import { getProvider } from '../services/llm/providerFactory'
-import { getTokenStats, resetTokenStats, TokenStats } from '../services/llm/tokenTracker'
+import { getTokenStats, resetTokenStats } from '../services/llm/tokenTracker'
 import { listLlmProviders, listProviderModels } from '../services/llm/modelCatalogService'
 import { sessionBriefing, priorArtCheck, steelmanRetrieval, questionSeeding, conceptStateSummary } from '../services/insightsService'
 import { generateAnnotations, applyAnnotations } from '../services/annotationService'
-import type { AnnotationProposal, ConfidenceLevel } from '../services/annotationService'
 import { runHealthCheck } from '../services/healthService'
-import type { HealthReport } from '../services/healthService'
 import {
   loadDictionary,
   saveDictionary,
@@ -69,35 +48,40 @@ import {
   syncFromArchive,
   invalidateCache as invalidateTagCache,
 } from '../services/tagDictionaryService'
-import type { TagDictionary } from '../services/tagDictionaryService'
+import { CH, EVENT_CH, ipcError } from '../../shared/contracts'
+import { createRegistrar } from './registerValidatedHandler'
+import type { SenderPolicy } from './senderPolicy'
 
-export function registerIpcHandlers(): void {
+/**
+ * Register every privileged channel through the validated registrar. `policy`
+ * supplies the trusted main-window webContents and allowed origins so a call
+ * from any other frame is rejected before it reaches a service.
+ */
+export function registerIpcHandlers(policy: SenderPolicy): void {
+  const r = createRegistrar(policy)
+
   // ─── Shell ─────────────────────────────────────────────────
-  // Open a rendered-content link in the system browser (SEC-01). The renderer
-  // never navigates; it hands the href here, and only a parsed https:/mailto:
-  // URL is passed to the OS — never the raw string.
-  ipcMain.handle('openExternal', async (_event, url: unknown): Promise<{ ok: boolean }> => {
-    const raw = String(url)
-    if (isExternallyOpenable(raw)) {
-      await shell.openExternal(new URL(raw).href)
+  // Open a rendered-content link in the system browser (SEC-01). Only a parsed
+  // https:/mailto: URL is passed to the OS — never the raw string.
+  r.handle(CH.openExternal, async (_event, url): Promise<{ ok: boolean }> => {
+    if (isExternallyOpenable(url)) {
+      await shell.openExternal(new URL(url).href)
       return { ok: true }
     }
     return { ok: false }
   })
 
   // ─── Settings ──────────────────────────────────────────────
-  ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
-    return loadSettings()
-  })
+  r.handle(CH.settingsLoad, () => loadSettings())
 
-  ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
+  r.handle(CH.settingsSave, (_event, settings) => {
     saveSettings(settings)
     notifySettingsChanged(settings)
-    // Data directory may have changed — drop the tag dictionary cache
+    // Data directory may have changed — drop the tag dictionary cache.
     invalidateTagCache()
   })
 
-  ipcMain.handle('settings:pickDirectory', async (): Promise<string | null> => {
+  r.handle(CH.settingsPickDirectory, async (): Promise<string | null> => {
     const win = BrowserWindow.getFocusedWindow()
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
@@ -110,48 +94,28 @@ export function registerIpcHandlers(): void {
   })
 
   // ─── Threads ───────────────────────────────────────────────
-  ipcMain.handle('threads:load', async (): Promise<ThreadMap> => {
-    return loadThreads()
-  })
-
-  ipcMain.handle('threads:save', async (_event, threads: ThreadMap): Promise<void> => {
-    saveThreads(threads)
-  })
+  r.handle(CH.threadsLoad, () => loadThreads())
+  r.handle(CH.threadsSave, (_event, threads) => saveThreads(threads))
 
   // ─── QA Pairs ──────────────────────────────────────────────
-  ipcMain.handle('qa:listAll', async () => {
-    return listAllPairs()
-  })
-
-  ipcMain.handle('qa:get', async (_event, id: string) => {
-    return getPair(id)
-  })
-
-  ipcMain.handle('qa:create', async (_event, data: QACreateData) => {
-    return createPair(data)
-  })
-
-  ipcMain.handle('qa:update', async (_event, id: string, data: QAUpdateData) => {
-    return updatePair(id, data)
-  })
-
-  ipcMain.handle('qa:delete', async (_event, id: string) => {
-    return deletePair(id)
-  })
+  r.handle(CH.qaListAll, () => listAllPairs())
+  r.handle(CH.qaGet, (_event, id) => getPair(id))
+  r.handle(CH.qaCreate, (_event, data) => createPair(data))
+  r.handle(CH.qaUpdate, (_event, id, data) => updatePair(id, data))
+  r.handle(CH.qaDelete, (_event, id) => deletePair(id))
 
   // ─── Search ────────────────────────────────────────────────
-  ipcMain.handle('search:query', async (_event, query: string, type: 'full-text' | 'tags') => {
-    return search(query, type)
-  })
+  r.handle(CH.searchQuery, (_event, query, type) => search(query, type))
+  r.handle(CH.searchSemantic, (_event, query, topK) => semanticSearch(query, topK))
 
   // ─── Export / Import ───────────────────────────────────────
-  ipcMain.handle('export:qa', async (_event, id: string) => {
+  r.handle(CH.exportQa, (_event, id) => {
     const pair = getPair(id)
     if (!pair) return null
     return exportQAToFile(pair)
   })
 
-  ipcMain.handle('export:thread', async (_event, threadId: string) => {
+  r.handle(CH.exportThread, (_event, threadId) => {
     const threads = loadThreads()
     const thread = threads[threadId]
     if (!thread) return null
@@ -159,103 +123,58 @@ export function registerIpcHandlers(): void {
     return exportThreadToFile(thread, pairs)
   })
 
-  ipcMain.handle('import:file', async (): Promise<FileImportOutcome | null> => {
-    return importFromFile()
-  })
-
-  ipcMain.handle('import:sharedLink', async (_event, url: string): Promise<SharedImportResult> => {
-    return importSharedLink(url)
-  })
+  r.handle(CH.importFile, () => importFromFile())
+  r.handle(CH.importSharedLink, (_event, url) => importSharedLink(url))
 
   // ─── Bulk (account export) import ───────────────────────────
-  ipcMain.handle(
-    'import:archiveCommit',
-    async (
-      event,
-      previewId: string,
-      selection: BulkImportSelection,
-    ): Promise<BulkImportCommitResult> => {
-      const preview = getPreview(previewId)
-      if (!preview) {
-        throw new Error('This import preview has expired. Please choose the file again.')
-      }
-      try {
-        // Progress is pushed to the window that asked for the import; the
-        // renderer never polls.
-        return commitArchiveImport(preview, selection, (progress) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('archive-import:progress', progress)
-          }
-        })
-      } finally {
-        releasePreview(previewId)
-      }
-    },
-  )
+  r.handle(CH.importArchiveCommit, async (event, previewId, selection) => {
+    const preview = getPreview(previewId)
+    if (!preview) {
+      throw ipcError('not-found', 'This import preview has expired. Please choose the file again.')
+    }
+    try {
+      // Progress is pushed to the window that asked for the import; the renderer
+      // never polls.
+      return await commitArchiveImport(preview, selection, (progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(EVENT_CH.archiveImportProgress, progress)
+        }
+      })
+    } finally {
+      releasePreview(previewId)
+    }
+  })
 
-  ipcMain.handle('import:archiveCancel', async (_event, previewId: string): Promise<void> => {
+  r.handle(CH.importArchiveCancel, (_event, previewId) => {
     releasePreview(previewId)
   })
 
   // ─── Duplicate cleanup ──────────────────────────────────────
-  ipcMain.handle('duplicates:scan', async (): Promise<DuplicateScanResult> => {
-    return findDuplicateGroups()
-  })
-
-  ipcMain.handle('duplicates:delete', async (_event, ids: string[]): Promise<DuplicateCleanupResult> => {
-    return deleteDuplicates(ids)
-  })
+  r.handle(CH.duplicatesScan, () => findDuplicateGroups())
+  r.handle(CH.duplicatesDelete, (_event, ids) => deleteDuplicates(ids))
 
   // ─── Archive reset ──────────────────────────────────────────
-  ipcMain.handle('archive:resetPreview', async (): Promise<ArchiveResetPreview> => {
-    return previewArchiveReset()
-  })
-
-  ipcMain.handle('archive:reset', async (): Promise<ArchiveResetResult> => {
-    return resetArchive()
-  })
-
-  // ─── Semantic Search ────────────────────────────────────────
-  ipcMain.handle('search:semantic', async (_event, query: string, topK: number) => {
-    return semanticSearch(query, topK)
-  })
+  r.handle(CH.archiveResetPreview, () => previewArchiveReset())
+  r.handle(CH.archiveReset, () => resetArchive())
 
   // ─── Secrets ───────────────────────────────────────────────
   // Raw key values never cross to the renderer. `secrets:load` returns presence,
   // a masked preview, and provenance only.
-  ipcMain.handle('secrets:load', async (): Promise<SecretsStatus> => {
-    return getSecretsStatus()
-  })
-
-  // Accepts a partial update: only the fields the user actually edited. Omitted
-  // keys keep their stored value.
-  ipcMain.handle('secrets:save', async (_event, updates: Partial<AppSecrets>): Promise<SecretsStatus> => {
+  r.handle(CH.secretsLoad, () => getSecretsStatus())
+  r.handle(CH.secretsSave, (_event, updates) => {
+    // Partial update: only the fields the user edited; omitted keys keep their value.
     saveSecrets(updates ?? {})
     return getSecretsStatus()
   })
-
-  ipcMain.handle('secrets:recheck', async (): Promise<SecretsStatus> => {
-    return recheckSecretsStorage()
-  })
-
-  ipcMain.handle('secrets:devEnvVarNames', async (): Promise<string[]> => {
-    return devEnvSecretVarNames()
-  })
+  r.handle(CH.secretsRecheck, () => recheckSecretsStorage())
+  r.handle(CH.secretsDevEnvVarNames, () => devEnvSecretVarNames())
 
   // ─── AI / LLM ──────────────────────────────────────────────
-  ipcMain.handle('ai:generateMetadata', async (_event, id: string) => {
-    return generateMetadata(id)
-  })
+  r.handle(CH.aiGenerateMetadata, (_event, id) => generateMetadata(id))
+  r.handle(CH.aiGenerateEmbedding, (_event, id) => generateEmbedding(id))
+  r.handle(CH.aiGenerateAllEmbeddings, () => generateAllEmbeddings())
 
-  ipcMain.handle('ai:generateEmbedding', async (_event, id: string) => {
-    return generateEmbedding(id)
-  })
-
-  ipcMain.handle('ai:generateAllEmbeddings', async () => {
-    return generateAllEmbeddings()
-  })
-
-  ipcMain.handle('ai:testConnection', async (): Promise<{ ok: boolean; error?: string }> => {
+  r.handle(CH.aiTestConnection, async (): Promise<{ ok: boolean; error?: string }> => {
     try {
       const provider = getProvider()
       await provider.testConnection()
@@ -265,96 +184,36 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('ai:listProviders', async () => {
-    return listLlmProviders()
+  r.handle(CH.aiListProviders, () => listLlmProviders())
+  r.handle(CH.aiListModels, (_event, providerId, forceRefresh, apiKeyOverride) => {
+    // `apiKeyOverride` only ever carries a key the user has just typed into the
+    // Settings field, so discovery works before Save. When the field is
+    // untouched the renderer sends nothing and the key is resolved here.
+    const secrets = loadSecrets()
+    return listProviderModels(providerId, secrets, Boolean(forceRefresh), { apiKeyOverride })
   })
 
-  ipcMain.handle(
-    'ai:listModels',
-    async (_event, providerId: string, forceRefresh?: boolean, apiKeyOverride?: string) => {
-      // `apiKeyOverride` only ever carries a key the user has just typed into the
-      // Settings field, so discovery works before Save. When the field is
-      // untouched the renderer sends nothing and the key is resolved here.
-      const secrets = loadSecrets()
-      return listProviderModels(providerId, secrets, Boolean(forceRefresh), { apiKeyOverride })
-    },
-  )
-
-  ipcMain.handle('ai:sessionBrief', async (_event, topic: string): Promise<string> => {
-    return sessionBriefing(topic)
-  })
-
-  ipcMain.handle('ai:priorArt', async (_event, query: string): Promise<string> => {
-    return priorArtCheck(query)
-  })
-
-  ipcMain.handle('ai:steelman', async (_event, hypothesis: string): Promise<string> => {
-    return steelmanRetrieval(hypothesis)
-  })
-
-  ipcMain.handle('ai:questionSeed', async (_event, topic: string): Promise<string> => {
-    return questionSeeding(topic)
-  })
-
-  ipcMain.handle('ai:conceptSummary', async (_event, concept: string): Promise<string> => {
-    return conceptStateSummary(concept)
-  })
-
-  ipcMain.handle('ai:getTokenStats', async (): Promise<TokenStats> => {
-    return getTokenStats()
-  })
-
-  ipcMain.handle('ai:resetTokenStats', async (): Promise<void> => {
-    resetTokenStats()
-  })
-
-  ipcMain.handle('ai:generateAnnotations', async (_event, ids?: string[]): Promise<AnnotationProposal[]> => {
-    return generateAnnotations(ids)
-  })
-
-  ipcMain.handle('ai:applyAnnotations', async (_event, approved: Array<{ id: string; confidence: ConfidenceLevel }>): Promise<void> => {
-    return applyAnnotations(approved)
-  })
+  r.handle(CH.aiSessionBrief, (_event, topic) => sessionBriefing(topic))
+  r.handle(CH.aiPriorArt, (_event, query) => priorArtCheck(query))
+  r.handle(CH.aiSteelman, (_event, hypothesis) => steelmanRetrieval(hypothesis))
+  r.handle(CH.aiQuestionSeed, (_event, topic) => questionSeeding(topic))
+  r.handle(CH.aiConceptSummary, (_event, concept) => conceptStateSummary(concept))
+  r.handle(CH.aiGetTokenStats, () => getTokenStats())
+  r.handle(CH.aiResetTokenStats, () => resetTokenStats())
+  r.handle(CH.aiGenerateAnnotations, (_event, ids) => generateAnnotations(ids))
+  r.handle(CH.aiApplyAnnotations, (_event, approved) => applyAnnotations(approved))
 
   // ─── Archive Health ─────────────────────────────────────────
-  ipcMain.handle('archive:healthCheck', async (): Promise<HealthReport> => {
-    return runHealthCheck()
-  })
+  r.handle(CH.archiveHealthCheck, () => runHealthCheck())
 
   // ─── Tag Dictionary ─────────────────────────────────────────
-  ipcMain.handle('tags:load', async (): Promise<TagDictionary> => {
-    return loadDictionary()
-  })
-
-  ipcMain.handle('tags:save', async (_event, dict: TagDictionary): Promise<void> => {
-    saveDictionary(dict)
-  })
-
-  ipcMain.handle('tags:add', async (_event, tag: string, aliases?: string[]): Promise<void> => {
-    addTag(tag, aliases)
-  })
-
-  ipcMain.handle('tags:remove', async (_event, tag: string): Promise<void> => {
-    removeTag(tag)
-  })
-
-  ipcMain.handle('tags:rename', async (_event, oldTag: string, newTag: string): Promise<void> => {
-    renameTag(oldTag, newTag)
-  })
-
-  ipcMain.handle('tags:addAlias', async (_event, tag: string, alias: string): Promise<void> => {
-    addAlias(tag, alias)
-  })
-
-  ipcMain.handle('tags:removeAlias', async (_event, tag: string, alias: string): Promise<void> => {
-    removeAlias(tag, alias)
-  })
-
-  ipcMain.handle('tags:resolve', async (_event, input: string): Promise<string | null> => {
-    return resolveTag(input)
-  })
-
-  ipcMain.handle('tags:sync', async (): Promise<{ added: string[] }> => {
-    return syncFromArchive()
-  })
+  r.handle(CH.tagsLoad, () => loadDictionary())
+  r.handle(CH.tagsSave, (_event, dict) => saveDictionary(dict))
+  r.handle(CH.tagsAdd, (_event, tag, aliases) => addTag(tag, aliases))
+  r.handle(CH.tagsRemove, (_event, tag) => removeTag(tag))
+  r.handle(CH.tagsRename, (_event, oldTag, newTag) => renameTag(oldTag, newTag))
+  r.handle(CH.tagsAddAlias, (_event, tag, alias) => addAlias(tag, alias))
+  r.handle(CH.tagsRemoveAlias, (_event, tag, alias) => removeAlias(tag, alias))
+  r.handle(CH.tagsResolve, (_event, input) => resolveTag(input))
+  r.handle(CH.tagsSync, () => syncFromArchive())
 }

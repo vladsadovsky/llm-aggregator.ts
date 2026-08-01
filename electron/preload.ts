@@ -1,4 +1,27 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { CH, EVENT_CH } from '../shared/contracts/channels'
+import { extractWireError } from '../shared/contracts/errorWire'
+
+/**
+ * Recover a clean Error from a serialized IPC rejection. Main encodes coded
+ * errors as `IPCERR:<code>:<message>`; we surface the human message and attach
+ * `.code` so callers can branch, without ever exposing a main-process stack.
+ */
+function rethrowIpcError(err: unknown): never {
+  const raw = err instanceof Error ? err.message : String(err)
+  const decoded = extractWireError(raw)
+  if (decoded) {
+    const clean = new Error(decoded.message) as Error & { code?: string }
+    clean.code = decoded.code
+    throw clean
+  }
+  throw err instanceof Error ? err : new Error(raw)
+}
+
+/** Invoke a channel, normalizing any rejection to a clean coded Error. */
+function call<T>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, ...args).catch(rethrowIpcError) as Promise<T>
+}
 
 export interface AppSettings {
   dataDirectory: string
@@ -431,92 +454,105 @@ export interface HealthReport {
 }
 
 
+/** Structural guard for an inbound bulk-import progress payload. */
+function isProgress(p: unknown): p is BulkImportProgress {
+  if (typeof p !== 'object' || p === null) return false
+  const o = p as Record<string, unknown>
+  return typeof o.processed === 'number' && typeof o.total === 'number'
+}
+
 const api: ElectronAPI = {
   // Settings
-  settingsLoad: () => ipcRenderer.invoke('settings:load'),
-  settingsSave: (settings) => ipcRenderer.invoke('settings:save', settings),
-  settingsPickDirectory: () => ipcRenderer.invoke('settings:pickDirectory'),
+  settingsLoad: () => call(CH.settingsLoad),
+  settingsSave: (settings) => call(CH.settingsSave, settings),
+  settingsPickDirectory: () => call(CH.settingsPickDirectory),
 
   // Threads
-  threadsLoad: () => ipcRenderer.invoke('threads:load'),
-  threadsSave: (threads) => ipcRenderer.invoke('threads:save', threads),
+  threadsLoad: () => call(CH.threadsLoad),
+  threadsSave: (threads) => call(CH.threadsSave, threads),
 
   // QA Pairs
-  qaListAll: () => ipcRenderer.invoke('qa:listAll'),
-  qaGet: (id) => ipcRenderer.invoke('qa:get', id),
-  qaCreate: (data) => ipcRenderer.invoke('qa:create', data),
-  qaUpdate: (id, data) => ipcRenderer.invoke('qa:update', id, data),
-  qaDelete: (id) => ipcRenderer.invoke('qa:delete', id),
+  qaListAll: () => call(CH.qaListAll),
+  qaGet: (id) => call(CH.qaGet, id),
+  qaCreate: (data) => call(CH.qaCreate, data),
+  qaUpdate: (id, data) => call(CH.qaUpdate, id, data),
+  qaDelete: (id) => call(CH.qaDelete, id),
 
   // Search
-  searchQuery: (query, type) => ipcRenderer.invoke('search:query', query, type),
-  searchSemantic: (query, topK) => ipcRenderer.invoke('search:semantic', query, topK),
+  searchQuery: (query, type) => call(CH.searchQuery, query, type),
+  searchSemantic: (query, topK) => call(CH.searchSemantic, query, topK),
 
   // AI
-  aiGenerateMetadata: (id) => ipcRenderer.invoke('ai:generateMetadata', id),
-  aiGenerateEmbedding: (id) => ipcRenderer.invoke('ai:generateEmbedding', id),
-  aiGenerateAllEmbeddings: () => ipcRenderer.invoke('ai:generateAllEmbeddings'),
-  aiTestConnection: () => ipcRenderer.invoke('ai:testConnection'),
-  aiListProviders: () => ipcRenderer.invoke('ai:listProviders'),
+  aiGenerateMetadata: (id) => call(CH.aiGenerateMetadata, id),
+  aiGenerateEmbedding: (id) => call(CH.aiGenerateEmbedding, id),
+  aiGenerateAllEmbeddings: () => call(CH.aiGenerateAllEmbeddings),
+  aiTestConnection: () => call(CH.aiTestConnection),
+  aiListProviders: () => call(CH.aiListProviders),
   aiListModels: (providerId, forceRefresh, apiKeyOverride) =>
-    ipcRenderer.invoke('ai:listModels', providerId, Boolean(forceRefresh), apiKeyOverride),
-  aiSessionBrief: (topic) => ipcRenderer.invoke('ai:sessionBrief', topic),
-  aiPriorArt: (query) => ipcRenderer.invoke('ai:priorArt', query),
-  aiGetTokenStats: () => ipcRenderer.invoke('ai:getTokenStats'),
-  aiResetTokenStats: () => ipcRenderer.invoke('ai:resetTokenStats'),
-  aiSteelman: (hypothesis) => ipcRenderer.invoke('ai:steelman', hypothesis),
-  aiQuestionSeed: (topic) => ipcRenderer.invoke('ai:questionSeed', topic),
-  aiConceptSummary: (concept) => ipcRenderer.invoke('ai:conceptSummary', concept),
-  aiGenerateAnnotations: (ids) => ipcRenderer.invoke('ai:generateAnnotations', ids),
-  aiApplyAnnotations: (approved) => ipcRenderer.invoke('ai:applyAnnotations', approved),
+    call(CH.aiListModels, providerId, Boolean(forceRefresh), apiKeyOverride),
+  aiSessionBrief: (topic) => call(CH.aiSessionBrief, topic),
+  aiPriorArt: (query) => call(CH.aiPriorArt, query),
+  aiGetTokenStats: () => call(CH.aiGetTokenStats),
+  aiResetTokenStats: () => call(CH.aiResetTokenStats),
+  aiSteelman: (hypothesis) => call(CH.aiSteelman, hypothesis),
+  aiQuestionSeed: (topic) => call(CH.aiQuestionSeed, topic),
+  aiConceptSummary: (concept) => call(CH.aiConceptSummary, concept),
+  aiGenerateAnnotations: (ids) => call(CH.aiGenerateAnnotations, ids),
+  aiApplyAnnotations: (approved) => call(CH.aiApplyAnnotations, approved),
 
   // Archive Health
-  archiveHealthCheck: () => ipcRenderer.invoke('archive:healthCheck'),
+  archiveHealthCheck: () => call(CH.archiveHealthCheck),
 
   // Secrets
-  secretsLoad: () => ipcRenderer.invoke('secrets:load'),
-  secretsSave: (updates) => ipcRenderer.invoke('secrets:save', updates),
-  secretsRecheck: () => ipcRenderer.invoke('secrets:recheck'),
-  secretsDevEnvVarNames: () => ipcRenderer.invoke('secrets:devEnvVarNames'),
+  secretsLoad: () => call(CH.secretsLoad),
+  secretsSave: (updates) => call(CH.secretsSave, updates),
+  secretsRecheck: () => call(CH.secretsRecheck),
+  secretsDevEnvVarNames: () => call(CH.secretsDevEnvVarNames),
 
   // Tag Dictionary
-  tagsLoad: () => ipcRenderer.invoke('tags:load'),
-  tagsSave: (dict) => ipcRenderer.invoke('tags:save', dict),
-  tagsAdd: (tag, aliases) => ipcRenderer.invoke('tags:add', tag, aliases),
-  tagsRemove: (tag) => ipcRenderer.invoke('tags:remove', tag),
-  tagsRename: (oldTag, newTag) => ipcRenderer.invoke('tags:rename', oldTag, newTag),
-  tagsAddAlias: (tag, alias) => ipcRenderer.invoke('tags:addAlias', tag, alias),
-  tagsRemoveAlias: (tag, alias) => ipcRenderer.invoke('tags:removeAlias', tag, alias),
-  tagsResolve: (input) => ipcRenderer.invoke('tags:resolve', input),
-  tagsSync: () => ipcRenderer.invoke('tags:sync'),
+  tagsLoad: () => call(CH.tagsLoad),
+  tagsSave: (dict) => call(CH.tagsSave, dict),
+  tagsAdd: (tag, aliases) => call(CH.tagsAdd, tag, aliases),
+  tagsRemove: (tag) => call(CH.tagsRemove, tag),
+  tagsRename: (oldTag, newTag) => call(CH.tagsRename, oldTag, newTag),
+  tagsAddAlias: (tag, alias) => call(CH.tagsAddAlias, tag, alias),
+  tagsRemoveAlias: (tag, alias) => call(CH.tagsRemoveAlias, tag, alias),
+  tagsResolve: (input) => call(CH.tagsResolve, input),
+  tagsSync: () => call(CH.tagsSync),
 
   // Export / Import
-  exportQA: (id) => ipcRenderer.invoke('export:qa', id),
-  exportThread: (threadId) => ipcRenderer.invoke('export:thread', threadId),
-  importFromFile: () => ipcRenderer.invoke('import:file'),
-  importSharedLink: (url) => ipcRenderer.invoke('import:sharedLink', url),
+  exportQA: (id) => call(CH.exportQa, id),
+  exportThread: (threadId) => call(CH.exportThread, threadId),
+  importFromFile: () => call(CH.importFile),
+  importSharedLink: (url) => call(CH.importSharedLink, url),
   importArchiveCommit: (previewId, selection) =>
-    ipcRenderer.invoke('import:archiveCommit', previewId, selection),
-  importArchiveCancel: (previewId) => ipcRenderer.invoke('import:archiveCancel', previewId),
+    call(CH.importArchiveCommit, previewId, selection),
+  importArchiveCancel: (previewId) => call(CH.importArchiveCancel, previewId),
 
   onArchiveImportProgress: (callback) => {
-    const handler = (_event: IpcRendererEvent, progress: BulkImportProgress) => callback(progress)
-    ipcRenderer.on('archive-import:progress', handler)
-    return () => ipcRenderer.removeListener('archive-import:progress', handler)
+    const handler = (_event: IpcRendererEvent, progress: unknown) => {
+      if (isProgress(progress)) callback(progress)
+    }
+    ipcRenderer.on(EVENT_CH.archiveImportProgress, handler)
+    return () => ipcRenderer.removeListener(EVENT_CH.archiveImportProgress, handler)
   },
 
-  duplicatesScan: () => ipcRenderer.invoke('duplicates:scan'),
-  duplicatesDelete: (ids) => ipcRenderer.invoke('duplicates:delete', ids),
+  duplicatesScan: () => call(CH.duplicatesScan),
+  duplicatesDelete: (ids) => call(CH.duplicatesDelete, ids),
 
-  archiveResetPreview: () => ipcRenderer.invoke('archive:resetPreview'),
-  archiveReset: () => ipcRenderer.invoke('archive:reset'),
+  archiveResetPreview: () => call(CH.archiveResetPreview),
+  archiveReset: () => call(CH.archiveReset),
 
-  openExternal: (url) => ipcRenderer.invoke('openExternal', url),
+  openExternal: (url) => call(CH.openExternal, url),
 
   onMenuAction: (callback) => {
-    const handler = (_event: IpcRendererEvent, action: string) => callback(action)
-    ipcRenderer.on('menu-action', handler)
-    return () => ipcRenderer.removeListener('menu-action', handler)
+    const handler = (_event: IpcRendererEvent, action: unknown) => {
+      if (typeof action === 'string' && action.length > 0 && action.length <= 200) {
+        callback(action)
+      }
+    }
+    ipcRenderer.on(EVENT_CH.menuAction, handler)
+    return () => ipcRenderer.removeListener(EVENT_CH.menuAction, handler)
   },
 }
 

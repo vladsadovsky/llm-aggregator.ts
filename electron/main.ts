@@ -8,8 +8,33 @@ import { loadSettings } from './services/settingsService'
 import { addSettingsChangeListener } from './services/settingsEvents'
 import { ACCELERATORS, hintFor, renderKeys, styleForPlatform } from '../shared/accelerators'
 import { isSameAppNavigation, windowOpenAction } from './security/navigationPolicy'
+import type { SenderPolicy } from './ipc/senderPolicy'
 
 let mainWindow: BrowserWindow | null = null
+
+// ─── App origin (computed once) ──────────────────────────────────────────────
+// The renderer entry — dev server URL or packaged index.html. Both the
+// navigation lockdown and the IPC sender guard resolve the app's own origin from
+// here so a privileged channel can only be invoked by a frame we actually loaded.
+const devUrl = process.env.VITE_DEV_SERVER_URL
+const prodIndexPath = devUrl
+  ? undefined
+  : [join(__dirname, '../dist/index.html'), join(__dirname, '../index.html')].find((c) => existsSync(c))
+const appOrigin = (() => {
+  try {
+    const href = devUrl ?? (prodIndexPath ? pathToFileURL(prodIndexPath).href : '')
+    return href ? new URL(href).origin : ''
+  } catch {
+    return ''
+  }
+})()
+
+// Trusted-sender policy for every privileged IPC channel (INV-IPC). Only the
+// main window's top frame, loaded from the app origin, may invoke.
+const senderPolicy: SenderPolicy = {
+  trusted: () => mainWindow?.webContents ?? null,
+  allowedOrigins: () => (appOrigin ? [appOrigin] : []),
+}
 
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin'
@@ -276,19 +301,6 @@ function createWindow() {
   // any navigation away from the app's own origin and deny renderer-created
   // windows, so imported content (e.g. a Markdown link) can never pull this
   // privileged renderer to a remote page that could then reach window.api.
-  const devUrl = process.env.VITE_DEV_SERVER_URL
-  const prodIndexPath = devUrl
-    ? undefined
-    : [join(__dirname, '../dist/index.html'), join(__dirname, '../index.html')].find((c) => existsSync(c))
-  const appOrigin = (() => {
-    try {
-      const href = devUrl ?? (prodIndexPath ? pathToFileURL(prodIndexPath).href : '')
-      return href ? new URL(href).origin : ''
-    } catch {
-      return ''
-    }
-  })()
-
   const navPolicy = { devUrl, appOrigin }
 
   wc.on('will-navigate', (event, url) => {
@@ -360,7 +372,7 @@ app.whenReady().then(() => {
   lockDownDefaultSession()
   createApplicationMenu()
   addSettingsChangeListener(() => createApplicationMenu())
-  registerIpcHandlers()
+  registerIpcHandlers(senderPolicy)
   createWindow()
 
   app.on('activate', () => {
