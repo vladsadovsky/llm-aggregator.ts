@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getDataDirectory } from './settingsService'
 import { listAllPairs } from './qaPairService'
 import { debugLog, debugError } from './logger'
+import { atomicWriteJsonSync } from './persistence/atomicFile'
 
 export interface TagEntry {
   created: string
@@ -50,12 +51,8 @@ export function loadDictionary(): TagDictionary {
 }
 
 export function saveDictionary(dict: TagDictionary): void {
-  const path = getDictionaryPath()
-  const dir = join(path, '..')
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
-  }
-  writeFileSync(path, JSON.stringify(dict, null, 2), 'utf-8')
+  // Atomic + last-known-good so a crash mid-save cannot truncate the dictionary.
+  atomicWriteJsonSync(getDictionaryPath(), dict, { keepLastKnownGood: true })
   _cache = dict
   debugLog('tagDictionaryService', 'saved', Object.keys(dict.tags).length, 'tags')
 }

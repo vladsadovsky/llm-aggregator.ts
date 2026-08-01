@@ -1,7 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { getDataDir } from './pathResolver'
 import { debugLog, debugError } from './logger'
+import { atomicWriteJsonSync } from './persistence/atomicFile'
+import { loadJsonFile, raiseBarrier, clearBarrier, assertWritable } from './persistence/loadState'
+import { ipcError } from '../../shared/contracts/errorWire'
 
 /** Mirrors `src/types/Thread.ts` — threads.json is written from both sides. */
 export interface ThreadData {
@@ -16,37 +18,50 @@ export interface ThreadData {
 
 export type ThreadMap = Record<string, ThreadData>
 
+/** Barrier key for the failed-load quarantine (INV-LOAD). */
+const THREADS_BARRIER = 'threads.json'
+
 function getThreadsPath(): string {
   return join(getDataDir(), 'threads.json')
+}
+
+/** Accept any plain object; reject arrays/primitives as corrupt. Entry shapes stay
+ *  backward-compatible on purpose — a slightly-older file must still load. */
+function validateThreadMap(parsed: unknown): ThreadMap {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('threads.json is not an object map')
+  }
+  return parsed as ThreadMap
 }
 
 export function loadThreads(): ThreadMap {
   const filepath = getThreadsPath()
   debugLog('threadService', 'loadThreads from:', filepath)
-  if (!existsSync(filepath)) {
-    debugLog('threadService', 'threads.json not found, returning empty')
-    return {}
+  const state = loadJsonFile<ThreadMap>(filepath, { validate: validateThreadMap })
+
+  switch (state.status) {
+    case 'missing':
+      clearBarrier(THREADS_BARRIER)
+      debugLog('threadService', 'threads.json not found, returning empty')
+      return {}
+    case 'loaded':
+      clearBarrier(THREADS_BARRIER)
+      debugLog('threadService', 'loaded', Object.keys(state.value ?? {}).length, 'threads')
+      return state.value ?? {}
+    default:
+      // corrupt / unreadable — never return empty and let the renderer save {}
+      // over the last readable state. Quarantine until repair or reload.
+      raiseBarrier(THREADS_BARRIER, state.status)
+      debugError('threadService', 'threads.json load failed:', state.status, state.diagnostics)
+      throw ipcError('load-corrupt', 'threads.json could not be read. Restore or fix it, then reload.')
   }
-  const content = readFileSync(filepath, 'utf-8')
-  const parsed = JSON.parse(content) as ThreadMap
-  debugLog('threadService', 'loaded', Object.keys(parsed).length, 'threads')
-  return parsed
 }
 
 export function saveThreads(threads: ThreadMap): void {
+  // Refuse to overwrite a quarantined file (INV-LOAD), then write atomically with
+  // a last-known-good sibling (INV-DATA).
+  assertWritable(THREADS_BARRIER)
   const filepath = getThreadsPath()
-  const dir = getDataDir()
-  debugLog('threadService', 'saveThreads to:', filepath)
-  debugLog('threadService', 'threads to save:', JSON.stringify(Object.keys(threads)))
-  try {
-    if (!existsSync(dir)) {
-      debugLog('threadService', 'creating dir:', dir)
-      mkdirSync(dir, { recursive: true })
-    }
-    writeFileSync(filepath, JSON.stringify(threads, null, 2), 'utf-8')
-    debugLog('threadService', 'saveThreads SUCCESS, file exists:', existsSync(filepath))
-  } catch (err) {
-    debugError('threadService', 'saveThreads FAILED:', err)
-    throw err
-  }
+  debugLog('threadService', 'saveThreads to:', filepath, Object.keys(threads).length, 'threads')
+  atomicWriteJsonSync(filepath, threads, { keepLastKnownGood: true })
 }
