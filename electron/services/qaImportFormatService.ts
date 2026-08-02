@@ -36,6 +36,7 @@ export interface ImportedQA {
 export interface ImportResult {
   exportType: 'qa' | 'thread' | 'unknown'
   threadName?: string
+  threadTags?: string[]
   items: ImportedQA[]
   /** File-level anomalies: header absent, version mismatch, etc. */
   fileWarnings: string[]
@@ -50,6 +51,7 @@ interface FileHeader {
   exportedAt?: string
   exportType?: 'qa' | 'thread'
   threadName?: string
+  threadTags?: string[]
 }
 
 function parseYamlFrontmatter(text: string): { header: FileHeader | null; body: string } {
@@ -72,6 +74,12 @@ function parseYamlFrontmatter(text: string): { header: FileHeader | null; body: 
     if (key === 'exported_at') header.exportedAt = value
     if (key === 'export_type') header.exportType = value === 'thread' ? 'thread' : 'qa'
     if (key === 'thread_name') header.threadName = value
+    if (key === 'thread_tags') {
+      header.threadTags = value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    }
   }
 
   return { header, body }
@@ -244,6 +252,7 @@ export function parseImportFile(fileContent: string): ImportResult {
 
   const exportType = header?.exportType ?? 'unknown'
   const threadName = header?.threadName
+  const threadTags = header?.threadTags
 
   // ── block parsing ──
   const blocks = splitBlocks(body, header?.schemaVersion)
@@ -253,5 +262,5 @@ export function parseImportFile(fileContent: string): ImportResult {
 
   const items: ImportedQA[] = blocks.map((block, i) => parseBlock(block, i))
 
-  return { exportType, threadName, items, fileWarnings }
+  return { exportType, threadName, threadTags, items, fileWarnings }
 }

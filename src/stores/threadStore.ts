@@ -84,14 +84,7 @@ export const useThreadStore = defineStore('threads', () => {
     if (thread) thread.updatedAt = new Date().toISOString()
   }
 
-  /**
-   * `options.createdAt` lets importers date a thread from its source conversation
-   * instead of the moment of import; the thread id is derived from the same
-   * instant so ids stay chronological.
-   */
-  async function createThread(name: string, options: { createdAt?: string } = {}): Promise<string> {
-    const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
-    const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
+  function allocateThreadId(now: Date): string {
     const y = now.getFullYear()
     const mo = String(now.getMonth() + 1).padStart(2, '0')
     const d = String(now.getDate()).padStart(2, '0')
@@ -108,12 +101,56 @@ export const useThreadStore = defineStore('threads', () => {
         `thread_${next.getFullYear()}${p(next.getMonth() + 1)}${p(next.getDate())}_` +
         `${p(next.getHours())}${p(next.getMinutes())}${p(next.getSeconds())}`
     }
+    return tid
+  }
+
+  /**
+   * `options.createdAt` lets importers date a thread from its source conversation
+   * instead of the moment of import; the thread id is derived from the same
+   * instant so ids stay chronological.
+   */
+  async function createThread(name: string, options: { createdAt?: string } = {}): Promise<string> {
+    const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
+    const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
+    const tid = allocateThreadId(now)
 
     debugLog('threadStore', 'createThread start', { tid, name })
     const stamp = now.toISOString()
     threads.value[tid] = { name, items: [], createdAt: stamp, updatedAt: stamp }
     await save()
     debugLog('threadStore', 'createThread completed', { tid, thread: threads.value[tid] })
+    return tid
+  }
+
+  /**
+   * Create an already-populated thread in one durable map save. Import must not
+   * expose an empty thread and then rely on N later saves to attach N QAs.
+   */
+  async function createThreadWithItems(
+    name: string,
+    pairIds: readonly string[],
+    options: { createdAt?: string; tags?: readonly string[] } = {},
+  ): Promise<string> {
+    const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
+    const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
+    const tid = allocateThreadId(now)
+    const stamp = now.toISOString()
+    debugLog('threadStore', 'createThreadWithItems start', {
+      tid,
+      requestedItemIds: pairIds,
+    })
+    threads.value[tid] = {
+      name,
+      items: [...new Set(pairIds)],
+      ...(options.tags && options.tags.length > 0 ? { tags: [...new Set(options.tags)] } : {}),
+      createdAt: stamp,
+      updatedAt: stamp,
+    }
+    await save()
+    debugLog('threadStore', 'createThreadWithItems completed', {
+      tid,
+      persistedItemIds: threads.value[tid]?.items ?? [],
+    })
     return tid
   }
 
@@ -280,6 +317,7 @@ export const useThreadStore = defineStore('threads', () => {
     filteredSortedThreadIds,
     loadThreads,
     createThread,
+    createThreadWithItems,
     renameThread,
     updateThread,
     setThreadTimes,

@@ -11,6 +11,7 @@ export const BulkImportSelectionSchema = z
     // empty, so only bounded — never treated as a path.
     threadSourceIds: z.array(boundedString(512)).max(200_000),
     skipDuplicates: z.boolean(),
+    includeDateInThreadNames: z.boolean().optional(),
   })
   .strict()
 

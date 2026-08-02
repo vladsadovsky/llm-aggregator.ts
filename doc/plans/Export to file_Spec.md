@@ -235,8 +235,9 @@ Import:
 2. Renderer calls `window.api.importFromFile()`.
 3. Main process shows Open dialog, reads file, parses via `qaImportFormatService`, returns `ImportResult` or `null`.
 4. Renderer calls `qaStore.createPair()` for each item in result, using regenerated ID/timestamp.
-5. If `export_type === 'thread'`, renderer calls `threadStore.createThread()` with `thread_name` and the newly created IDs in order.
-6. Post-import: toast (`success` or `warn` severity based on whether warnings present) + summary dialog listing per-item details (skipped fields, version notes, etc.).
+5. If `export_type === 'thread'`, renderer persists one already-populated thread with `thread_name` and the newly created IDs in order; it must not save an empty thread followed by one independent membership save per QA.
+6. Reload and assert that every created QA id is present in the persisted thread before reporting success; select that thread in the UI.
+7. Post-import: toast (`success` or `warn` severity based on whether warnings present) + summary dialog listing per-item details (skipped fields, version notes, etc.).
 
 #### 2.3.4 Suggested default path for save dialog
 
@@ -279,6 +280,7 @@ File: `tests/e2e/export-import.spec.ts`
 | `imports single QA from file` | Place pre-authored export file in dataDir → trigger import → verify QA appears in list, title/content/source/tags match, id is new. |
 | `exports thread to file` | Create thread with 2 QAs → trigger thread export → verify file has `export_type: thread`, `thread_name`, and 2 QA blocks in order. |
 | `imports thread from file` | Place pre-authored thread export file → trigger import → verify thread is created with name and 2 items in correct order. |
+| `round-trips exported thread with persisted membership` | Create a real thread with 2 QAs → export it → import that exact file → read `threads.json` and verify the new thread contains 2 newly-created QA ids in order. This is the canonical round-trip gate; formatter/parser-only assertions do not satisfy it. |
 | `import preserves original_id and original_timestamp as auxiliary` | Import a file with known `original_id` values → inspect created QA → verify `original_id` and `original_timestamp` stored, new `id` is different. |
 | `import shows summary dialog with warnings for missing header` | Import a human-authored file (no YAML header) → verify toast appears with warning severity, summary dialog opens and lists at least one file-level warning. |
 

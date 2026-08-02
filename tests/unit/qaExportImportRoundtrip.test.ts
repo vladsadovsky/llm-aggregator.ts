@@ -8,9 +8,10 @@
  * for both thread exports *and* single-QA exports (there is no separator to
  * be ambiguous about, but the same split function ran over the body anyway).
  *
- * There was no test — round-tripping the app's own export format was never
- * exercised end-to-end. These tests pin the fix (an unambiguous HTML-comment
- * marker for schema_version 2+) and the schema_version 1 fallback behaviour.
+ * These tests pin the format-layer fix (an unambiguous HTML-comment marker for
+ * schema_version 2+) and schema_version 1 fallback behaviour. Durable QA/thread
+ * creation is a separate invariant covered by fileImportCommit.test.ts and the
+ * exact Electron export→import test; parsing alone is not an end-to-end round trip.
  */
 import { describe, it, expect } from 'vitest'
 import {
@@ -57,11 +58,12 @@ describe('export/import round trip', () => {
     const p1 = makePair({ id: 'a', title: 'First' })
     const p2 = makePair({ id: 'b', title: 'Second' })
     const p3 = makePair({ id: 'c', title: 'Third' })
-    const thread: ThreadData = { name: 'My Thread', items: ['a', 'b', 'c'] }
+    const thread: ThreadData = { name: 'My Thread', items: ['a', 'b', 'c'], tags: ['claude', 'migration'] }
     const result = parseImportFile(formatThreadExport(thread, { a: p1, b: p2, c: p3 }))
 
     expect(result.exportType).toBe('thread')
     expect(result.threadName).toBe('My Thread')
+    expect(result.threadTags).toEqual(['claude', 'migration'])
     expect(result.items).toHaveLength(3)
     expect(result.items.map((i) => i.data.title)).toEqual(['First', 'Second', 'Third'])
     expect(result.items.every((i) => i.warnings.length === 0)).toBe(true)

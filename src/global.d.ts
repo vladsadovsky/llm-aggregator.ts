@@ -1,5 +1,6 @@
 import type { QAPairData, QACreateData, QAUpdateData } from './types/QAPair'
 import type { ThreadMap } from './types/Thread'
+import type { BulkImportSelectionContract } from '../shared/contracts/import'
 
 export interface AppSettings {
   dataDirectory: string
@@ -142,6 +143,7 @@ export interface ImportedQA {
 export interface ImportResult {
   exportType: 'qa' | 'thread' | 'unknown'
   threadName?: string
+  threadTags?: string[]
   items: ImportedQA[]
   fileWarnings: string[]
 }
@@ -192,12 +194,8 @@ export interface BulkImportPreviewSummary {
   warnings: string[]
 }
 
-export interface BulkImportSelection {
-  threadSourceIds: string[]
-  skipDuplicates: boolean
-  /** Prefix each created thread's name with its UTC calendar day (gemini-takeout only). */
-  includeDateInThreadNames?: boolean
-}
+/** Canonical selection payload is inferred from the runtime IPC schema. */
+export type BulkImportSelection = BulkImportSelectionContract
 
 export interface BulkImportProgress {
   processed: number
@@ -214,6 +212,7 @@ export interface BulkImportCommitResult {
   createdPairs: number
   skippedDuplicates: number
   createdThreads: number
+  reusedThreads: number
   failed: number
   threadNames: string[]
   warnings: string[]

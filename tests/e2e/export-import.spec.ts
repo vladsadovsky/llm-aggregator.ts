@@ -48,8 +48,10 @@ async function mockOpenDialog(
   await electronApp.evaluate(
     ({ dialog }, op: string) => {
       const original = dialog.showOpenDialog.bind(dialog);
-      (dialog as any).showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [op] });
-      setTimeout(() => { (dialog as any).showOpenDialog = original; }, 5000);
+      (dialog as any).showOpenDialog = () => {
+        (dialog as any).showOpenDialog = original;
+        return Promise.resolve({ canceled: false, filePaths: [op] });
+      };
     },
     openPath,
   );
@@ -196,6 +198,7 @@ test.describe('Export / Import', () => {
       `exported_at: ${new Date().toISOString()}`,
       'export_type: thread',
       `thread_name: ${threadName}`,
+      'thread_tags: claude, migration',
       '---',
       '',
       `title: Thread QA 1 ${ts}`,
@@ -246,6 +249,102 @@ test.describe('Export / Import', () => {
     // Verify thread appears in thread list
     const threadList = window.getByTestId('thread-list');
     await expect(threadList).toContainText(threadName, { timeout: 5000 });
+    const persisted = JSON.parse(fs.readFileSync(path.join(dataDir, 'threads.json'), 'utf-8')) as Record<
+      string,
+      { name: string; items: string[]; tags?: string[] }
+    >;
+    const imported = Object.values(persisted).find((thread) => thread.name === threadName);
+    expect(imported?.items).toHaveLength(2);
+    expect(imported?.tags).toEqual(['claude', 'migration']);
+  });
+
+  test('round-trips an exported thread with persisted QA membership', async ({ window, electronApp, dataDir }) => {
+    const ts = Date.now();
+    const threadName = `Roundtrip Thread ${ts}`;
+    const exportPath = path.join(dataDir, `roundtrip_thread_${ts}.md`);
+    const threadsPath = path.join(dataDir, 'threads.json');
+
+    await window.getByTestId('add-thread-button').click();
+    const nameInput = window.getByTestId('new-thread-name-input');
+    await nameInput.fill(threadName);
+    await nameInput.press('Enter');
+
+    for (let i = 1; i <= 2; i++) {
+      await window.getByTestId('add-qa-button').click();
+      await window.locator('textarea[placeholder="Enter question..."]').fill(`Roundtrip Q${i} ${ts}`);
+      await window.locator('textarea[placeholder="Enter answer..."]').fill(`Roundtrip A${i} ${ts}`);
+      await window.getByRole('button', { name: 'Create QA' }).click();
+    }
+
+    const before = JSON.parse(fs.readFileSync(threadsPath, 'utf-8')) as Record<string, { name: string; items: string[] }>;
+    const original = Object.entries(before).find(([, thread]) => thread.name === threadName);
+    expect(original?.[1].items).toHaveLength(2);
+
+    const threadItem = window.getByTestId('thread-list').locator('.thread-item', { hasText: threadName });
+    await threadItem.hover();
+    await mockSaveDialog(electronApp, exportPath);
+    await threadItem.getByTestId('export-thread-button').click();
+    await expect(window.locator('.p-toast')).toContainText('Thread exported', { timeout: 7000 });
+
+    await mockOpenDialog(electronApp, exportPath);
+    await window.keyboard.press('Control+o');
+    await expect(window.locator('.p-toast')).toContainText('Import successful', { timeout: 8000 });
+
+    await expect.poll(() => {
+      const threads = JSON.parse(fs.readFileSync(threadsPath, 'utf-8')) as Record<string, { name: string; items: string[] }>;
+      return Object.values(threads)
+        .filter((thread) => thread.name === threadName)
+        .map((thread) => thread.items.length)
+        .sort();
+    }).toEqual([2, 2]);
+
+    const after = JSON.parse(fs.readFileSync(threadsPath, 'utf-8')) as Record<string, { name: string; items: string[] }>;
+    const copies = Object.values(after).filter((thread) => thread.name === threadName);
+    expect(copies[0].items).not.toEqual(copies[1].items);
+  });
+
+  test('re-importing the same account export reuses its thread and QAs', async ({ window, electronApp, dataDir }) => {
+    const ts = Date.now();
+    const sourceId = `claude-conversation-${ts}`;
+    const importPath = path.join(dataDir, `claude-account-${ts}.json`);
+    const threadsPath = path.join(dataDir, 'threads.json');
+    fs.writeFileSync(importPath, JSON.stringify([
+      {
+        uuid: sourceId,
+        name: `Claude repeat ${ts}`,
+        created_at: '2026-07-01T10:00:00.000Z',
+        chat_messages: [
+          { uuid: `${sourceId}-q1`, sender: 'human', text: 'First question', created_at: '2026-07-01T10:00:00.000Z' },
+          { uuid: `${sourceId}-a1`, sender: 'assistant', text: 'First answer', created_at: '2026-07-01T10:00:01.000Z' },
+          { uuid: `${sourceId}-q2`, sender: 'human', text: 'Second question', created_at: '2026-07-01T10:01:00.000Z' },
+          { uuid: `${sourceId}-a2`, sender: 'assistant', text: 'Second answer', created_at: '2026-07-01T10:01:01.000Z' },
+        ],
+      },
+    ], null, 2), 'utf-8');
+
+    await mockOpenDialog(electronApp, importPath);
+    await window.evaluate(() => window.dispatchEvent(new CustomEvent('llm:import-file')));
+    await expect(window.getByTestId('bulk-import-dialog')).toBeVisible({ timeout: 8000 });
+    await window.getByTestId('bulk-import-submit').click();
+    await expect(window.getByTestId('bulk-import-dialog')).toContainText('Imported 2 Q&A pairs into 1 thread', { timeout: 8000 });
+    await window.getByRole('button', { name: 'Done' }).click();
+
+    await mockOpenDialog(electronApp, importPath);
+    await window.evaluate(() => window.dispatchEvent(new CustomEvent('llm:import-file')));
+    await expect(window.getByTestId('bulk-import-dialog')).toContainText('2 of these pairs are already', { timeout: 8000 });
+    await window.getByTestId('bulk-import-submit').click();
+    await expect(window.getByTestId('bulk-import-dialog')).toContainText('Imported 0 Q&A pairs into 0 threads', { timeout: 8000 });
+    await expect(window.getByTestId('bulk-import-dialog')).toContainText('Existing threads reused1');
+
+    const persisted = JSON.parse(fs.readFileSync(threadsPath, 'utf-8')) as Record<
+      string,
+      { name: string; items: string[]; importSourceId?: string }
+    >;
+    const imported = Object.values(persisted).filter(
+      (thread) => thread.importSourceId === `claude-account-export:${sourceId}`,
+    );
+    expect(imported).toHaveLength(1);
+    expect(imported[0].items).toHaveLength(2);
   });
 
   test('import preserves original_id and original_timestamp in auxiliary fields', async ({ window, electronApp, dataDir }) => {

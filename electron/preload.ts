@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CH, EVENT_CH } from '../shared/contracts/channels'
 import { extractWireError } from '../shared/contracts/errorWire'
+import type { BulkImportSelectionContract } from '../shared/contracts/import'
 
 /**
  * Recover a clean Error from a serialized IPC rejection. Main encodes coded
@@ -137,6 +138,7 @@ export interface ImportedQA {
 export interface ImportResult {
   exportType: 'qa' | 'thread' | 'unknown'
   threadName?: string
+  threadTags?: string[]
   items: ImportedQA[]
   fileWarnings: string[]
 }
@@ -187,10 +189,8 @@ export interface BulkImportPreviewSummary {
   warnings: string[]
 }
 
-export interface BulkImportSelection {
-  threadSourceIds: string[]
-  skipDuplicates: boolean
-}
+/** Type-only import keeps zod out of the sandboxed preload bundle. */
+export type BulkImportSelection = BulkImportSelectionContract
 
 export interface BulkImportProgress {
   processed: number
@@ -207,6 +207,7 @@ export interface BulkImportCommitResult {
   createdPairs: number
   skippedDuplicates: number
   createdThreads: number
+  reusedThreads: number
   failed: number
   threadNames: string[]
   warnings: string[]
@@ -299,8 +300,8 @@ export interface ElectronAPI {
   secretsDevEnvVarNames: () => Promise<string[]>
 
   // Threads
-  threadsLoad: () => Promise<Record<string, { name: string; items: string[] }>>
-  threadsSave: (threads: Record<string, { name: string; items: string[] }>) => Promise<void>
+  threadsLoad: () => Promise<Record<string, { name: string; items: string[]; importSourceId?: string }>>
+  threadsSave: (threads: Record<string, { name: string; items: string[]; importSourceId?: string }>) => Promise<void>
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>

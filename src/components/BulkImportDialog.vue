@@ -25,6 +25,8 @@ const props = defineProps<{
   preview: BulkImportPreviewSummary | null
   progress: BulkImportProgress | null
   result: BulkImportCommitResult | null
+  /** True from submit until the first/final commit response, even before progress arrives. */
+  preparing: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,7 +52,7 @@ watch(
   { immediate: true },
 )
 
-const isRunning = computed(() => props.progress !== null)
+const isRunning = computed(() => props.preparing || props.progress !== null)
 const isDone = computed(() => props.result !== null)
 
 const selectedPairCount = computed(() => {
@@ -133,6 +135,7 @@ function close() {
 
       <dl class="result-meta">
         <div><dt>Duplicates skipped</dt><dd>{{ result.skippedDuplicates }}</dd></div>
+        <div><dt>Existing threads reused</dt><dd>{{ result.reusedThreads }}</dd></div>
         <div><dt>Failed</dt><dd>{{ result.failed }}</dd></div>
       </dl>
 
@@ -152,19 +155,30 @@ function close() {
     </div>
 
     <!-- ── Progress phase ── -->
-    <div v-else-if="isRunning && progress">
-      <p class="progress-headline">
-        Importing {{ progress.processed }} of {{ progress.total }} Q&amp;A pairs…
-      </p>
-      <ProgressBar :value="progress.percent" />
-      <p class="progress-detail">
-        <span class="progress-eta">{{ progress.percent }}% · {{ formatEta(progress.etaSeconds) }}</span>
-        <span class="progress-thread">
-          Thread {{ progress.threadsDone + 1 }} / {{ progress.threadsTotal }}:
-          <strong>{{ progress.currentThreadName }}</strong>
-        </span>
-        <span class="progress-item">{{ progress.currentItemTitle }}</span>
-      </p>
+    <div v-else-if="isRunning">
+      <template v-if="progress">
+        <p class="progress-headline">
+          Importing {{ progress.processed }} of {{ progress.total }} Q&amp;A pairs…
+        </p>
+        <ProgressBar :value="progress.percent" />
+        <p class="progress-detail">
+          <span class="progress-eta">{{ progress.percent }}% · {{ formatEta(progress.etaSeconds) }}</span>
+          <span class="progress-thread">
+            Thread {{ progress.threadsDone + 1 }} / {{ progress.threadsTotal }}:
+            <strong>{{ progress.currentThreadName }}</strong>
+          </span>
+          <span class="progress-item">{{ progress.currentItemTitle }}</span>
+        </p>
+      </template>
+      <template v-else>
+        <p
+          class="progress-headline"
+          data-testid="bulk-import-preparing"
+        >
+          Preparing import…
+        </p>
+        <ProgressBar mode="indeterminate" />
+      </template>
       <p class="progress-note">
         Please keep the app open until this finishes.
       </p>
@@ -291,6 +305,7 @@ function close() {
           :label="`Import ${selectedPairCount} Q&A${selectedPairCount === 1 ? '' : 's'}`"
           icon="pi pi-download"
           :disabled="selectedIds.length === 0"
+          data-testid="bulk-import-submit"
           @click="submit"
         />
       </template>

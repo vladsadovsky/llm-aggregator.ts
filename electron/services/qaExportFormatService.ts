@@ -80,7 +80,7 @@ function serializeQABlock(pair: QAPairData): string {
 
 // ─── file header ──────────────────────────────────────────────────────────────
 
-function fileHeader(exportType: 'qa' | 'thread', threadName?: string): string {
+function fileHeader(exportType: 'qa' | 'thread', threadName?: string, threadTags: string[] = []): string {
   const fields: string[] = [
     `writer_app: ${WRITER_APP}`,
     `writer_version: ${appVersion()}`,
@@ -90,6 +90,9 @@ function fileHeader(exportType: 'qa' | 'thread', threadName?: string): string {
   ]
   if (exportType === 'thread' && threadName) {
     fields.push(`thread_name: ${threadName}`)
+  }
+  if (exportType === 'thread' && threadTags.length > 0) {
+    fields.push(`thread_tags: ${threadTags.join(', ')}`)
   }
   return `---\n${fields.join('\n')}\n---`
 }
@@ -116,6 +119,6 @@ export function formatThreadExport(
 
   const blocks = orderedPairs.map((p) => serializeQABlock(p))
   const separator = `\n\n${QA_BLOCK_SEPARATOR}\n\n`
-  const parts: string[] = [fileHeader('thread', thread.name), '', blocks.join(separator), '']
+  const parts: string[] = [fileHeader('thread', thread.name, thread.tags), '', blocks.join(separator), '']
   return parts.join('\n')
 }

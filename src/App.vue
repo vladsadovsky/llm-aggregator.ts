@@ -6,6 +6,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
+import ProgressBar from 'primevue/progressbar'
 import ThreadsPanel from './components/ThreadsPanel.vue'
 import QAListPanel from './components/QAListPanel.vue'
 import QAContentPanel from './components/QAContentPanel.vue'
@@ -24,6 +25,7 @@ import { useQAStore } from './stores/qaStore'
 import { useUIStore } from './stores/uiStore'
 import { useTagStore } from './stores/tagStore'
 import { debugError, debugLog } from './utils/logger'
+import { commitParsedFileImport } from './utils/fileImportCommit'
 import { acceleratorRows, hintFor, styleForPlatform } from '../shared/accelerators'
 import type {
   ImportResult,
@@ -58,11 +60,13 @@ const showSharedLinkImport = ref(false)
 const sharedImportBusy = ref(false)
 const sharedImportResult = ref<SharedImportResult | null>(null)
 const sharedImportError = ref('')
+const fileImportBusy = ref(false)
 // Bulk ("account export") import: preview → commit, with live progress.
 const showBulkImport = ref(false)
 const bulkImportPreview = ref<BulkImportPreviewSummary | null>(null)
 const bulkImportProgress = ref<BulkImportProgress | null>(null)
 const bulkImportResult = ref<BulkImportCommitResult | null>(null)
+const bulkImportPreparing = ref(false)
 const showDuplicates = ref(false)
 const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
@@ -337,6 +341,12 @@ async function exportSelectedThread() {
 }
 
 async function importFile() {
+  if (fileImportBusy.value) return
+  fileImportBusy.value = true
+  // Let Vue paint the indeterminate state before Electron opens the native
+  // chooser and begins potentially expensive archive detection/parsing.
+  await nextTick()
+
   let outcome: FileImportOutcome | null
   try {
     outcome = await window.api.importFromFile()
@@ -347,6 +357,8 @@ async function importFile() {
     debugError('App', 'importFile failed', err)
     toast?.add({ severity: 'error', summary: 'Import failed', detail, life: 8000 })
     return
+  } finally {
+    fileImportBusy.value = false
   }
   if (!outcome) return // user cancelled
 
@@ -361,27 +373,39 @@ async function importFile() {
   }
 
   const result = outcome.result
-  const createdIds: string[] = []
-  for (const item of result.items) {
-    try {
-      const created = await qaStore.createPair(item.data)
-      createdIds.push(created.id)
-    } catch (err) {
+  const committed = await commitParsedFileImport(result, {
+    createPair: (data) => qaStore.createPair(data),
+    createThreadWithItems: (name, ids, options) => threadStore.createThreadWithItems(name, ids, options),
+    reload: async () => {
+      await qaStore.loadAllPairs()
+      await threadStore.loadThreads()
+    },
+    getThreadItems: (threadId) => threadStore.threads[threadId]?.items,
+    onCreateError: (item, err) => {
       debugError('App', 'importFile: createPair failed for item', item.data.title, err)
-    }
-  }
+    },
+  })
+  const { createdIds, importedThreadId } = committed
 
-  // If thread export, reconstruct thread with the newly created IDs in order
-  if (result.exportType === 'thread' && result.threadName && createdIds.length > 0) {
-    const tid = await threadStore.createThread(result.threadName)
-    for (const id of createdIds) {
-      await threadStore.addToThread(tid, id)
+  if (importedThreadId) {
+    if (!committed.membershipComplete) {
+      const detail = 'The Q&As were created, but their thread membership did not persist.'
+      debugError('App', 'thread import membership postcondition failed', {
+        importedThreadId,
+        createdIds,
+        persistedItems: threadStore.threads[importedThreadId]?.items ?? [],
+      })
+      toast?.add({ severity: 'error', summary: 'Thread import incomplete', detail, life: 8000 })
+      return
     }
+    uiStore.showAllQAs = false
+    uiStore.showUnthreaded = false
+    uiStore.showGlobalSearchResults = false
+    uiStore.globalSearchResultIds = null
+    uiStore.searchScope = 'thread'
+    threadStore.selectThread(importedThreadId)
+    qaStore.selectPair(createdIds[0])
   }
-
-  // Reload so UI reflects new items
-  await qaStore.loadAllPairs()
-  await threadStore.loadThreads()
 
   const allWarnings = [
     ...result.fileWarnings,
@@ -401,7 +425,12 @@ async function importFile() {
 
 async function handleBulkImportCommit(selection: BulkImportSelection) {
   const preview = bulkImportPreview.value
-  if (!preview) return
+  if (!preview || bulkImportPreparing.value || bulkImportProgress.value) return
+
+  // Do not wait for the first main-process progress packet to show activity or
+  // prevent a double-submit: archive indexing can itself take several seconds.
+  bulkImportPreparing.value = true
+  await nextTick()
 
   // Subscribe before the call so the first ticks are not missed.
   disposeProgressListener?.()
@@ -419,7 +448,8 @@ async function handleBulkImportCommit(selection: BulkImportSelection) {
       summary: result.failed > 0 ? 'Import completed with errors' : 'Import complete',
       detail:
         `${result.createdPairs} Q&A${result.createdPairs === 1 ? '' : 's'} in ` +
-        `${result.createdThreads} thread${result.createdThreads === 1 ? '' : 's'}` +
+        `${result.createdThreads} new thread${result.createdThreads === 1 ? '' : 's'}` +
+        (result.reusedThreads > 0 ? `, ${result.reusedThreads} existing thread(s) reused` : '') +
         (result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} duplicate(s) skipped` : ''),
       life: 5000,
     })
@@ -432,6 +462,7 @@ async function handleBulkImportCommit(selection: BulkImportSelection) {
       life: 6000,
     })
   } finally {
+    bulkImportPreparing.value = false
     disposeProgressListener?.()
     disposeProgressListener = null
     bulkImportProgress.value = null
@@ -452,6 +483,7 @@ async function handleBulkImportClose() {
   bulkImportPreview.value = null
   bulkImportProgress.value = null
   bulkImportResult.value = null
+  bulkImportPreparing.value = false
 }
 
 async function handleDuplicatesChanged() {
@@ -918,12 +950,27 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     @submit="handleSharedLinkImport"
   />
 
+  <!-- Immediate feedback while the native chooser and preview parser are active. -->
+  <Dialog
+    :visible="fileImportBusy"
+    header="Import from File"
+    :modal="true"
+    :closable="false"
+    :close-on-escape="false"
+    :style="{ width: '460px', maxWidth: '90vw' }"
+    data-testid="file-import-busy-dialog"
+  >
+    <p>Opening and analyzing the selected file… Large archives may take a while.</p>
+    <ProgressBar mode="indeterminate" />
+  </Dialog>
+
   <!-- Account-export (bulk) import: preview, progress, summary -->
   <BulkImportDialog
     v-model:visible="showBulkImport"
     :preview="bulkImportPreview"
     :progress="bulkImportProgress"
     :result="bulkImportResult"
+    :preparing="bulkImportPreparing"
     @commit="handleBulkImportCommit"
     @close="handleBulkImportClose"
   />

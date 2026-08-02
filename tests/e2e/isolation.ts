@@ -1,4 +1,5 @@
 import path from 'path'
+import { realpathSync } from 'fs'
 
 /**
  * Exact-path equality for the e2e `userData` isolation guard (issue #15).
@@ -9,7 +10,15 @@ import path from 'path'
  * resolved paths for equality. Windows paths are case-insensitive; POSIX is not.
  */
 export function isSameUserDataDir(resolvedUserData: string, expectedUserData: string): boolean {
-  const a = path.resolve(resolvedUserData)
-  const b = path.resolve(expectedUserData)
+  const canonical = (value: string): string => {
+    const resolved = path.resolve(value)
+    try {
+      return realpathSync.native(resolved)
+    } catch {
+      return resolved
+    }
+  }
+  const a = canonical(resolvedUserData)
+  const b = canonical(expectedUserData)
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 }

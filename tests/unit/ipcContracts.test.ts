@@ -121,6 +121,24 @@ describe('import:archiveCommit', () => {
         .success,
     ).toBe(true)
     expect(
+      parse(CH.importArchiveCommit, [
+        'prev-1',
+        { threadSourceIds: ['a'], skipDuplicates: true, includeDateInThreadNames: true },
+      ]).success,
+    ).toBe(true)
+    expect(
+      parse(CH.importArchiveCommit, [
+        'prev-1',
+        { threadSourceIds: ['a'], skipDuplicates: true, includeDateInThreadNames: false },
+      ]).success,
+    ).toBe(true)
+    expect(
+      parse(CH.importArchiveCommit, [
+        'prev-1',
+        { threadSourceIds: ['a'], skipDuplicates: true, includeDateInThreadNames: 'yes' },
+      ]).success,
+    ).toBe(false)
+    expect(
       parse(CH.importArchiveCommit, ['prev-1', { threadSourceIds: ['a'], skipDuplicates: true, evil: 1 }])
         .success,
     ).toBe(false)
@@ -130,6 +148,17 @@ describe('import:archiveCommit', () => {
 describe('threads:save', () => {
   it('accepts a thread map and rejects an entry with unexpected fields', () => {
     expect(parse(CH.threadsSave, [{ t1: { name: 'X', items: ['20260204_2135'] } }]).success).toBe(true)
+    expect(
+      parse(CH.threadsSave, [
+        {
+          t1: {
+            name: 'Imported',
+            items: ['20260204_2135'],
+            importSourceId: 'claude-account-export:conversation-1',
+          },
+        },
+      ]).success,
+    ).toBe(true)
     expect(parse(CH.threadsSave, [{ t1: { name: 'X', items: [], rogue: 1 } }]).success).toBe(false)
   })
 })

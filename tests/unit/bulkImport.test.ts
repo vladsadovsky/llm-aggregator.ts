@@ -39,6 +39,7 @@ import { parseClaude } from '../../electron/services/import/parsers/claudeParser
 import { fingerprintPair, buildOriginIndex } from '../../electron/services/duplicateService'
 import { commitArchiveImport } from '../../electron/services/import/archive/bulkImportService'
 import { addTag } from '../../electron/services/tagDictionaryService'
+import { loadThreads } from '../../electron/services/threadService'
 import type { BulkImportPreview, BulkImportThread } from '../../electron/services/import/archive/archiveTypes'
 
 // commitArchiveImport writes real files via these three modules — mock them so
@@ -659,6 +660,113 @@ describe('buildResult origin ids', () => {
 })
 
 describe('commitArchiveImport', () => {
+  it('reuses archive threads when every QA is an origin-id duplicate', async () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const persistedThreads: Record<
+      string,
+      { name: string; items: string[]; importSourceId?: string }
+    > = {}
+    vi.mocked(loadThreads).mockReturnValue(persistedThreads)
+    const onDisk = new Map<string, string>()
+    vi.mocked(buildOriginIndex).mockReturnValue(onDisk)
+
+    const thread: BulkImportThread = {
+      ...makeThread('conv-repeat', 2),
+      items: [0, 1].map((i) => ({
+        data: {
+          title: `t${i}`,
+          source: 'claude',
+          url: '',
+          tags: ['bulk'],
+          question: `Q${i}`,
+          answer: `A${i}`,
+          originId: `claude:conv-repeat:m${i}`,
+        },
+        warnings: [],
+        originId: `claude:conv-repeat:m${i}`,
+      })),
+    }
+    const preview: BulkImportPreview = {
+      ...makePreview([thread]),
+      format: 'claude-account-export',
+      formatLabel: 'Claude account export',
+      provider: 'claude',
+    }
+    const selection = { threadSourceIds: ['conv-repeat'], skipDuplicates: true }
+
+    const first = await commitArchiveImport(preview, selection)
+    expect(first.createdPairs).toBe(2)
+    expect(first.createdThreads).toBe(1)
+    expect(first.reusedThreads).toBe(0)
+    expect(Object.keys(persistedThreads)).toHaveLength(1)
+
+    const second = await commitArchiveImport(preview, selection)
+    expect(second.createdPairs).toBe(0)
+    expect(second.skippedDuplicates).toBe(2)
+    expect(second.createdThreads).toBe(0)
+    expect(second.reusedThreads).toBe(1)
+    expect(Object.keys(persistedThreads)).toHaveLength(1)
+    expect(Object.values(persistedThreads)[0].items).toEqual(['pair_0', 'pair_1'])
+
+    vi.mocked(loadThreads).mockImplementation(() => ({}))
+    vi.mocked(buildOriginIndex).mockImplementation(() => new Map())
+  })
+
+  it('adopts a pre-fix thread by exact QA membership instead of creating another copy', async () => {
+    savedThreadsCalls.length = 0
+    createdPairCounter = 0
+
+    const persistedThreads = {
+      thread_legacy: { name: 'Old imported copy', items: ['existing-0', 'existing-1'] },
+    }
+    vi.mocked(loadThreads).mockReturnValue(persistedThreads)
+    vi.mocked(buildOriginIndex).mockReturnValue(
+      new Map([
+        ['claude:conv-legacy:m0', 'existing-0'],
+        ['claude:conv-legacy:m1', 'existing-1'],
+      ]),
+    )
+    const thread: BulkImportThread = {
+      ...makeThread('conv-legacy', 2),
+      items: [0, 1].map((i) => ({
+        data: {
+          title: `t${i}`,
+          source: 'claude',
+          url: '',
+          tags: ['bulk'],
+          question: `Q${i}`,
+          answer: `A${i}`,
+          originId: `claude:conv-legacy:m${i}`,
+        },
+        warnings: [],
+        originId: `claude:conv-legacy:m${i}`,
+      })),
+    }
+    const preview: BulkImportPreview = {
+      ...makePreview([thread]),
+      format: 'claude-account-export',
+      formatLabel: 'Claude account export',
+      provider: 'claude',
+    }
+
+    const result = await commitArchiveImport(preview, {
+      threadSourceIds: ['conv-legacy'],
+      skipDuplicates: true,
+    })
+
+    expect(result.createdThreads).toBe(0)
+    expect(result.reusedThreads).toBe(1)
+    expect(Object.keys(persistedThreads)).toEqual(['thread_legacy'])
+    expect(persistedThreads.thread_legacy.importSourceId).toBe(
+      'claude-account-export:conv-legacy',
+    )
+
+    vi.mocked(loadThreads).mockImplementation(() => ({}))
+    vi.mocked(buildOriginIndex).mockImplementation(() => new Map())
+  })
+
   it('creates one distinct thread per selected conversation, not just the last', async () => {
     // Regression test: generateThreadId() used to offset Date.now() by the loop
     // index in *milliseconds*, but thread ids only have second resolution — a

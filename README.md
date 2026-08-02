@@ -229,11 +229,11 @@ Parsing rules:
 ### Importing
 
 1. Press `Ctrl+O` (or `Cmd+O` on macOS), or choose **Import from File** from the command palette.
-2. An Open dialog opens. Select a `.md` file.
+2. An Open dialog opens in the directory used for the previous import during this app session. Select a `.md` file.
 3. After import:
    - A toast confirms how many QAs were created.
    - If warnings were detected (missing fields, version mismatch, no file header), an import summary dialog lists each issue per-item.
-   - If the file contains a thread, the thread is reconstructed with items in their original order.
+   - If the file contains a thread, the thread and its ordered QA membership are persisted together, then the imported thread is selected.
 
 ### Export file format
 
@@ -265,7 +265,9 @@ Question text here.
 Answer text here.
 ```
 
-Thread files include a `thread_name` header field and separate QA blocks with `---` dividers.
+Thread files include `thread_name` and `thread_tags` header fields and separate QA blocks with
+unambiguous HTML-comment boundaries. Import restores both ordered QA membership and thread tags,
+so a round-tripped thread remains visible under the same thread-tag filters.
 
 ### Human-authored import files
 
@@ -327,7 +329,8 @@ identifies the file by its **structure**, not its name or extension.
 
 A preview appears before anything is written: format, conversation count, Q&A count, date range,
 and a checklist of conversations with per-conversation pair counts. Deselect what you don't want,
-then import. Progress shows percentage, ETA, and the item being written.
+then import. The app shows indeterminate feedback while a large file is being analyzed and while a
+commit is starting; progress then shows percentage, ETA, and the item being written.
 
 Two provider-specific caveats:
 
@@ -351,6 +354,10 @@ Two provider-specific caveats:
 Every imported pair records an `origin_id` in its frontmatter
 (`<provider>:<conversationId>:<messageId>`). Re-importing the same export skips what is already
 there instead of duplicating it, and the preview tells you up front how many pairs it recognizes.
+Imported threads also retain the provider conversation identity: re-import reuses and extends the
+existing thread instead of creating another copy. A thread imported before this identity was added
+is adopted when its QA membership exactly matches the conversation; existing extra copies are left
+untouched rather than deleted implicitly.
 Because the key is anchored on a pair's first message, it survives the conversation being continued
 and re-exported later, and a shared link and an account export of the *same* conversation produce
 the same key.

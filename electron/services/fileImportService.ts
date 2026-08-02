@@ -18,7 +18,7 @@
 
 import { dialog, BrowserWindow } from 'electron'
 import { readFileSync, statSync } from 'fs'
-import { extname } from 'path'
+import { dirname, extname } from 'path'
 import { parseImportFile, type ImportResult } from './qaImportFormatService'
 import { previewArchive, storePreview, summarizePreview } from './import/archive/bulkImportService'
 import { detectArchiveFormat } from './import/archive/formatRegistry'
@@ -48,6 +48,21 @@ const ARCHIVE_EXTENSIONS = new Set(['.json', '.zip', '.csv'])
 const MAX_SNIFF_BYTES = 256 * 1024 * 1024
 export const MAX_MARKDOWN_IMPORT_BYTES = 64 * 1024 * 1024
 
+// Electron 43 no longer lets the native dialog remember its previous location
+// when defaultPath is omitted; retain the old within-session behavior ourselves.
+let lastImportDirectory: string | undefined
+
+function usableLastImportDirectory(): string | undefined {
+  if (!lastImportDirectory) return undefined
+  try {
+    if (statSync(lastImportDirectory).isDirectory()) return lastImportDirectory
+  } catch {
+    /* The directory was moved or removed since the previous selection. */
+  }
+  lastImportDirectory = undefined
+  return undefined
+}
+
 function readMarkdownImport(path: string): string {
   const size = statSync(path).size
   if (size > MAX_MARKDOWN_IMPORT_BYTES) {
@@ -66,15 +81,21 @@ export async function importFromFile(): Promise<FileImportOutcome | null> {
   const win = BrowserWindow.getFocusedWindow()
   if (!win) return null
 
+  const defaultPath = usableLastImportDirectory()
   const result = await dialog.showOpenDialog(win, {
     title: 'Import Q&A, Thread, or Account Export',
+    ...(defaultPath ? { defaultPath } : {}),
     filters: IMPORT_FILTERS,
     properties: ['openFile'],
   })
 
   if (result.canceled || result.filePaths.length === 0) return null
 
-  return importFromPath(result.filePaths[0])
+  const chosen = result.filePaths[0]
+  // Remember the location even if parsing later fails; the user's navigation
+  // choice was valid and is useful for selecting the next test/export file.
+  lastImportDirectory = dirname(chosen)
+  return importFromPath(chosen)
 }
 
 /**
