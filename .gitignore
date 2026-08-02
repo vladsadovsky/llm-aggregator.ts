@@ -10,11 +10,11 @@ playwright-report/
 coverage/
 test-results
 
-# Claude Code settings. Ignored wholesale for now; to share the project-wide
-# permission allow-list later, drop the second line and keep settings.local.json
-# (personal overrides) ignored.
-.claude/
-.claude/settings.local.json
+# Claude Code settings. Track the shareable project config (permission
+# allow-list, dev-preview launch config); keep personal/transient files out.
+.claude/*
+!.claude/settings.json
+!.claude/launch.json
 
 
 # Runtime data files (user-specific)
