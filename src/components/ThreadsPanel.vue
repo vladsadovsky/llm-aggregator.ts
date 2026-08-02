@@ -353,13 +353,11 @@ const threadContextItems = computed<MenuItem[]>(() => {
     { label: 'Delete', icon: 'pi pi-trash', command: () => confirmDelete(tid) },
   ]
 })
-// Selection-aware right-click (see QAListPanel for the same pattern).
+// Right-click is the context menu only (see QAListPanel). It selects an
+// unselected row and keeps an existing multi-selection, but never extends it —
+// modifier+click for that is left-button only.
 function onThreadContextMenu(event: MouseEvent, tid: string) {
-  const ctrl = event.ctrlKey || event.metaKey
-  const shift = event.shiftKey
-  if (ctrl || shift) {
-    selection.handleClick(tid, threadStore.filteredSortedThreadIds, { ctrl, shift })
-  } else if (!selection.isSelected(tid)) {
+  if (!selection.isSelected(tid)) {
     selection.handleClick(tid, threadStore.filteredSortedThreadIds)
   }
   contextThreadId.value = tid
