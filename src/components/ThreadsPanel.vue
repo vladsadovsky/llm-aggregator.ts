@@ -9,6 +9,7 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Menu from 'primevue/menu'
+import ContextMenu from 'primevue/contextmenu'
 import type { MenuItem } from 'primevue/menuitem'
 
 const threadStore = useThreadStore()
@@ -284,6 +285,24 @@ function onThreadListKeydown(e: KeyboardEvent) {
 
 const hasFilters = computed(() => threadStore.activeTagFilters.length > 0)
 
+// ─── 1.3 context menu (thread items) ─────────────────────────────────────────
+const threadContextMenu = ref<InstanceType<typeof ContextMenu> | null>(null)
+const contextThreadId = ref<string | null>(null)
+const threadContextItems = computed<MenuItem[]>(() => {
+  const tid = contextThreadId.value
+  if (!tid) return []
+  return [
+    { label: 'Rename', icon: 'pi pi-pencil', command: () => startRename(tid) },
+    { label: 'Export', icon: 'pi pi-download', command: () => void exportThread(tid) },
+    { separator: true },
+    { label: 'Delete', icon: 'pi pi-trash', command: () => confirmDelete(tid) },
+  ]
+})
+function onThreadContextMenu(event: MouseEvent, tid: string) {
+  contextThreadId.value = tid
+  threadContextMenu.value?.show(event)
+}
+
 function onRenameSelectedThreadRequest() {
   if (!threadStore.selectedThreadId) return
   startRename(threadStore.selectedThreadId)
@@ -524,6 +543,7 @@ onUnmounted(() => {
         class="thread-item"
         :class="{ active: threadStore.selectedThreadId === tid }"
         @click="selectThread(tid)"
+        @contextmenu.prevent="onThreadContextMenu($event, tid)"
       >
         <!-- Normal display -->
         <template v-if="editingThreadId !== tid">
@@ -654,6 +674,12 @@ onUnmounted(() => {
         <p>No threads yet</p>
       </div>
     </div>
+
+    <ContextMenu
+      ref="threadContextMenu"
+      :model="threadContextItems"
+      data-testid="thread-context-menu"
+    />
 
     <!-- Bottom: Add thread (OneNote-style) -->
     <div class="panel-footer">
