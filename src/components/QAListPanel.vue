@@ -4,17 +4,21 @@ import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ContextMenu from 'primevue/contextmenu'
+import Menu from 'primevue/menu'
 import type { MenuItem } from 'primevue/menuitem'
 import QAEditor from './QAEditor.vue'
+import { useSelectionModel } from '../composables/useSelectionModel'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
 const uiStore = useUIStore()
 const toast = useToast()
+const confirm = useConfirm()
 
 const showEditor = ref(false)
 const searchResults = ref<string[] | null>(null)
@@ -362,6 +366,105 @@ function onQAContextMenu(event: MouseEvent, id: string) {
   qaContextMenu.value?.show(event)
 }
 
+// ─── 3.1 bulk operations (multi-select + toolbar) ────────────────────────────
+// Selection is independent of the active detail item (selectedPairId): plain
+// click views+selects one; Ctrl/Cmd and Shift extend the multi-selection without
+// changing the viewed pair. Selection is pruned to the visible list on any
+// reload/filter/thread change so it never carries stale ids.
+const selection = useSelectionModel<string>()
+const bulkTagInput = ref('')
+const moveMenu = ref<InstanceType<typeof Menu> | null>(null)
+
+watch(displayedItems, (items) => selection.prune(items))
+
+function onQAItemClick(e: MouseEvent, id: string) {
+  const ctrl = e.ctrlKey || e.metaKey
+  const shift = e.shiftKey
+  if (ctrl || shift) {
+    selection.handleClick(id, displayedItems.value, { ctrl, shift })
+    return
+  }
+  selection.handleClick(id, displayedItems.value)
+  selectPair(id)
+}
+
+function toggleSelect(id: string) {
+  selection.toggleCheckbox(id)
+}
+
+const moveMenuItems = computed<MenuItem[]>(() =>
+  threadStore.sortedThreadIds.map((tid) => ({
+    label: threadStore.threads[tid].name,
+    command: () => void bulkMoveToThread(tid),
+  })),
+)
+
+function toggleMoveMenu(event: Event) {
+  moveMenu.value?.toggle(event)
+}
+
+function bulkDelete() {
+  const ids = [...selection.selectedIds.value]
+  if (ids.length === 0) return
+  confirm.require({
+    message: `Delete ${ids.length} selected Q&A pair(s)? This cannot be undone.`,
+    header: 'Confirm Delete',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Delete',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      for (const id of ids) {
+        // Mirror single-QA delete: purge thread membership first, then the file.
+        for (const t of threadStore.threadsContaining(id)) {
+          await threadStore.removeFromThread(t.id, id)
+        }
+        await qaStore.deletePair(id)
+      }
+      selection.clear()
+      toast.add({ severity: 'info', summary: `${ids.length} QA deleted`, life: 2000 })
+    },
+  })
+}
+
+async function bulkMoveToThread(targetTid: string) {
+  const ids = [...selection.selectedIds.value]
+  const fromTid = threadStore.selectedThreadId
+  for (const id of ids) {
+    if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
+      await threadStore.moveToThread(fromTid, targetTid, id)
+    } else {
+      await threadStore.addToThread(targetTid, id)
+    }
+  }
+  selection.clear()
+  toast.add({ severity: 'success', summary: `Moved ${ids.length} to thread`, life: 2000 })
+}
+
+async function bulkAddTag() {
+  const tag = bulkTagInput.value.trim()
+  if (!tag) return
+  const ids = [...selection.selectedIds.value]
+  for (const id of ids) {
+    const p = qaStore.pairs[id]
+    if (!p) continue
+    const tags = Array.from(new Set([...(p.tags ?? []), tag]))
+    await qaStore.updatePair(id, { tags })
+  }
+  bulkTagInput.value = ''
+  toast.add({ severity: 'success', summary: `Tagged ${ids.length} QA`, life: 2000 })
+}
+
+async function bulkExport() {
+  const ids = [...selection.selectedIds.value]
+  let saved = 0
+  for (const id of ids) {
+    const result = await window.api.exportQA(id)
+    if (result) saved += 1
+  }
+  toast.add({ severity: 'success', summary: `Exported ${saved} QA`, life: 2000 })
+}
+
 function onQAListKeydown(e: KeyboardEvent) {
   const items = displayedItems.value
   if (items.length === 0) return
@@ -517,6 +620,59 @@ function onQAListKeydown(e: KeyboardEvent) {
       </div>
     </div>
 
+    <!-- 3.1 Bulk-action toolbar -->
+    <div
+      v-if="selection.selectedCount.value > 0"
+      class="bulk-toolbar"
+      data-testid="qa-bulk-toolbar"
+    >
+      <span class="bulk-count">{{ selection.selectedCount.value }} selected</span>
+      <Button
+        icon="pi pi-trash"
+        text
+        size="small"
+        severity="danger"
+        title="Delete selected"
+        data-testid="qa-bulk-delete"
+        @click="bulkDelete"
+      />
+      <Button
+        icon="pi pi-arrow-right"
+        text
+        size="small"
+        title="Move selected to thread"
+        data-testid="qa-bulk-move"
+        @click="toggleMoveMenu"
+      />
+      <Menu
+        ref="moveMenu"
+        :model="moveMenuItems"
+        :popup="true"
+      />
+      <InputText
+        v-model="bulkTagInput"
+        size="small"
+        placeholder="add tag + ↵"
+        class="bulk-tag-input"
+        data-testid="qa-bulk-tag"
+        @keydown.enter="bulkAddTag"
+      />
+      <Button
+        icon="pi pi-download"
+        text
+        size="small"
+        title="Export selected"
+        @click="bulkExport"
+      />
+      <Button
+        icon="pi pi-times"
+        text
+        size="small"
+        title="Clear selection"
+        @click="selection.clear()"
+      />
+    </div>
+
     <!-- QA list -->
     <div
       ref="qaListRef"
@@ -529,10 +685,17 @@ function onQAListKeydown(e: KeyboardEvent) {
         v-for="id in displayedItems"
         :key="id"
         class="qa-item"
-        :class="{ active: qaStore.selectedPairId === id }"
-        @click="selectPair(id)"
+        :class="{ active: qaStore.selectedPairId === id, selected: selection.isSelected(id) }"
+        @click="onQAItemClick($event, id)"
         @contextmenu.prevent="onQAContextMenu($event, id)"
       >
+        <input
+          type="checkbox"
+          class="qa-checkbox"
+          :checked="selection.isSelected(id)"
+          :aria-label="`Select ${qaStore.pairs[id]?.title || 'QA'}`"
+          @click.stop="toggleSelect(id)"
+        >
         <div class="qa-item-title">
           <i class="pi pi-file" />
           <span>{{ qaStore.pairs[id]?.title || 'Untitled' }}</span>
@@ -770,7 +933,8 @@ function onQAListKeydown(e: KeyboardEvent) {
 }
 
 .qa-item {
-  padding: 10px 12px;
+  position: relative;
+  padding: 10px 12px 10px 30px;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: all 0.15s ease;
@@ -783,6 +947,46 @@ function onQAListKeydown(e: KeyboardEvent) {
 .qa-item.active {
   background: var(--highlight-bg);
   border-left-color: var(--primary-color);
+}
+
+.qa-item.selected {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+/* Checkbox: unobtrusive until the row is hovered or selected. */
+.qa-checkbox {
+  position: absolute;
+  top: 12px;
+  left: 9px;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.qa-item:hover .qa-checkbox,
+.qa-item.selected .qa-checkbox {
+  opacity: 1;
+}
+
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--surface-section));
+}
+
+.bulk-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-right: auto;
+}
+
+.bulk-tag-input {
+  width: 110px;
 }
 
 .qa-item-title {
