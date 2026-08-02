@@ -367,7 +367,8 @@ planning material lives in dedicated docs so it doesn't drift here:
   run the persistent UI/E2E suites — the user runs those pre-push", PR
   checklist) → `AGENTS.md`. Read it before substantial edits.
 - **Roadmap / future work** → `doc/plans/V2_Master_Roadmap.md`.
-- **Known issues & technical debt** → `doc/plans/Known_Issues_And_Tech_Debt.md`.
+- **Known issues & technical debt** → GitHub issues (labels `tech-debt` /
+  `enhancement`, `priority: low`).
 - **Behavior/workflow change log** → `doc/dev_process/build-notes.md`.
 
 Everyday commands: `npm run check` is the full pre-push gate (typecheck, lint,
