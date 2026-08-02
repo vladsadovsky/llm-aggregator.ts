@@ -11,6 +11,7 @@ import Select from 'primevue/select'
 import Menu from 'primevue/menu'
 import ContextMenu from 'primevue/contextmenu'
 import type { MenuItem } from 'primevue/menuitem'
+import { useSelectionModel } from '../composables/useSelectionModel'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
@@ -303,6 +304,62 @@ function onThreadContextMenu(event: MouseEvent, tid: string) {
   threadContextMenu.value?.show(event)
 }
 
+// ─── 3.1 bulk operations (threads) ───────────────────────────────────────────
+// Multi-selection is independent of the viewed thread (selectedThreadId): plain
+// click views+selects one; Ctrl/Cmd and Shift extend without switching the view.
+// Pruned to the visible list so it never carries stale ids across filter/reload.
+const selection = useSelectionModel<string>()
+
+watch(
+  () => threadStore.filteredSortedThreadIds,
+  (ids) => selection.prune(ids),
+)
+
+function onThreadItemClick(e: MouseEvent, tid: string) {
+  const ctrl = e.ctrlKey || e.metaKey
+  const shift = e.shiftKey
+  if (ctrl || shift) {
+    selection.handleClick(tid, threadStore.filteredSortedThreadIds, { ctrl, shift })
+    return
+  }
+  selection.handleClick(tid, threadStore.filteredSortedThreadIds)
+  selectThread(tid)
+}
+
+function toggleSelectThread(tid: string) {
+  selection.toggleCheckbox(tid)
+}
+
+function bulkDeleteThreads() {
+  const ids = [...selection.selectedIds.value]
+  if (ids.length === 0) return
+  confirm.require({
+    message: `Delete ${ids.length} selected thread(s)? The Q&A pairs inside them are not deleted.`,
+    header: 'Confirm Delete',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Delete',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      for (const tid of ids) {
+        await threadStore.deleteThread(tid)
+      }
+      selection.clear()
+      toast.add({ severity: 'info', summary: `${ids.length} threads deleted`, life: 2000 })
+    },
+  })
+}
+
+async function bulkExportThreads() {
+  const ids = [...selection.selectedIds.value]
+  let saved = 0
+  for (const tid of ids) {
+    const result = await window.api.exportThread(tid)
+    if (result) saved += 1
+  }
+  toast.add({ severity: 'success', summary: `Exported ${saved} threads`, life: 2000 })
+}
+
 function onRenameSelectedThreadRequest() {
   if (!threadStore.selectedThreadId) return
   startRename(threadStore.selectedThreadId)
@@ -494,6 +551,38 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 3.1 Bulk-action toolbar -->
+    <div
+      v-if="selection.selectedCount.value > 0"
+      class="bulk-toolbar"
+      data-testid="thread-bulk-toolbar"
+    >
+      <span class="bulk-count">{{ selection.selectedCount.value }} selected</span>
+      <Button
+        icon="pi pi-trash"
+        text
+        size="small"
+        severity="danger"
+        title="Delete selected threads"
+        data-testid="thread-bulk-delete"
+        @click="bulkDeleteThreads"
+      />
+      <Button
+        icon="pi pi-download"
+        text
+        size="small"
+        title="Export selected threads"
+        @click="bulkExportThreads"
+      />
+      <Button
+        icon="pi pi-times"
+        text
+        size="small"
+        title="Clear selection"
+        @click="selection.clear()"
+      />
+    </div>
+
     <!-- Thread list -->
     <div
       class="thread-list"
@@ -540,11 +629,19 @@ onUnmounted(() => {
       <div
         v-for="tid in threadStore.filteredSortedThreadIds"
         :key="tid"
-        class="thread-item"
-        :class="{ active: threadStore.selectedThreadId === tid }"
-        @click="selectThread(tid)"
+        class="thread-item thread-item--selectable"
+        :class="{ active: threadStore.selectedThreadId === tid, selected: selection.isSelected(tid) }"
+        @click="onThreadItemClick($event, tid)"
         @contextmenu.prevent="onThreadContextMenu($event, tid)"
       >
+        <input
+          v-if="editingThreadId !== tid"
+          type="checkbox"
+          class="thread-checkbox"
+          :checked="selection.isSelected(tid)"
+          :aria-label="`Select ${threadStore.threads[tid].name}`"
+          @click.stop="toggleSelectThread(tid)"
+        >
         <!-- Normal display -->
         <template v-if="editingThreadId !== tid">
           <div class="thread-info">
@@ -941,6 +1038,46 @@ onUnmounted(() => {
 .thread-item.active {
   background: var(--highlight-bg);
   border-left-color: var(--primary-color);
+}
+
+.thread-item.selected {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.thread-item--selectable {
+  position: relative;
+  padding-left: 28px;
+}
+
+.thread-checkbox {
+  position: absolute;
+  top: 9px;
+  left: 8px;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.thread-item--selectable:hover .thread-checkbox,
+.thread-item--selectable.selected .thread-checkbox {
+  opacity: 1;
+}
+
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--surface-section));
+}
+
+.bulk-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-right: auto;
 }
 
 .thread-info {
