@@ -52,6 +52,7 @@ export const ThreadDataSchema = z
     tags: TagArray.optional(),
     createdAt: boundedString(64).optional(),
     updatedAt: boundedString(64).optional(),
+    importSourceId: boundedString(1024).optional(),
   })
   .strict()
 

@@ -10,6 +10,8 @@ export interface ThreadData {
   createdAt?: string
   /** Last entry or edit (ISO) — renames, reorders and add/remove all refresh it. */
   updatedAt?: string
+  /** Stable account-export conversation identity used to make ZIP re-import idempotent. */
+  importSourceId?: string
 }
 
 export type ThreadMap = Record<string, ThreadData>

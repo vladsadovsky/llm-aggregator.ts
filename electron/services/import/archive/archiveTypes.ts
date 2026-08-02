@@ -13,6 +13,7 @@
  */
 
 import type { ProviderId, SharedImportQA } from '../types'
+import type { BulkImportSelectionContract } from '../../../../shared/contracts/import'
 
 export type ArchiveFormatId =
   | 'claude-account-export'
@@ -90,19 +91,8 @@ export interface BulkImportPreviewSummary {
   warnings: string[]
 }
 
-/** What the user chose in the preview dialog. */
-export interface BulkImportSelection {
-  /** Conversations to import, by `BulkImportThread.sourceId`. Empty imports nothing. */
-  threadSourceIds: string[]
-  /** Skip pairs whose `origin_id` is already in the archive. */
-  skipDuplicates: boolean
-  /**
-   * Prefix each created thread's name with its UTC calendar day. Only meaningful
-   * for `gemini-takeout`, where a thread is a day-bucket rather than a real
-   * conversation — ignored for every other format.
-   */
-  includeDateInThreadNames?: boolean
-}
+/** What the user chose in the preview dialog; inferred from the IPC boundary. */
+export type BulkImportSelection = BulkImportSelectionContract
 
 /** Progress tick emitted from main → renderer during a commit. */
 export interface BulkImportProgress {
@@ -127,6 +117,7 @@ export interface BulkImportCommitResult {
   createdPairs: number
   skippedDuplicates: number
   createdThreads: number
+  reusedThreads: number
   failed: number
   /** Names of threads that were created, in order. */
   threadNames: string[]

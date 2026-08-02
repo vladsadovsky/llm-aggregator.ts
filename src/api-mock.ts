@@ -110,6 +110,7 @@ export const mockApi: ElectronAPI = {
         createdPairs: 0,
         skippedDuplicates: 0,
         createdThreads: 0,
+        reusedThreads: 0,
         failed: 0,
         threadNames: [],
         warnings: [],

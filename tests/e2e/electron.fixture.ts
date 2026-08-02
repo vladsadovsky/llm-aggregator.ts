@@ -81,11 +81,10 @@ export const test = base.extend<{
         });
 
         // Fail loudly rather than silently testing against the real profile.
-        // Exact-path equality, not startsWith (issue #15): the fixture creates
-        // one exact directory, and a string prefix check would accept a sibling
-        // such as `<root>/userdata-old` for an expected `<root>/userdata`. This
-        // assertion is the barrier that keeps e2e off the developer's real
-        // secrets/settings, so it must fail closed.
+        // Canonical exact-path equality, not startsWith (issue #15): the fixture
+        // creates one exact directory, and a string prefix check would accept a
+        // sibling such as `<root>/userdata-old`. Canonicalization only reconciles
+        // OS aliases such as macOS `/var` → `/private/var`; equality stays exact.
         const resolvedUserData = await electronApp.evaluate(({ app }) => app.getPath('userData'));
         const expectedUserData = path.resolve(userDataDir);
         if (!isSameUserDataDir(resolvedUserData, expectedUserData)) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -43,6 +43,40 @@ describe('file dialog transports', () => {
     expect(outcome).toMatchObject({
       kind: 'markdown',
       result: { items: [{ data: { question: 'Question', answer: 'Answer' } }] },
+    })
+  })
+
+  it('reopens import in the last selected directory', async () => {
+    const importDirectory = join(directory, 'fixtures')
+    const inputPath = join(importDirectory, 'qa.md')
+    mkdirSync(importDirectory)
+    writeFileSync(inputPath, 'title: Dialog test\n\n## Question\n\nQuestion\n\n## Answer\n\nAnswer', 'utf8')
+    electronMocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [inputPath] })
+
+    await importFromFile()
+    await importFromFile()
+
+    expect(electronMocks.showOpenDialog.mock.calls[1]?.[1]).toMatchObject({
+      defaultPath: importDirectory,
+    })
+  })
+
+  it('retains the last import directory after a cancelled dialog', async () => {
+    const importDirectory = join(directory, 'fixtures')
+    const inputPath = join(importDirectory, 'qa.md')
+    mkdirSync(importDirectory)
+    writeFileSync(inputPath, 'title: Dialog test\n\n## Question\n\nQuestion\n\n## Answer\n\nAnswer', 'utf8')
+    electronMocks.showOpenDialog
+      .mockResolvedValueOnce({ canceled: false, filePaths: [inputPath] })
+      .mockResolvedValueOnce({ canceled: true, filePaths: [] })
+      .mockResolvedValueOnce({ canceled: true, filePaths: [] })
+
+    await importFromFile()
+    await importFromFile()
+    await importFromFile()
+
+    expect(electronMocks.showOpenDialog.mock.calls[2]?.[1]).toMatchObject({
+      defaultPath: importDirectory,
     })
   })
 

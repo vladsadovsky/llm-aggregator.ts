@@ -29,7 +29,7 @@ import { buildOriginIndex } from '../../duplicateService'
 import { createPair } from '../../qaPairService'
 import { loadThreads, saveThreads } from '../../threadService'
 import { addTag, listTags } from '../../tagDictionaryService'
-import { debugLog, debugError } from '../../logger'
+import { debugLog, debugError, debugTrace } from '../../logger'
 import { ipcError } from '../../../../shared/contracts/errorWire'
 import type {
   BulkImportPreview,
@@ -179,6 +179,16 @@ function generateThreadId(sourceTime: string, taken: Set<string>): string {
     if (!taken.has(candidate)) return candidate
   }
   return `${formatThreadId(new Date())}_${Math.random().toString(36).slice(2, 6)}`
+}
+
+function archiveThreadSourceId(preview: BulkImportPreview, thread: BulkImportThread): string | undefined {
+  return thread.sourceId ? `${preview.format}:${thread.sourceId}` : undefined
+}
+
+function hasExactMembership(left: readonly string[], right: readonly string[]): boolean {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  return leftSet.size === rightSet.size && [...leftSet].every((id) => rightSet.has(id))
 }
 
 /**
@@ -355,6 +365,7 @@ export async function commitArchiveImport(
   onProgress?: (progress: BulkImportProgress) => void,
   signal?: AbortSignal,
 ): Promise<BulkImportCommitResult> {
+  const traceId = `archive-${randomUUID().slice(0, 8)}`
   const wanted = new Set(selection.threadSourceIds)
   const selected = preview.threads.filter((t) => wanted.has(t.sourceId))
 
@@ -366,6 +377,7 @@ export async function commitArchiveImport(
     createdPairs: 0,
     skippedDuplicates: 0,
     createdThreads: 0,
+    reusedThreads: 0,
     failed: 0,
     threadNames: [],
     warnings: [],
@@ -373,6 +385,18 @@ export async function commitArchiveImport(
   }
 
   const threads = loadThreads()
+  debugLog('bulkImportTrace', 'commit start', {
+    traceId,
+    format: preview.format,
+    provider: preview.provider,
+    selectedSourceIds: selected.map((thread) => thread.sourceId),
+    selectedThreadCount: selected.length,
+    selectedPairCount: total,
+    skipDuplicates: selection.skipDuplicates,
+    existingOriginCount: originIndex.size,
+    existingThreadCount: Object.keys(threads).length,
+    existingIdentifiedThreadCount: Object.values(threads).filter((thread) => thread.importSourceId).length,
+  })
   const takenThreadIds = new Set(Object.keys(threads))
   const startedAt = Date.now()
   let processed = 0
@@ -387,8 +411,14 @@ export async function commitArchiveImport(
     const createdIds: string[] = []
     const day = thread.createdAt.slice(0, 10)
     const threadName = applyDatePrefix && day ? `${day} — ${thread.name}` : thread.name
+    debugLog('bulkImportTrace', 'conversation start', {
+      traceId,
+      sourceId: thread.sourceId || null,
+      parsedItemCount: thread.items.length,
+      originIds: thread.items.map((item) => item.originId ?? null),
+    })
 
-    for (const item of thread.items) {
+    for (const [itemIndex, item] of thread.items.entries()) {
       // Stop before the next durable pair; the current thread is left unpromoted.
       if (signal?.aborted) {
         result.cancelled = true
@@ -408,15 +438,44 @@ export async function commitArchiveImport(
         // reconstructs the thread from the pairs already on disk.
         const existingId = item.originId ? originIndex.get(item.originId) : undefined
         if (existingId) createdIds.push(existingId)
+        debugTrace('bulkImportTrace', 'pair reused', {
+          traceId,
+          sourceId: thread.sourceId || null,
+          itemIndex,
+          originId: item.originId ?? null,
+          existingId: existingId ?? null,
+          reason: 'origin-id-match',
+        })
       } else {
         try {
+          debugTrace('bulkImportTrace', 'pair creating', {
+            traceId,
+            sourceId: thread.sourceId || null,
+            itemIndex,
+            originId: item.originId ?? null,
+            duplicateDetected: isDuplicate,
+            skipDuplicates: selection.skipDuplicates,
+          })
           const created = createPair(item.data)
           createdIds.push(created.id)
           if (item.originId) originIndex.set(item.originId, created.id)
           result.createdPairs += 1
+          debugTrace('bulkImportTrace', 'pair created', {
+            traceId,
+            sourceId: thread.sourceId || null,
+            itemIndex,
+            originId: item.originId ?? null,
+            persistedId: created.id,
+          })
         } catch (err) {
           result.failed += 1
-          debugError('bulkImport', 'createPair failed', item.data.title, err)
+          debugError('bulkImportTrace', 'pair creation failed', {
+            traceId,
+            sourceId: thread.sourceId || null,
+            itemIndex,
+            originId: item.originId ?? null,
+            error: err,
+          })
           result.warnings.push(`Could not import "${item.data.title}": ${err instanceof Error ? err.message : String(err)}`)
         }
       }
@@ -443,22 +502,79 @@ export async function commitArchiveImport(
     }
 
     if (createdIds.length > 0) {
-      const threadId = generateThreadId(thread.createdAt, takenThreadIds)
-      takenThreadIds.add(threadId)
-      threads[threadId] = {
-        name: threadName,
-        items: createdIds,
-        ...(thread.tags.length > 0 ? { tags: [...thread.tags] } : {}),
-        ...(thread.createdAt ? { createdAt: thread.createdAt } : {}),
-        ...(thread.updatedAt || thread.createdAt
-          ? { updatedAt: thread.updatedAt || thread.createdAt }
-          : {}),
+      const uniqueItemIds = [...new Set(createdIds)]
+      const importSourceId = archiveThreadSourceId(preview, thread)
+      let threadId = importSourceId
+        ? Object.keys(threads).find((id) => threads[id].importSourceId === importSourceId)
+        : undefined
+      let reuseReason = threadId ? 'source-id-match' : ''
+
+      // Compatibility for archives imported before importSourceId was persisted:
+      // reuse an exact membership match and stamp it. Existing extra copies are
+      // intentionally not deleted by an import operation.
+      if (!threadId) {
+        const membershipMatches = Object.keys(threads).filter((id) =>
+          hasExactMembership(threads[id].items, uniqueItemIds),
+        )
+        threadId = membershipMatches[0]
+        reuseReason = threadId ? 'exact-membership-match' : ''
+        if (membershipMatches.length > 1) {
+          result.warnings.push(
+            `Found ${membershipMatches.length} existing copies of "${threadName}"; reused one and left the others unchanged.`,
+          )
+        }
+      }
+
+      if (threadId) {
+        const existing = threads[threadId]
+        const mergedItems = [...existing.items]
+        for (const id of uniqueItemIds) {
+          if (!mergedItems.includes(id)) mergedItems.push(id)
+        }
+        threads[threadId] = {
+          ...existing,
+          items: mergedItems,
+          ...(importSourceId ? { importSourceId } : {}),
+        }
+        result.reusedThreads += 1
+        debugLog('bulkImportTrace', 'conversation thread reused', {
+          traceId,
+          sourceId: thread.sourceId || null,
+          importSourceId: importSourceId ?? null,
+          threadId,
+          reuseReason,
+          itemIds: mergedItems,
+        })
+      } else {
+        threadId = generateThreadId(thread.createdAt, takenThreadIds)
+        takenThreadIds.add(threadId)
+        threads[threadId] = {
+          name: threadName,
+          items: uniqueItemIds,
+          ...(thread.tags.length > 0 ? { tags: [...thread.tags] } : {}),
+          ...(thread.createdAt ? { createdAt: thread.createdAt } : {}),
+          ...(thread.updatedAt || thread.createdAt
+            ? { updatedAt: thread.updatedAt || thread.createdAt }
+            : {}),
+          ...(importSourceId ? { importSourceId } : {}),
+        }
+        result.createdThreads += 1
+        result.threadNames.push(threadName)
       }
       // Durable unit: persist threads.json before declaring this conversation
       // done, so a crash after this point cannot lose the thread linkage.
       saveThreads(threads)
-      result.createdThreads += 1
-      result.threadNames.push(threadName)
+      const reloadedThread = loadThreads()[threadId]
+      const missingItemIds = createdIds.filter((id) => !reloadedThread?.items.includes(id))
+      debugLog('bulkImportTrace', 'conversation persisted', {
+        traceId,
+        sourceId: thread.sourceId || null,
+        threadId,
+        expectedItemIds: createdIds,
+        reloadedItemIds: reloadedThread?.items ?? [],
+        missingItemIds,
+        membershipComplete: missingItemIds.length === 0,
+      })
     } else if (thread.items.length > 0) {
       result.warnings.push(`"${threadName}" produced no new pairs (all duplicates or failed) — no thread created.`)
     }
@@ -471,10 +587,12 @@ export async function commitArchiveImport(
   saveThreads(threads)
   registerImportTags(selected.flatMap((t) => t.tags))
 
-  debugLog('bulkImport', 'commit complete', {
+  debugLog('bulkImportTrace', 'commit complete', {
+    traceId,
     createdPairs: result.createdPairs,
     skippedDuplicates: result.skippedDuplicates,
     createdThreads: result.createdThreads,
+    reusedThreads: result.reusedThreads,
     failed: result.failed,
     cancelled: result.cancelled,
   })
