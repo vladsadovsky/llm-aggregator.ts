@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useThreadStore } from '../stores/threadStore'
 import { useQAStore } from '../stores/qaStore'
 import { useUIStore } from '../stores/uiStore'
@@ -7,6 +7,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 import Menu from 'primevue/menu'
 import type { MenuItem } from 'primevue/menuitem'
 
@@ -35,6 +36,73 @@ const importItems: MenuItem[] = [
 
 function toggleImportMenu(event: Event) {
   importMenu.value?.toggle(event)
+}
+
+// ─── 1.1 filter/search/sort ──────────────────────────────────────────────────
+// Independent of the QA panel's search state (uiStore); typing here never
+// affects the QA list. Name mode filters thread names locally; content mode
+// runs an archive-wide QA search and keeps threads whose members match.
+const filterQuery = ref('')
+const filterMode = ref<'name' | 'content'>('name')
+const showDateFilter = ref(false)
+const modeOptions = [
+  { label: 'Name', value: 'name' },
+  { label: 'Content', value: 'content' },
+]
+const sortOptions = [
+  { label: 'Name', value: 'name' },
+  { label: 'Recent', value: 'recent' },
+  { label: 'Size', value: 'size' },
+]
+
+let filterDebounce: ReturnType<typeof setTimeout> | null = null
+let contentSearchSeq = 0
+
+async function applyContentFilter() {
+  threadStore.nameFilter = ''
+  const q = filterQuery.value.trim()
+  if (!q) {
+    threadStore.setContentResults(null)
+    return
+  }
+  const seq = (contentSearchSeq += 1)
+  try {
+    const ids = await qaStore.searchPairs(q, 'full-text')
+    if (seq === contentSearchSeq) threadStore.setContentResults(ids)
+  } catch {
+    if (seq === contentSearchSeq) threadStore.setContentResults([])
+  }
+}
+
+watch([filterQuery, filterMode], () => {
+  if (filterDebounce) clearTimeout(filterDebounce)
+  filterDebounce = setTimeout(() => {
+    if (filterMode.value === 'name') {
+      threadStore.nameFilter = filterQuery.value
+      threadStore.setContentResults(null)
+    } else {
+      void applyContentFilter()
+    }
+  }, 200)
+})
+
+function clearAllFilters() {
+  filterQuery.value = ''
+  filterMode.value = 'name'
+  showDateFilter.value = false
+  threadStore.clearThreadFilters()
+}
+
+// ─── 1.5 collapsible tag box ─────────────────────────────────────────────────
+const TAG_BOX_COLLAPSED_KEY = 'llm:threadsTagBoxCollapsed'
+const tagBoxCollapsed = ref(
+  typeof window !== 'undefined' && window.localStorage.getItem(TAG_BOX_COLLAPSED_KEY) === 'true',
+)
+function toggleTagBox() {
+  tagBoxCollapsed.value = !tagBoxCollapsed.value
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(TAG_BOX_COLLAPSED_KEY, String(tagBoxCollapsed.value))
+  }
 }
 
 const newThreadName = ref('')
@@ -243,6 +311,7 @@ onUnmounted(() => {
   window.removeEventListener('llm:new-thread', onNewThreadRequest)
   window.removeEventListener('llm:show-all-qas', showAllQAs)
   window.removeEventListener('llm:show-unthreaded', showUnthreaded)
+  if (filterDebounce) clearTimeout(filterDebounce)
 })
 </script>
 
@@ -288,27 +357,122 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 1.1 Filter / search / sort bar -->
+    <div class="thread-filter-bar">
+      <div class="filter-row">
+        <InputText
+          v-model="filterQuery"
+          :placeholder="filterMode === 'name' ? 'Filter by name…' : 'Search content…'"
+          size="small"
+          class="filter-input"
+          data-testid="thread-filter-input"
+        />
+        <Select
+          v-model="filterMode"
+          :options="modeOptions"
+          option-label="label"
+          option-value="value"
+          size="small"
+          class="filter-select"
+          data-testid="thread-filter-mode"
+        />
+      </div>
+      <div class="filter-row">
+        <Select
+          v-model="threadStore.sortBy"
+          :options="sortOptions"
+          option-label="label"
+          option-value="value"
+          size="small"
+          class="filter-select filter-select--sort"
+          data-testid="thread-sort"
+        />
+        <Button
+          icon="pi pi-calendar"
+          text
+          rounded
+          size="small"
+          :class="{ 'filter-toggle--active': showDateFilter || threadStore.dateFrom || threadStore.dateTo }"
+          title="Filter by created date"
+          data-testid="thread-date-toggle"
+          @click="showDateFilter = !showDateFilter"
+        />
+        <Button
+          v-if="threadStore.hasActiveThreadFilters"
+          icon="pi pi-filter-slash"
+          text
+          rounded
+          size="small"
+          title="Clear all filters"
+          data-testid="thread-clear-filters"
+          @click="clearAllFilters"
+        />
+      </div>
+      <div
+        v-if="showDateFilter"
+        class="filter-row date-row"
+      >
+        <input
+          v-model="threadStore.dateFrom"
+          type="date"
+          class="date-input"
+          aria-label="Created from"
+          data-testid="thread-date-from"
+        >
+        <span class="date-sep">–</span>
+        <input
+          v-model="threadStore.dateTo"
+          type="date"
+          class="date-input"
+          aria-label="Created to"
+          data-testid="thread-date-to"
+        >
+      </div>
+    </div>
+
+    <!-- 1.5 Collapsible tag-selector box -->
     <div
       v-if="threadStore.allThreadTags.length > 0"
-      class="tag-filter-bar"
+      class="tag-box"
     >
       <button
-        v-for="tag in threadStore.allThreadTags"
-        :key="tag"
-        class="tag-filter-chip"
-        :class="{ active: threadStore.activeTagFilters.includes(tag) }"
-        @click="threadStore.toggleTagFilter(tag)"
+        class="tag-box-header"
+        :aria-expanded="!tagBoxCollapsed"
+        data-testid="tag-box-toggle"
+        @click="toggleTagBox"
       >
-        {{ tag }}
+        <i
+          class="pi"
+          :class="tagBoxCollapsed ? 'pi-chevron-right' : 'pi-chevron-down'"
+        />
+        <span>Tags</span>
+        <span
+          v-if="threadStore.activeTagFilters.length"
+          class="tag-box-count"
+        >{{ threadStore.activeTagFilters.length }}</span>
       </button>
-      <button
-        v-if="hasFilters"
-        class="tag-filter-clear"
-        title="Clear all filters"
-        @click="threadStore.clearTagFilters()"
+      <div
+        v-if="!tagBoxCollapsed"
+        class="tag-filter-bar"
       >
-        ×
-      </button>
+        <button
+          v-for="tag in threadStore.allThreadTags"
+          :key="tag"
+          class="tag-filter-chip"
+          :class="{ active: threadStore.activeTagFilters.includes(tag) }"
+          @click="threadStore.toggleTagFilter(tag)"
+        >
+          {{ tag }}
+        </button>
+        <button
+          v-if="hasFilters"
+          class="tag-filter-clear"
+          title="Clear tag filters"
+          @click="threadStore.clearTagFilters()"
+        >
+          ×
+        </button>
+      </div>
     </div>
 
     <!-- Thread list -->
@@ -476,9 +640,9 @@ onUnmounted(() => {
         <p>No threads match</p>
         <button
           class="clear-link"
-          @click="threadStore.clearTagFilters()"
+          @click="clearAllFilters"
         >
-          Clear filter
+          Clear filters
         </button>
       </div>
 
@@ -577,13 +741,105 @@ onUnmounted(() => {
   color: var(--text-color);
 }
 
-.tag-filter-bar {
+.thread-filter-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 4px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border-color);
   background: var(--surface-section);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-select {
+  flex-shrink: 0;
+}
+
+.filter-select--sort {
+  flex: 1;
+}
+
+.filter-toggle--active {
+  color: var(--primary-color);
+}
+
+.date-row {
+  gap: 6px;
+}
+
+.date-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--surface-ground);
+  color: var(--text-color);
+  color-scheme: light dark;
+}
+
+.date-sep {
+  color: var(--text-color-secondary);
+}
+
+.tag-box {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-section);
+}
+
+.tag-box-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.tag-box-header:hover {
+  color: var(--text-color);
+}
+
+.tag-box-header i {
+  font-size: 10px;
+}
+
+.tag-box-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  color: var(--primary-color);
+  font-size: 10px;
+}
+
+.tag-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 6px;
 }
 
 .tag-filter-chip {
