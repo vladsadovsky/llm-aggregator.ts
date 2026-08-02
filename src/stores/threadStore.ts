@@ -10,11 +10,29 @@ export const useThreadStore = defineStore('threads', () => {
   const selectedThreadId = ref<string | null>(null)
   const activeTagFilters = ref<string[]>([])
 
+  // ─── 1.1 thread list filter/search/sort (independent of the QA-panel state) ──
+  /** Substring match on thread name. */
+  const nameFilter = ref('')
+  /** Inclusive createdAt calendar-day range (YYYY-MM-DD); '' means unbounded. */
+  const dateFrom = ref('')
+  const dateTo = ref('')
+  /** Thread list ordering. */
+  const sortBy = ref<'name' | 'recent' | 'size'>('name')
+  /**
+   * QA-id set from a content search (`qaStore.searchPairs`), or null when content
+   * search is inactive. A thread matches when any of its items is in the set. The
+   * async search itself is driven by the panel; the store only holds the result
+   * so `filteredSortedThreadIds` stays synchronous and testable.
+   */
+  const contentResultIds = ref<string[] | null>(null)
+
   const selectedThread = computed<ThreadData | null>(() => {
     if (!selectedThreadId.value) return null
     return threads.value[selectedThreadId.value] || null
   })
 
+  // Base alphabetical order. Kept stable because QAEditor's thread picker relies
+  // on it; the panel's configurable sort lives in `filteredSortedThreadIds`.
   const sortedThreadIds = computed(() => {
     return Object.keys(threads.value).sort((a, b) => {
       return threads.value[a].name.localeCompare(threads.value[b].name)
@@ -37,12 +55,65 @@ export const useThreadStore = defineStore('threads', () => {
     return Object.keys(qaStore.pairs).filter((id) => !allThreadedIds.has(id))
   })
 
+  /** True when any thread-list filter (tags, name, date, content) is active. */
+  const hasActiveThreadFilters = computed(
+    () =>
+      activeTagFilters.value.length > 0 ||
+      nameFilter.value.trim().length > 0 ||
+      dateFrom.value !== '' ||
+      dateTo.value !== '' ||
+      contentResultIds.value !== null,
+  )
+
+  function threadComparator(a: string, b: string): number {
+    const ta = threads.value[a]
+    const tb = threads.value[b]
+    if (sortBy.value === 'recent') {
+      const ua = ta.updatedAt ?? ta.createdAt ?? ''
+      const ub = tb.updatedAt ?? tb.createdAt ?? ''
+      if (ua !== ub) return ub.localeCompare(ua) // newest first
+      return ta.name.localeCompare(tb.name)
+    }
+    if (sortBy.value === 'size') {
+      const d = tb.items.length - ta.items.length // largest first
+      if (d !== 0) return d
+      return ta.name.localeCompare(tb.name)
+    }
+    return ta.name.localeCompare(tb.name)
+  }
+
+  /** How many of a thread's items are in the active content-search result set. */
+  function threadContentMatchCount(tid: string): number {
+    if (contentResultIds.value === null) return 0
+    const set = new Set(contentResultIds.value)
+    return (threads.value[tid]?.items ?? []).filter((id) => set.has(id)).length
+  }
+
   const filteredSortedThreadIds = computed(() => {
-    if (activeTagFilters.value.length === 0) return sortedThreadIds.value
-    return sortedThreadIds.value.filter((threadId) => {
-      const tags = threads.value[threadId].tags ?? []
-      return activeTagFilters.value.some((filterTag) => tags.includes(filterTag))
-    })
+    const nameNeedle = nameFilter.value.trim().toLowerCase()
+    const contentSet = contentResultIds.value === null ? null : new Set(contentResultIds.value)
+    return Object.keys(threads.value)
+      .filter((tid) => {
+        const thread = threads.value[tid]
+        // Tags (OR semantics, unchanged).
+        if (activeTagFilters.value.length > 0) {
+          const tags = thread.tags ?? []
+          if (!activeTagFilters.value.some((f) => tags.includes(f))) return false
+        }
+        // Name substring.
+        if (nameNeedle && !thread.name.toLowerCase().includes(nameNeedle)) return false
+        // createdAt calendar-day range.
+        if (dateFrom.value || dateTo.value) {
+          const day = (thread.createdAt ?? '').slice(0, 10)
+          if (!day) return false
+          if (dateFrom.value && day < dateFrom.value) return false
+          if (dateTo.value && day > dateTo.value) return false
+        }
+        // Content search: any member QA in the result set.
+        if (contentSet && !thread.items.some((id) => contentSet.has(id))) return false
+        return true
+      })
+      .sort(threadComparator)
   })
 
   function toggleTagFilter(tag: string) {
@@ -56,6 +127,20 @@ export const useThreadStore = defineStore('threads', () => {
 
   function clearTagFilters() {
     activeTagFilters.value = []
+  }
+
+  /** Set (or clear, with null) the content-search result set the panel computed. */
+  function setContentResults(ids: string[] | null) {
+    contentResultIds.value = ids
+  }
+
+  /** Clear every thread-list filter at once. */
+  function clearThreadFilters() {
+    activeTagFilters.value = []
+    nameFilter.value = ''
+    dateFrom.value = ''
+    dateTo.value = ''
+    contentResultIds.value = null
   }
 
   async function loadThreads() {
@@ -310,6 +395,15 @@ export const useThreadStore = defineStore('threads', () => {
     threads,
     selectedThreadId,
     activeTagFilters,
+    nameFilter,
+    dateFrom,
+    dateTo,
+    sortBy,
+    contentResultIds,
+    hasActiveThreadFilters,
+    threadContentMatchCount,
+    setContentResults,
+    clearThreadFilters,
     selectedThread,
     sortedThreadIds,
     allThreadTags,
