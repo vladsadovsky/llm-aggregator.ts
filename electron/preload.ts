@@ -251,6 +251,25 @@ export interface DuplicateCleanupResult {
   threadsUpdated: number
 }
 
+export interface DuplicateCleanupRequest {
+  key: string
+  matchKind: DuplicateMatchKind
+  keepId: string
+  removeIds: string[]
+}
+
+export interface RedundantThreadRepairRequest {
+  itemIds: string[]
+  survivorId: string
+  redundantIds: string[]
+}
+
+export interface RedundantThreadRepairResult {
+  threads: Record<string, { name: string; items: string[]; tags?: string[]; createdAt?: string; updatedAt?: string; importSourceId?: string }>
+  mergedGroups: number
+  removedThreadIds: string[]
+}
+
 // ─── Archive reset ───────────────────────────────────────────────────────────
 
 export interface ArchiveResetPreview {
@@ -302,6 +321,7 @@ export interface ElectronAPI {
   // Threads
   threadsLoad: () => Promise<Record<string, { name: string; items: string[]; importSourceId?: string }>>
   threadsSave: (threads: Record<string, { name: string; items: string[]; importSourceId?: string }>) => Promise<void>
+  threadsRepairRedundant: (requests: RedundantThreadRepairRequest[]) => Promise<RedundantThreadRepairResult>
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>
@@ -367,7 +387,7 @@ export interface ElectronAPI {
 
   // Duplicate cleanup
   duplicatesScan: () => Promise<DuplicateScanResult>
-  duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+  duplicatesDelete: (requests: DuplicateCleanupRequest[]) => Promise<DuplicateCleanupResult>
   /** Counts of what a reset would clear — read-only. */
   archiveResetPreview: () => Promise<ArchiveResetPreview>
   /** Move the archive, threads, tags and embeddings aside; returns the backup path. */
@@ -483,6 +503,7 @@ const api: ElectronAPI = {
   // Threads
   threadsLoad: () => call(CH.threadsLoad),
   threadsSave: (threads) => call(CH.threadsSave, threads),
+  threadsRepairRedundant: (requests) => call(CH.threadsRepairRedundant, requests),
 
   // QA Pairs
   qaListAll: () => call(CH.qaListAll),
@@ -551,7 +572,7 @@ const api: ElectronAPI = {
   },
 
   duplicatesScan: () => call(CH.duplicatesScan),
-  duplicatesDelete: (ids) => call(CH.duplicatesDelete, ids),
+  duplicatesDelete: (requests) => call(CH.duplicatesDelete, requests),
 
   archiveResetPreview: () => call(CH.archiveResetPreview),
   archiveReset: () => call(CH.archiveReset),

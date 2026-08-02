@@ -61,7 +61,18 @@ export const ThreadMapSchema = z.record(boundedString(256), ThreadDataSchema)
 
 export type ThreadMapContract = z.infer<typeof ThreadMapSchema>
 
+export const RedundantThreadRepairRequestSchema = z.array(z.object({
+  itemIds: z.array(EntityId).min(1).max(200_000),
+  survivorId: EntityId,
+  redundantIds: z.array(EntityId).min(1).max(200_000),
+}).strict()).min(1).max(100_000)
+
 export const SearchTypeSchema = z.enum(['full-text', 'tags'])
 
-/** `duplicates:delete` — the explicit list of ids to remove. */
-export const DuplicateIdsSchema = z.array(EntityId).max(200_000)
+/** Explicit survivor/removal mapping from the reviewed duplicate scan. */
+export const DuplicateCleanupRequestSchema = z.array(z.object({
+  key: boundedString(1024, 1),
+  matchKind: z.enum(['origin-id', 'content']),
+  keepId: EntityId,
+  removeIds: z.array(EntityId).min(1).max(200_000),
+}).strict()).min(1).max(100_000)

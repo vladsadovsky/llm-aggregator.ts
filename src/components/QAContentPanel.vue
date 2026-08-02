@@ -68,8 +68,14 @@ async function onSaved() {
 
 function confirmDelete() {
   if (!pair.value) return
+  const id = qaStore.selectedPairId!
+  const containingThreads = threadStore.threadsContaining(id)
+  const threadNote =
+    containingThreads.length > 1
+      ? ` — referenced by ${containingThreads.length} threads: ${containingThreads.map((t) => t.name).join(', ')}. Deleting it removes it from every listed thread.`
+      : ''
   confirm.require({
-    message: `Delete QA "${pair.value.title}"? This cannot be undone.`,
+    message: `Delete QA "${pair.value.title}"? This cannot be undone.${threadNote}`,
     header: 'Confirm Delete',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel',

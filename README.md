@@ -364,7 +364,16 @@ the same key.
 
 For duplicates that predate this — or arrived by copy/paste — use **Tools → Find Duplicate Q&As**,
 which sweeps the whole archive and also matches on normalized content. It only ever proposes: you
-choose which copy to keep in each group, and nothing is deleted until you confirm.
+choose which copy to keep in each group, and nothing is deleted until you confirm. Cleanup first
+rewrites every thread membership to the chosen survivor in one durable save, then removes the
+redundant QA files, so a failed save cannot strand or erase thread organization.
+
+Use **Tools → Find Redundant Threads** for the separate case where multiple thread records wrap
+the same non-empty set of Q&As. The dialog shows the automatically selected survivor and any
+metadata differences, unions tags, preserves the earliest/latest valid timestamps, and removes
+only redundant thread records — never QA files. **Merge All Safe Groups** is one atomic archive
+update. A stale scan is rejected, and a group carrying multiple distinct import identities is
+blocked for manual review because it may represent genuinely different source conversations.
 
 #### Fragility of shared-link import
 

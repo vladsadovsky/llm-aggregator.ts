@@ -25,6 +25,7 @@ export const CH = {
   // Threads
   threadsLoad: 'threads:load',
   threadsSave: 'threads:save',
+  threadsRepairRedundant: 'threads:repairRedundant',
 
   // QA pairs
   qaListAll: 'qa:listAll',
