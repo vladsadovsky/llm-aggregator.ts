@@ -7,6 +7,8 @@ import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import ContextMenu from 'primevue/contextmenu'
+import type { MenuItem } from 'primevue/menuitem'
 import QAEditor from './QAEditor.vue'
 
 const threadStore = useThreadStore()
@@ -292,6 +294,74 @@ function getQuestionSnippet(id: string): string {
   return pair.question.length > 80 ? pair.question.substring(0, 80) + '...' : pair.question
 }
 
+// ─── 1.3 context menu (QA list items) ────────────────────────────────────────
+// Edit/Delete/Duplicate reuse the existing selected-QA event flow (handled in
+// QAContentPanel); Move/Copy use the thread store. The menu acts on the single
+// right-clicked item — bulk actions live in the 3.1 toolbar.
+const qaContextMenu = ref<InstanceType<typeof ContextMenu> | null>(null)
+const contextTargetId = ref<string | null>(null)
+
+function moveQAToThread(id: string, targetTid: string) {
+  const fromTid = threadStore.selectedThreadId
+  if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
+    void threadStore.moveToThread(fromTid, targetTid, id)
+  } else {
+    void threadStore.addToThread(targetTid, id)
+  }
+  toast.add({ severity: 'success', summary: 'Moved to thread', life: 1500 })
+}
+
+function copyQAToThread(id: string, targetTid: string) {
+  void threadStore.addToThread(targetTid, id)
+  toast.add({ severity: 'success', summary: 'Copied to thread', life: 1500 })
+}
+
+const qaContextItems = computed<MenuItem[]>(() => {
+  const id = contextTargetId.value
+  if (!id) return []
+  const targets = threadStore.threadsNotContaining(id)
+  const threadSub = (fn: (id: string, tid: string) => void): MenuItem[] =>
+    targets.length
+      ? targets.map((t) => ({ label: t.name, command: () => fn(id, t.id) }))
+      : [{ label: 'No other threads', disabled: true }]
+  return [
+    {
+      label: 'Edit',
+      icon: 'pi pi-pencil',
+      command: () => {
+        selectPair(id)
+        window.dispatchEvent(new Event('llm:edit-selected-qa'))
+      },
+    },
+    {
+      label: 'Duplicate',
+      icon: 'pi pi-copy',
+      command: () => {
+        selectPair(id)
+        window.dispatchEvent(new Event('llm:duplicate-selected-qa'))
+      },
+    },
+    { separator: true },
+    { label: 'Move to thread', icon: 'pi pi-arrow-right', items: threadSub(moveQAToThread) },
+    { label: 'Copy to thread', icon: 'pi pi-clone', items: threadSub(copyQAToThread) },
+    { separator: true },
+    {
+      label: 'Delete',
+      icon: 'pi pi-trash',
+      command: () => {
+        selectPair(id)
+        window.dispatchEvent(new Event('llm:delete-selected-qa'))
+      },
+    },
+  ]
+})
+
+function onQAContextMenu(event: MouseEvent, id: string) {
+  contextTargetId.value = id
+  selectPair(id)
+  qaContextMenu.value?.show(event)
+}
+
 function onQAListKeydown(e: KeyboardEvent) {
   const items = displayedItems.value
   if (items.length === 0) return
@@ -461,6 +531,7 @@ function onQAListKeydown(e: KeyboardEvent) {
         class="qa-item"
         :class="{ active: qaStore.selectedPairId === id }"
         @click="selectPair(id)"
+        @contextmenu.prevent="onQAContextMenu($event, id)"
       >
         <div class="qa-item-title">
           <i class="pi pi-file" />
@@ -516,6 +587,12 @@ function onQAListKeydown(e: KeyboardEvent) {
         </template>
       </div>
     </div>
+
+    <ContextMenu
+      ref="qaContextMenu"
+      :model="qaContextItems"
+      data-testid="qa-context-menu"
+    />
 
     <!-- QA Editor dialog -->
     <QAEditor
