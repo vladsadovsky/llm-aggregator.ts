@@ -270,6 +270,19 @@ export interface RedundantThreadRepairResult {
   removedThreadIds: string[]
 }
 
+export interface ThreadDeletionPreview {
+  token: string
+  threadIds: string[]
+  qaIdsToDelete: string[]
+  sharedQaIds: string[]
+  sharedThreadIds: string[]
+}
+
+export interface ThreadDeletionResult extends ThreadDeletionPreview {
+  threads: Record<string, { name: string; items: string[]; tags?: string[]; createdAt?: string; updatedAt?: string; importSourceId?: string }>
+  cleanupPending: boolean
+}
+
 // ─── Archive reset ───────────────────────────────────────────────────────────
 
 export interface ArchiveResetPreview {
@@ -322,6 +335,8 @@ export interface ElectronAPI {
   threadsLoad: () => Promise<Record<string, { name: string; items: string[]; importSourceId?: string }>>
   threadsSave: (threads: Record<string, { name: string; items: string[]; importSourceId?: string }>) => Promise<void>
   threadsRepairRedundant: (requests: RedundantThreadRepairRequest[]) => Promise<RedundantThreadRepairResult>
+  threadsDeletePreview: (threadIds: string[]) => Promise<ThreadDeletionPreview>
+  threadsDeleteApply: (threadIds: string[], token: string) => Promise<ThreadDeletionResult>
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>
@@ -504,6 +519,8 @@ const api: ElectronAPI = {
   threadsLoad: () => call(CH.threadsLoad),
   threadsSave: (threads) => call(CH.threadsSave, threads),
   threadsRepairRedundant: (requests) => call(CH.threadsRepairRedundant, requests),
+  threadsDeletePreview: (threadIds) => call(CH.threadsDeletePreview, threadIds),
+  threadsDeleteApply: (threadIds, token) => call(CH.threadsDeleteApply, threadIds, token),
 
   // QA Pairs
   qaListAll: () => call(CH.qaListAll),

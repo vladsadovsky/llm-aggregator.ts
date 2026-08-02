@@ -272,14 +272,30 @@ export const useThreadStore = defineStore('threads', () => {
     await save()
   }
 
-  async function deleteThread(tid: string) {
-    if (threads.value[tid]) {
-      delete threads.value[tid]
-      if (selectedThreadId.value === tid) {
-        selectedThreadId.value = null
-      }
-      await save()
+  async function previewDeleteThreads(threadIds: string[]) {
+    return window.api.threadsDeletePreview(threadIds)
+  }
+
+  async function deleteThreadsWithContents(threadIds: string[], token: string) {
+    let result
+    try {
+      result = await window.api.threadsDeleteApply(threadIds, token)
+    } catch (error) {
+      // An IPC response can be lost after main durably commits. Reconcile both
+      // stores before surfacing the error so the user never sees a stale archive.
+      await Promise.allSettled([loadThreads(), useQAStore().loadAllPairs()])
+      throw error
     }
+    threads.value = result.threads
+    if (selectedThreadId.value && result.threadIds.includes(selectedThreadId.value)) {
+      selectedThreadId.value = null
+    }
+    const qaStore = useQAStore()
+    for (const id of result.qaIdsToDelete) delete qaStore.pairs[id]
+    if (qaStore.selectedPairId && result.qaIdsToDelete.includes(qaStore.selectedPairId)) {
+      qaStore.selectedPairId = null
+    }
+    return result
   }
 
   async function repairRedundantThreads(groups: readonly RedundantThreadGroup[]) {
@@ -435,7 +451,8 @@ export const useThreadStore = defineStore('threads', () => {
     renameThread,
     updateThread,
     setThreadTimes,
-    deleteThread,
+    previewDeleteThreads,
+    deleteThreadsWithContents,
     repairRedundantThreads,
     selectThread,
     addToThread,

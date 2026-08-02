@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { useThreadStore } from '../../src/stores/threadStore'
+import { useQAStore } from '../../src/stores/qaStore'
 import type { ThreadMap } from '../../src/types/Thread'
+import type { QAPairData } from '../../src/types/QAPair'
+
+function qa(id: string): QAPairData {
+  return {
+    id, filepath: `${id}.md`, title: id, source: 'test', url: '', tags: [], timestamp: '',
+    version: 0, threadPairs: [], question: '', answer: '',
+  }
+}
 
 describe('thread import persistence', () => {
   it('creates a populated thread with one durable save and reloads the same membership', async () => {
@@ -65,5 +74,44 @@ describe('redundant-thread repair projection', () => {
       importSourceIds: [], metadataDiffers: false,
     }])).rejects.toThrow('disk full')
     expect(Object.keys(store.threads)).toEqual(['t1', 't2'])
+  })
+})
+
+describe('thread deletion projection', () => {
+  it('projects the committed thread map and removes only main-approved QA ids', async () => {
+    const threadStore = useThreadStore()
+    const qaStore = useQAStore()
+    threadStore.threads = {
+      selected: { name: 'Selected', items: ['private', 'shared'] },
+      survivor: { name: 'Survivor', items: ['shared'] },
+    }
+    threadStore.selectedThreadId = 'selected'
+    qaStore.pairs = { private: qa('private'), shared: qa('shared') }
+    qaStore.selectedPairId = 'private'
+    window.api.threadsDeleteApply = vi.fn(async () => ({
+      token: 'a'.repeat(64), threadIds: ['selected'], qaIdsToDelete: ['private'],
+      sharedQaIds: ['shared'], sharedThreadIds: ['survivor'],
+      threads: { survivor: { name: 'Survivor', items: ['shared'] } }, cleanupPending: false,
+    }))
+
+    await threadStore.deleteThreadsWithContents(['selected'], 'a'.repeat(64))
+    expect(threadStore.threads).toEqual({ survivor: { name: 'Survivor', items: ['shared'] } })
+    expect(threadStore.selectedThreadId).toBeNull()
+    expect(Object.keys(qaStore.pairs)).toEqual(['shared'])
+    expect(qaStore.selectedPairId).toBeNull()
+  })
+
+  it('reloads both stores when the apply response is lost', async () => {
+    const threadStore = useThreadStore()
+    const qaStore = useQAStore()
+    threadStore.threads = { selected: { name: 'Selected', items: ['qa1'] } }
+    qaStore.pairs = { qa1: qa('qa1') }
+    window.api.threadsDeleteApply = vi.fn(async () => { throw new Error('response lost') })
+    window.api.threadsLoad = vi.fn(async () => ({}))
+    window.api.qaListAll = vi.fn(async () => ({}))
+
+    await expect(threadStore.deleteThreadsWithContents(['selected'], 'a'.repeat(64))).rejects.toThrow('response lost')
+    expect(threadStore.threads).toEqual({})
+    expect(qaStore.pairs).toEqual({})
   })
 })

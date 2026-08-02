@@ -272,6 +272,19 @@ export interface RedundantThreadRepairResult {
   removedThreadIds: string[]
 }
 
+export interface ThreadDeletionPreview {
+  token: string
+  threadIds: string[]
+  qaIdsToDelete: string[]
+  sharedQaIds: string[]
+  sharedThreadIds: string[]
+}
+
+export interface ThreadDeletionResult extends ThreadDeletionPreview {
+  threads: ThreadMap
+  cleanupPending: boolean
+}
+
 export interface ArchiveResetPreview {
   pairs: number
   threads: number
@@ -322,6 +335,8 @@ export interface ElectronAPI {
   threadsLoad: () => Promise<ThreadMap>
   threadsSave: (threads: ThreadMap) => Promise<void>
   threadsRepairRedundant: (requests: RedundantThreadRepairRequest[]) => Promise<RedundantThreadRepairResult>
+  threadsDeletePreview: (threadIds: string[]) => Promise<ThreadDeletionPreview>
+  threadsDeleteApply: (threadIds: string[], token: string) => Promise<ThreadDeletionResult>
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>

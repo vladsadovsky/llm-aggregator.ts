@@ -2,7 +2,7 @@
 
 **Status:** Proposal
 **Drafted:** July 27, 2026
-**Updated:** August 1, 2026
+**Updated:** August 2, 2026
 **Current version:** 1.4.1
 
 ## Sources
@@ -395,6 +395,29 @@ surfaced; this finally uses it.
 ### 3.4 Virtual threads based on saved-filter criteria **[Idea]**
 Implemented as a named, saved query against the Phase 0.5 filter engine rather than a materialized
 thread.
+
+### 3.5 Application trash and recoverable deletion **[Idea]**
+An archive-local trash system for destructive operations across both QA files and thread records.
+The application, rather than the operating system's recycle bin, owns restore semantics because a
+recoverable operation may span physical QA files, records embedded in `threads.json`, membership
+ordering, and other archive metadata. Each deletion is captured as one operation with a stable ID,
+timestamp, original paths/IDs, complete deleted thread records, original membership/order, archive
+namespace and revision, and enough integrity metadata to validate a restore without overwriting
+newer data.
+
+Deletion uses same-volume moves where possible plus a durable manifest/journal and staged commit so
+interruption cannot silently leave the archive half-deleted. Restore operates at item or operation
+scope, validates collisions and current references, rebuilds the original topology, and fails closed
+when the archive has changed incompatibly. A Trash UI supports inspection, selective restore,
+restore-all, explicit emptying, and a configurable retention policy. All destructive entry points
+(single and bulk QA/thread deletion, repair tools, and undoable commands) eventually route through
+this service so they share one recovery contract.
+
+The OS recycle bin may provide a secondary safety net when permanently purging physical files, but
+it is not the authoritative trash: it cannot restore thread records, membership/order, or an entire
+multi-record operation atomically. This capability complements the Phase 0.4 command/undo layer:
+short-lived Undo can restore the most recent command quickly, while application trash provides
+durable recovery across sessions and process restarts.
 
 ---
 

@@ -201,19 +201,56 @@ async function finishRename() {
   editingThreadId.value = null
 }
 
+function deletionMessage(threadCount: number, qaCount: number, sharedQaCount: number, sharedThreadCount: number): string {
+  const threadWord = threadCount === 1 ? 'thread' : 'threads'
+  const qaWord = qaCount === 1 ? 'Q&A' : 'Q&As'
+  const sharedWord = sharedQaCount === 1 ? 'shared Q&A' : 'shared Q&As'
+  const ownerWord = sharedThreadCount === 1 ? 'other thread' : 'other threads'
+  const retained = sharedQaCount > 0
+    ? ` ${sharedQaCount} ${sharedWord} will remain in ${sharedThreadCount} ${ownerWord}.`
+    : ''
+  return `Delete ${threadCount} ${threadWord} and ${qaCount} ${qaWord} used only by ${threadCount === 1 ? 'it' : 'them'}?${retained} This cannot be undone.`
+}
+
+async function confirmDeleteThreads(ids: string[], afterDelete?: () => void) {
+  try {
+    const preview = await threadStore.previewDeleteThreads(ids)
+    confirm.require({
+      message: deletionMessage(
+        preview.threadIds.length,
+        preview.qaIdsToDelete.length,
+        preview.sharedQaIds.length,
+        preview.sharedThreadIds.length,
+      ),
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      rejectLabel: 'Cancel',
+      acceptLabel: `Delete ${preview.threadIds.length === 1 ? 'Thread' : 'Threads'} and Contents`,
+      acceptClass: 'p-button-danger',
+      accept: async () => {
+        try {
+          const result = await threadStore.deleteThreadsWithContents(ids, preview.token)
+          afterDelete?.()
+          toast.add({
+            severity: result.cleanupPending ? 'warn' : 'info',
+            summary: `${result.threadIds.length} ${result.threadIds.length === 1 ? 'thread' : 'threads'} deleted`,
+            detail: result.cleanupPending
+              ? 'Deletion completed, but temporary recovery files will be cleaned up on restart.'
+              : `${result.qaIdsToDelete.length} unshared Q&A${result.qaIdsToDelete.length === 1 ? '' : 's'} deleted.`,
+            life: result.cleanupPending ? 6000 : 3000,
+          })
+        } catch (err) {
+          toast.add({ severity: 'error', summary: 'Delete failed', detail: (err as Error).message, life: 6000 })
+        }
+      },
+    })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Cannot delete threads', detail: (err as Error).message, life: 7000 })
+  }
+}
+
 function confirmDelete(tid: string) {
-  confirm.require({
-    message: `Delete thread "${threadStore.threads[tid].name}"?`,
-    header: 'Confirm Delete',
-    icon: 'pi pi-exclamation-triangle',
-    rejectLabel: 'Cancel',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: async () => {
-      await threadStore.deleteThread(tid)
-      toast.add({ severity: 'info', summary: 'Thread deleted', life: 2000 })
-    },
-  })
+  void confirmDeleteThreads([tid])
 }
 
 async function exportThread(tid: string) {
@@ -379,21 +416,7 @@ function onThreadItemClick(e: MouseEvent, tid: string) {
 function bulkDeleteThreads() {
   const ids = [...selection.selectedIds.value]
   if (ids.length === 0) return
-  confirm.require({
-    message: `Delete ${ids.length} selected thread(s)? The Q&A pairs inside them are not deleted.`,
-    header: 'Confirm Delete',
-    icon: 'pi pi-exclamation-triangle',
-    rejectLabel: 'Cancel',
-    acceptLabel: 'Delete',
-    acceptClass: 'p-button-danger',
-    accept: async () => {
-      for (const tid of ids) {
-        await threadStore.deleteThread(tid)
-      }
-      selection.clear()
-      toast.add({ severity: 'info', summary: `${ids.length} threads deleted`, life: 2000 })
-    },
-  })
+  void confirmDeleteThreads(ids, () => selection.clear())
 }
 
 async function bulkExportThreads() {

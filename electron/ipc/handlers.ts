@@ -21,6 +21,7 @@ import {
 } from '../services/import/archive/bulkImportService'
 import { findDuplicateGroups, deleteDuplicates } from '../services/duplicateService'
 import { repairRedundantThreadGroups } from '../services/redundantThreadRepairService'
+import { deleteThreadsWithContents, previewThreadDeletion } from '../services/threadDeletionService'
 import { previewArchiveReset, resetArchive } from '../services/archiveResetService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
 import {
@@ -99,6 +100,8 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   r.handle(CH.threadsLoad, () => loadThreads())
   r.handle(CH.threadsSave, (_event, threads) => saveThreads(threads))
   r.handle(CH.threadsRepairRedundant, (_event, requests) => repairRedundantThreadGroups(requests))
+  r.handle(CH.threadsDeletePreview, (_event, threadIds) => previewThreadDeletion(threadIds))
+  r.handle(CH.threadsDeleteApply, (_event, threadIds, token) => deleteThreadsWithContents(threadIds, token))
 
   // ─── QA Pairs ──────────────────────────────────────────────
   r.handle(CH.qaListAll, () => listAllPairs())
