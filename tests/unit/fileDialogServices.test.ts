@@ -7,6 +7,7 @@ const electronMocks = vi.hoisted(() => ({
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
   getFocusedWindow: vi.fn(() => ({})),
+  fromWebContents: vi.fn(() => null),
 }))
 
 vi.mock('electron', () => ({
@@ -14,7 +15,10 @@ vi.mock('electron', () => ({
     showOpenDialog: electronMocks.showOpenDialog,
     showSaveDialog: electronMocks.showSaveDialog,
   },
-  BrowserWindow: { getFocusedWindow: electronMocks.getFocusedWindow },
+  BrowserWindow: {
+    getFocusedWindow: electronMocks.getFocusedWindow,
+    fromWebContents: electronMocks.fromWebContents,
+  },
 }))
 
 import { importFromFile, MAX_MARKDOWN_IMPORT_BYTES } from '../../electron/services/fileImportService'
@@ -100,6 +104,19 @@ describe('file dialog transports', () => {
 
     expect(result).toEqual({ savedPath: outputPath })
     expect(readFileSync(outputPath, 'utf8')).toContain('## Question\n\nQuestion')
+  })
+
+  it('uses the caller window when the focused window is unavailable', async () => {
+    const inputPath = join(directory, 'qa.md')
+    writeFileSync(inputPath, 'title: Dialog test\n\n## Question\n\nQuestion\n\n## Answer\n\nAnswer', 'utf8')
+    const callerWindow = { id: 42 }
+    electronMocks.getFocusedWindow.mockReturnValue(null)
+    electronMocks.fromWebContents.mockReturnValue(callerWindow)
+    electronMocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [inputPath] })
+
+    await importFromFile(callerWindow as never)
+
+    expect(electronMocks.showOpenDialog).toHaveBeenCalledWith(callerWindow, expect.anything())
   })
 
   it('performs no file operation when either native dialog is cancelled', async () => {

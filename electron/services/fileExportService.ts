@@ -21,9 +21,16 @@ export interface ExportResult {
   savedPath: string
 }
 
+function resolveDialogWindow(targetWindow?: BrowserWindow | null): BrowserWindow | null {
+  return targetWindow ?? BrowserWindow.getFocusedWindow() ?? null
+}
+
 /** Show Save dialog and write a single QA pair to file. */
-export async function exportQAToFile(pair: QAPairData): Promise<ExportResult | null> {
-  const win = BrowserWindow.getFocusedWindow()
+export async function exportQAToFile(
+  pair: QAPairData,
+  targetWindow?: BrowserWindow | null,
+): Promise<ExportResult | null> {
+  const win = resolveDialogWindow(targetWindow)
   if (!win) return null
 
   const result = await dialog.showSaveDialog(win, {
@@ -43,8 +50,9 @@ export async function exportQAToFile(pair: QAPairData): Promise<ExportResult | n
 export async function exportThreadToFile(
   thread: ThreadData,
   pairMap: Record<string, QAPairData>,
+  targetWindow?: BrowserWindow | null,
 ): Promise<ExportResult | null> {
-  const win = BrowserWindow.getFocusedWindow()
+  const win = resolveDialogWindow(targetWindow)
   if (!win) return null
 
   const result = await dialog.showSaveDialog(win, {

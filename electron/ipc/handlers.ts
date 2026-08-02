@@ -115,21 +115,21 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   r.handle(CH.searchSemantic, (_event, query, topK) => semanticSearch(query, topK))
 
   // ─── Export / Import ───────────────────────────────────────
-  r.handle(CH.exportQa, (_event, id) => {
+  r.handle(CH.exportQa, (event, id) => {
     const pair = getPair(id)
     if (!pair) return null
-    return exportQAToFile(pair)
+    return exportQAToFile(pair, BrowserWindow.fromWebContents(event.sender))
   })
 
-  r.handle(CH.exportThread, (_event, threadId) => {
+  r.handle(CH.exportThread, (event, threadId) => {
     const threads = loadThreads()
     const thread = threads[threadId]
     if (!thread) return null
     const pairs = listAllPairs()
-    return exportThreadToFile(thread, pairs)
+    return exportThreadToFile(thread, pairs, BrowserWindow.fromWebContents(event.sender))
   })
 
-  r.handle(CH.importFile, () => importFromFile())
+  r.handle(CH.importFile, (event) => importFromFile(BrowserWindow.fromWebContents(event.sender)))
   r.handle(CH.importSharedLink, (_event, url) => importSharedLink(url))
 
   // ─── Bulk (account export) import ───────────────────────────
