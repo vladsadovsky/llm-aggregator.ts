@@ -429,8 +429,19 @@ function toggleMoveMenu(event: Event) {
 function bulkDelete() {
   const ids = [...selection.selectedIds.value]
   if (ids.length === 0) return
+  const multiThreadReferences = ids.flatMap((id) => {
+    const containing = threadStore.threadsContaining(id)
+    return containing.length > 1 ? [{ id, containing }] : []
+  })
+  const multiThreadNote =
+    multiThreadReferences.length > 0
+      ? ` ${multiThreadReferences.length} selected Q&A pair(s) are shared across threads and will be removed from all of them: ${multiThreadReferences
+        .slice(0, 5)
+        .map(({ id, containing }) => `"${qaStore.pairs[id]?.title ?? id}" (${containing.map((thread) => thread.name).join(', ')})`)
+        .join('; ')}${multiThreadReferences.length > 5 ? `; and ${multiThreadReferences.length - 5} more` : ''}.`
+      : ''
   confirm.require({
-    message: `Delete ${ids.length} selected Q&A pair(s)? This cannot be undone.`,
+    message: `Delete ${ids.length} selected Q&A pair(s)? This cannot be undone.${multiThreadNote}`,
     header: 'Confirm Delete',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel',

@@ -16,7 +16,7 @@ import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import RadioButton from 'primevue/radiobutton'
-import type { DuplicateScanResult } from '../global'
+import type { DuplicateCleanupRequest, DuplicateScanResult } from '../global'
 
 const props = defineProps<{ visible: boolean }>()
 
@@ -41,10 +41,10 @@ watch(
   },
 )
 
-async function runScan() {
+async function runScan(clearOutcome = true) {
   scanning.value = true
   error.value = ''
-  deletedCount.value = null
+  if (clearOutcome) deletedCount.value = null
   scan.value = null
   try {
     const result = await window.api.duplicatesScan()
@@ -74,18 +74,28 @@ const idsToDelete = computed(() => {
   return out
 })
 
+const cleanupRequests = computed<DuplicateCleanupRequest[]>(() => {
+  if (!scan.value) return []
+  return scan.value.groups.flatMap((group) => {
+    const keepId = keepChoice.value[group.key]
+    if (!keepId) return []
+    const removeIds = group.members.filter((member) => member.id !== keepId).map((member) => member.id)
+    return removeIds.length > 0 ? [{ key: group.key, matchKind: group.matchKind, keepId, removeIds }] : []
+  })
+})
+
 async function applyCleanup() {
   if (idsToDelete.value.length === 0) return
   deleting.value = true
   error.value = ''
   try {
-    const result = await window.api.duplicatesDelete(idsToDelete.value)
+    const result = await window.api.duplicatesDelete(cleanupRequests.value)
+    emit('changed')
+    await runScan(false)
     deletedCount.value = result.deleted.length
     if (result.failed.length > 0) {
-      error.value = `${result.failed.length} pair(s) could not be deleted.`
+      error.value = `${result.failed.length} pair(s) could not be deleted and remain available for a retry.`
     }
-    emit('changed')
-    await runScan()
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {

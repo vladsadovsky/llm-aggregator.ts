@@ -253,6 +253,25 @@ export interface DuplicateCleanupResult {
   threadsUpdated: number
 }
 
+export interface DuplicateCleanupRequest {
+  key: string
+  matchKind: DuplicateMatchKind
+  keepId: string
+  removeIds: string[]
+}
+
+export interface RedundantThreadRepairRequest {
+  itemIds: string[]
+  survivorId: string
+  redundantIds: string[]
+}
+
+export interface RedundantThreadRepairResult {
+  threads: ThreadMap
+  mergedGroups: number
+  removedThreadIds: string[]
+}
+
 export interface ArchiveResetPreview {
   pairs: number
   threads: number
@@ -302,6 +321,7 @@ export interface ElectronAPI {
   // Threads
   threadsLoad: () => Promise<ThreadMap>
   threadsSave: (threads: ThreadMap) => Promise<void>
+  threadsRepairRedundant: (requests: RedundantThreadRepairRequest[]) => Promise<RedundantThreadRepairResult>
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>
@@ -362,7 +382,7 @@ export interface ElectronAPI {
 
   // Duplicate cleanup
   duplicatesScan: () => Promise<DuplicateScanResult>
-  duplicatesDelete: (ids: string[]) => Promise<DuplicateCleanupResult>
+  duplicatesDelete: (requests: DuplicateCleanupRequest[]) => Promise<DuplicateCleanupResult>
 
   // Archive reset (Tools → Reset Archive)
   archiveResetPreview: () => Promise<ArchiveResetPreview>

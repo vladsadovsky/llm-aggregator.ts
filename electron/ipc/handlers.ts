@@ -20,6 +20,7 @@ import {
   releasePreview,
 } from '../services/import/archive/bulkImportService'
 import { findDuplicateGroups, deleteDuplicates } from '../services/duplicateService'
+import { repairRedundantThreadGroups } from '../services/redundantThreadRepairService'
 import { previewArchiveReset, resetArchive } from '../services/archiveResetService'
 import { importSharedLink } from '../services/import/sharedLinkImportService'
 import {
@@ -97,6 +98,7 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   // ─── Threads ───────────────────────────────────────────────
   r.handle(CH.threadsLoad, () => loadThreads())
   r.handle(CH.threadsSave, (_event, threads) => saveThreads(threads))
+  r.handle(CH.threadsRepairRedundant, (_event, requests) => repairRedundantThreadGroups(requests))
 
   // ─── QA Pairs ──────────────────────────────────────────────
   r.handle(CH.qaListAll, () => listAllPairs())
@@ -157,7 +159,7 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
 
   // ─── Duplicate cleanup ──────────────────────────────────────
   r.handle(CH.duplicatesScan, () => findDuplicateGroups())
-  r.handle(CH.duplicatesDelete, (_event, ids) => deleteDuplicates(ids))
+  r.handle(CH.duplicatesDelete, (_event, requests) => deleteDuplicates(requests))
 
   // ─── Archive reset ──────────────────────────────────────────
   r.handle(CH.archiveResetPreview, () => previewArchiveReset())

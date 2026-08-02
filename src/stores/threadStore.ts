@@ -4,6 +4,7 @@ import type { ThreadMap, ThreadData } from '../types/Thread'
 import { useQAStore } from './qaStore'
 import { debugLog, debugError } from '../utils/logger'
 import { withRetry } from '../utils/retry'
+import type { RedundantThreadGroup } from '../../shared/threads/redundantThreadGroups'
 
 export const useThreadStore = defineStore('threads', () => {
   const threads = ref<ThreadMap>({})
@@ -281,6 +282,25 @@ export const useThreadStore = defineStore('threads', () => {
     }
   }
 
+  async function repairRedundantThreads(groups: readonly RedundantThreadGroup[]) {
+    if (groups.length === 0) return { mergedGroups: 0, removedThreadIds: [] as string[] }
+    // Do not automatically replay a destructive request: main may have durably
+    // committed it even if the renderer never received the response.
+    const result = await window.api.threadsRepairRedundant(groups.map((group) => ({
+      itemIds: [...group.itemIds],
+      survivorId: group.survivorId,
+      redundantIds: [...group.redundantIds],
+    })))
+    // Main validated a fresh on-disk snapshot and promoted it atomically. Only
+    // now replace renderer state, so a failed save leaves the UI truthful.
+    threads.value = result.threads
+    if (selectedThreadId.value && result.removedThreadIds.includes(selectedThreadId.value)) {
+      const merged = groups.find((group) => group.redundantIds.includes(selectedThreadId.value!))
+      selectedThreadId.value = merged?.survivorId ?? null
+    }
+    return { mergedGroups: result.mergedGroups, removedThreadIds: result.removedThreadIds }
+  }
+
   function selectThread(tid: string) {
     selectedThreadId.value = tid
   }
@@ -416,6 +436,7 @@ export const useThreadStore = defineStore('threads', () => {
     updateThread,
     setThreadTimes,
     deleteThread,
+    repairRedundantThreads,
     selectThread,
     addToThread,
     removeFromThread,

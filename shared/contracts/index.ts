@@ -23,7 +23,8 @@ import {
   QaUpdateSchema,
   ThreadMapSchema,
   SearchTypeSchema,
-  DuplicateIdsSchema,
+  DuplicateCleanupRequestSchema,
+  RedundantThreadRepairRequestSchema,
 } from './archive'
 import {
   BulkImportSelectionSchema,
@@ -64,6 +65,7 @@ export const channelArgs = {
   // Threads
   [CH.threadsLoad]: noArgs,
   [CH.threadsSave]: z.tuple([ThreadMapSchema]),
+  [CH.threadsRepairRedundant]: z.tuple([RedundantThreadRepairRequestSchema]),
 
   // QA pairs
   [CH.qaListAll]: noArgs,
@@ -119,7 +121,7 @@ export const channelArgs = {
 
   // Duplicate cleanup
   [CH.duplicatesScan]: noArgs,
-  [CH.duplicatesDelete]: z.tuple([DuplicateIdsSchema]),
+  [CH.duplicatesDelete]: z.tuple([DuplicateCleanupRequestSchema]),
 
   // Shell
   [CH.openExternal]: z.tuple([UrlString]),

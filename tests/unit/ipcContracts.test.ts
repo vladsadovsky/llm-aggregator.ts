@@ -107,9 +107,10 @@ describe('search:semantic', () => {
 })
 
 describe('duplicates:delete', () => {
-  it('accepts an id array and rejects traversal-shaped members', () => {
-    expect(parse(CH.duplicatesDelete, [['20260204_2135', '20260205_1845']]).success).toBe(true)
-    expect(parse(CH.duplicatesDelete, [['../evil']]).success).toBe(false)
+  it('accepts an explicit survivor mapping and rejects traversal-shaped members', () => {
+    const valid = [{ key: 'fingerprint', matchKind: 'content', keepId: '20260204_2135', removeIds: ['20260205_1845'] }]
+    expect(parse(CH.duplicatesDelete, [valid]).success).toBe(true)
+    expect(parse(CH.duplicatesDelete, [[{ ...valid[0], removeIds: ['../evil'] }]]).success).toBe(false)
     expect(parse(CH.duplicatesDelete, ['not-an-array']).success).toBe(false)
   })
 })
@@ -160,6 +161,20 @@ describe('threads:save', () => {
       ]).success,
     ).toBe(true)
     expect(parse(CH.threadsSave, [{ t1: { name: 'X', items: [], rogue: 1 } }]).success).toBe(false)
+  })
+})
+
+describe('threads:repairRedundant', () => {
+  it('accepts a reviewed group and rejects empty/traversal-shaped ids', () => {
+    expect(parse(CH.threadsRepairRedundant, [[{
+      itemIds: ['20260204_2135'], survivorId: 'thread_1', redundantIds: ['thread_2'],
+    }]]).success).toBe(true)
+    expect(parse(CH.threadsRepairRedundant, [[{
+      itemIds: ['20260204_2135'], survivorId: 'thread_1', redundantIds: [],
+    }]]).success).toBe(false)
+    expect(parse(CH.threadsRepairRedundant, [[{
+      itemIds: ['20260204_2135'], survivorId: '../evil', redundantIds: ['thread_2'],
+    }]]).success).toBe(false)
   })
 })
 

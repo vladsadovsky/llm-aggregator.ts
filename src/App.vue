@@ -19,6 +19,7 @@ import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import BulkImportDialog from './components/BulkImportDialog.vue'
 import DuplicateCleanupDialog from './components/DuplicateCleanupDialog.vue'
+import RedundantThreadRepairDialog from './components/RedundantThreadRepairDialog.vue'
 import ArchiveResetDialog from './components/ArchiveResetDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
@@ -68,6 +69,7 @@ const bulkImportProgress = ref<BulkImportProgress | null>(null)
 const bulkImportResult = ref<BulkImportCommitResult | null>(null)
 const bulkImportPreparing = ref(false)
 const showDuplicates = ref(false)
+const showRedundantThreads = ref(false)
 const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
 let disposeProgressListener: (() => void) | null = null
@@ -126,6 +128,7 @@ const appCommands: AppCommand[] = [
   cmd('view.annotationPass', 'Run Confidence Annotation Pass', () => { showAnnotationDialog.value = true }),
   cmd('view.healthCheck', 'Run Archive Health Check', () => { showHealthDialog.value = true }),
   cmd('tools.findDuplicates', 'Find Duplicate Q&As', () => { showDuplicates.value = true }),
+  cmd('tools.findRedundantThreads', 'Find Redundant Threads', () => { showRedundantThreads.value = true }),
   cmd('tools.resetArchive', 'Reset Archive (Clear Everything)', () => { showArchiveReset.value = true }),
   cmd('app.settings', 'Open Settings', openSettings),
   cmd('app.commandPalette', 'Open Command Palette', openCommandPalette),
@@ -979,6 +982,12 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   <DuplicateCleanupDialog
     v-model:visible="showDuplicates"
     @changed="handleDuplicatesChanged"
+  />
+
+  <!-- Redundant thread wrapper repair (Tools) -->
+  <RedundantThreadRepairDialog
+    v-model:visible="showRedundantThreads"
+    @changed="() => toast.add({ severity: 'success', summary: 'Redundant threads merged', life: 3000 })"
   />
 
   <!-- Reset the archive to a clean state (Tools) -->

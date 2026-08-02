@@ -29,3 +29,41 @@ describe('thread import persistence', () => {
     expect(store.threads[tid]?.tags).toEqual(['claude', 'migration'])
   })
 })
+
+describe('redundant-thread repair projection', () => {
+  it('updates renderer state only after main returns a durable repaired map', async () => {
+    const store = useThreadStore()
+    store.threads = {
+      t1: { name: 'Same', items: ['qa-1'] },
+      t2: { name: 'Same', items: ['qa-1'] },
+    }
+    store.selectedThreadId = 't2'
+    window.api.threadsRepairRedundant = vi.fn(async () => ({
+      threads: { t1: { name: 'Same', items: ['qa-1'] } },
+      mergedGroups: 1,
+      removedThreadIds: ['t2'],
+    }))
+
+    await store.repairRedundantThreads([{
+      itemIds: ['qa-1'], threadIds: ['t1', 't2'], survivorId: 't1', redundantIds: ['t2'],
+      importSourceIds: [], metadataDiffers: false,
+    }])
+    expect(Object.keys(store.threads)).toEqual(['t1'])
+    expect(store.selectedThreadId).toBe('t1')
+  })
+
+  it('keeps renderer state unchanged when main rejects the repair', async () => {
+    const store = useThreadStore()
+    store.threads = {
+      t1: { name: 'Same', items: ['qa-1'] },
+      t2: { name: 'Same', items: ['qa-1'] },
+    }
+    window.api.threadsRepairRedundant = vi.fn(async () => { throw new Error('disk full') })
+
+    await expect(store.repairRedundantThreads([{
+      itemIds: ['qa-1'], threadIds: ['t1', 't2'], survivorId: 't1', redundantIds: ['t2'],
+      importSourceIds: [], metadataDiffers: false,
+    }])).rejects.toThrow('disk full')
+    expect(Object.keys(store.threads)).toEqual(['t1', 't2'])
+  })
+})
