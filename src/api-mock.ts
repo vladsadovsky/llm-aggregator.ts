@@ -39,6 +39,12 @@ export const mockApi: ElectronAPI = {
         console.log('Mock: Saving threads', threads)
     },
     threadsRepairRedundant: async () => ({ threads: {}, mergedGroups: 0, removedThreadIds: [] }),
+    threadsDeletePreview: async (threadIds) => ({
+        token: '0'.repeat(64), threadIds, qaIdsToDelete: [], sharedQaIds: [], sharedThreadIds: [],
+    }),
+    threadsDeleteApply: async (threadIds, token) => ({
+        token, threadIds, qaIdsToDelete: [], sharedQaIds: [], sharedThreadIds: [], threads: {}, cleanupPending: false,
+    }),
 
     qaListAll: async () => ({
         'qa-1': {

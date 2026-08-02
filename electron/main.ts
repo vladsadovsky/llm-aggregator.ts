@@ -6,6 +6,7 @@ import { registerIpcHandlers } from './ipc/handlers'
 import { initSecretsStorage } from './services/secretsService'
 import { loadSettings } from './services/settingsService'
 import { addSettingsChangeListener } from './services/settingsEvents'
+import { recoverThreadDeletions } from './services/threadDeletionService'
 import { ACCELERATORS, hintFor, renderKeys, styleForPlatform } from '../shared/accelerators'
 import { isSameAppNavigation, windowOpenAction } from './security/navigationPolicy'
 import type { SenderPolicy } from './ipc/senderPolicy'
@@ -370,6 +371,18 @@ app.whenReady().then(() => {
   // Must run before any secrets read: moves a legacy plaintext secrets.json aside
   // so live keys are not left sitting in clear text with nothing to clean them up.
   initSecretsStorage()
+  // Complete or roll back any journaled thread deletion before archive data is
+  // exposed to the renderer.
+  try {
+    recoverThreadDeletions()
+  } catch (error) {
+    dialog.showErrorBox(
+      'Archive recovery required',
+      error instanceof Error ? error.message : 'An interrupted thread deletion could not be recovered safely.',
+    )
+    app.quit()
+    return
+  }
   lockDownDefaultSession()
   createApplicationMenu()
   addSettingsChangeListener(() => createApplicationMenu())

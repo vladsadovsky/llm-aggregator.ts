@@ -375,6 +375,15 @@ only redundant thread records — never QA files. **Merge All Safe Groups** is o
 update. A stale scan is rejected, and a group carrying multiple distinct import identities is
 blocked for manual review because it may represent genuinely different source conversations.
 
+Deleting one or more threads is a cascading archive operation. Before anything changes, the app
+shows the exact number of selected threads, Q&As used only by that selection, and shared Q&As that
+will remain in surviving threads. Confirming deletes the selected threads and their unshared Q&As;
+shared Q&As stay referenced only by their surviving threads and are never moved to **Unthreaded**.
+If the selection contains every wrapper in a redundant-thread group, deletion is blocked and the
+app directs you to **Tools → Find Redundant Threads** first. Until application trash ships, this
+operation is irreversible; an interrupted operation is journaled and recovered before the archive
+is opened again.
+
 #### Fragility of shared-link import
 
 **Every provider here is read through an undocumented, unversioned, private endpoint.** None of

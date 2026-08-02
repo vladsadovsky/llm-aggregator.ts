@@ -178,6 +178,16 @@ describe('threads:repairRedundant', () => {
   })
 })
 
+describe('thread deletion', () => {
+  it('validates non-empty thread ids and a full preview token', () => {
+    expect(parse(CH.threadsDeletePreview, [['thread_1', 'thread_2']]).success).toBe(true)
+    expect(parse(CH.threadsDeletePreview, [[]]).success).toBe(false)
+    expect(parse(CH.threadsDeletePreview, [['../escape']]).success).toBe(false)
+    expect(parse(CH.threadsDeleteApply, [['thread_1'], 'a'.repeat(64)]).success).toBe(true)
+    expect(parse(CH.threadsDeleteApply, [['thread_1'], 'short']).success).toBe(false)
+  })
+})
+
 describe('openExternal', () => {
   it('accepts a bounded url and rejects an oversized one', () => {
     expect(parse(CH.openExternal, ['https://example.com']).success).toBe(true)

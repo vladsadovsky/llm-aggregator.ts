@@ -25,6 +25,8 @@ import {
   SearchTypeSchema,
   DuplicateCleanupRequestSchema,
   RedundantThreadRepairRequestSchema,
+  ThreadDeletionIdsSchema,
+  ThreadDeletionTokenSchema,
 } from './archive'
 import {
   BulkImportSelectionSchema,
@@ -66,6 +68,8 @@ export const channelArgs = {
   [CH.threadsLoad]: noArgs,
   [CH.threadsSave]: z.tuple([ThreadMapSchema]),
   [CH.threadsRepairRedundant]: z.tuple([RedundantThreadRepairRequestSchema]),
+  [CH.threadsDeletePreview]: z.tuple([ThreadDeletionIdsSchema]),
+  [CH.threadsDeleteApply]: z.tuple([ThreadDeletionIdsSchema, ThreadDeletionTokenSchema]),
 
   // QA pairs
   [CH.qaListAll]: noArgs,

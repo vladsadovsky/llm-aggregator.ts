@@ -67,6 +67,9 @@ export const RedundantThreadRepairRequestSchema = z.array(z.object({
   redundantIds: z.array(EntityId).min(1).max(200_000),
 }).strict()).min(1).max(100_000)
 
+export const ThreadDeletionIdsSchema = z.array(EntityId).min(1).max(100_000)
+export const ThreadDeletionTokenSchema = z.string().regex(/^[a-f0-9]{64}$/)
+
 export const SearchTypeSchema = z.enum(['full-text', 'tags'])
 
 /** Explicit survivor/removal mapping from the reviewed duplicate scan. */
