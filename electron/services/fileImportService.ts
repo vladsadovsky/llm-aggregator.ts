@@ -76,9 +76,13 @@ export type FileImportOutcome =
   | { kind: 'markdown'; result: ImportResult }
   | { kind: 'archive'; preview: BulkImportPreviewSummary }
 
+function resolveDialogWindow(targetWindow?: BrowserWindow | null): BrowserWindow | null {
+  return targetWindow ?? BrowserWindow.getFocusedWindow() ?? null
+}
+
 /** Show the Open dialog and parse whatever was chosen. Null when cancelled. */
-export async function importFromFile(): Promise<FileImportOutcome | null> {
-  const win = BrowserWindow.getFocusedWindow()
+export async function importFromFile(targetWindow?: BrowserWindow | null): Promise<FileImportOutcome | null> {
+  const win = resolveDialogWindow(targetWindow)
   if (!win) return null
 
   const defaultPath = usableLastImportDirectory()
