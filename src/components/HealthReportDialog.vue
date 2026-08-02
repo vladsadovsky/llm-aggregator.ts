@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 import { useQAStore } from '../stores/qaStore'
-import type { HealthReport } from '../global.d'
+import { useThreadStore } from '../stores/threadStore'
+import DuplicateCleanupDialog from './DuplicateCleanupDialog.vue'
+import RedundantThreadRepairDialog from './RedundantThreadRepairDialog.vue'
+import { findRedundantThreadGroups } from '../../shared/threads/redundantThreadGroups'
+import type { DuplicateScanResult, HealthReport } from '../global.d'
 
 const DEAD_END_AGE_MONTHS = 6
 
@@ -11,21 +15,32 @@ const emit = defineEmits<{
 }>()
 
 const qaStore = useQAStore()
+const threadStore = useThreadStore()
 
 type Phase = 'idle' | 'running' | 'done'
 
 const phase = ref<Phase>('idle')
 const report = ref<HealthReport | null>(null)
+const duplicateScan = ref<DuplicateScanResult | null>(null)
 const error = ref<string | null>(null)
+const showDuplicateRepair = ref(false)
+const showThreadRepair = ref(false)
 
 // Which section is expanded
 const expanded = ref<'orphans' | 'metadata' | 'duplicates' | 'deadend' | null>(null)
+
+const redundantGroups = computed(() => findRedundantThreadGroups(threadStore.threads))
 
 async function runCheck() {
   phase.value = 'running'
   error.value = null
   try {
-    report.value = await window.api.archiveHealthCheck()
+    const [health, duplicates] = await Promise.all([
+      window.api.archiveHealthCheck(),
+      window.api.duplicatesScan(),
+    ])
+    report.value = health
+    duplicateScan.value = duplicates
     phase.value = 'done'
     // Auto-expand the first section that has issues
     if (report.value.orphanIds.length > 0) expanded.value = 'orphans'
@@ -36,6 +51,11 @@ async function runCheck() {
     error.value = (err as Error).message
     phase.value = 'idle'
   }
+}
+
+async function refreshAfterRepair() {
+  await Promise.all([qaStore.loadAllPairs(), threadStore.loadThreads()])
+  await runCheck()
 }
 
 function toggle(section: typeof expanded.value) {
@@ -67,6 +87,8 @@ function handleKeydown(event: KeyboardEvent) {
     emit('close')
   }
 }
+
+onMounted(() => { void runCheck() })
 </script>
 
 <template>
@@ -79,7 +101,7 @@ function handleKeydown(event: KeyboardEvent) {
       <div class="dialog-header">
         <h3 class="dialog-title">
           <i class="pi pi-heart" />
-          Archive Health
+          Inspect &amp; Repair Archive
         </h3>
         <Button
           icon="pi pi-times"
@@ -96,9 +118,10 @@ function handleKeydown(event: KeyboardEvent) {
         class="idle-state"
       >
         <p class="intro-text">
-          Scans your archive for structural issues: orphaned entries, missing AI metadata,
-          near-duplicate pairs, and unresolved dead-end notes.
-          No content is modified.
+          One maintenance view for safe archive repair and advisory health findings. Exact duplicate
+          Q&amp;A records and redundant thread wrappers have separate, reviewable repair actions;
+          Q&amp;As intentionally added to more than one thread are shared records, not duplicates.
+          No content changes until you explicitly confirm a repair.
         </p>
         <p
           v-if="error"
@@ -107,7 +130,7 @@ function handleKeydown(event: KeyboardEvent) {
           {{ error }}
         </p>
         <Button
-          label="Run Health Check"
+          label="Retry Inspection"
           icon="pi pi-search"
           @click="runCheck"
         />
@@ -138,13 +161,61 @@ function handleKeydown(event: KeyboardEvent) {
             {{ metadataScore() }}% metadata coverage
           </span>
           <span class="summary-sep">·</span>
+          <span :class="['summary-stat', duplicateScan && duplicateScan.groups.length > 0 ? 'warn' : 'ok']">
+            {{ duplicateScan?.groups.length ?? 0 }} duplicate-record groups
+          </span>
+          <span class="summary-sep">·</span>
+          <span :class="['summary-stat', redundantGroups.length > 0 ? 'warn' : 'ok']">
+            {{ redundantGroups.length }} redundant thread groups
+          </span>
+          <span class="summary-sep">·</span>
           <span :class="['summary-stat', report.duplicateCandidates.length > 0 ? 'warn' : 'ok']">
-            {{ report.duplicateCandidates.length }} near-duplicates
+            {{ report.duplicateCandidates.length }} possible duplicates
           </span>
           <span class="summary-sep">·</span>
           <span :class="['summary-stat', report.deadEndCandidates.length > 0 ? 'warn' : 'ok']">
             {{ report.deadEndCandidates.length }} unresolved
           </span>
+        </div>
+
+        <div class="section">
+          <div class="repair-row">
+            <div>
+              <div class="repair-title">
+                Duplicate Q&amp;A records
+              </div>
+              <p class="section-help">
+                {{ duplicateScan?.groups.length ?? 0 }} provider-identity or normalized-content group(s).
+                Multiple thread memberships of one Q&amp;A are intentionally excluded.
+              </p>
+            </div>
+            <Button
+              label="Review & Repair"
+              size="small"
+              :disabled="!duplicateScan || duplicateScan.groups.length === 0"
+              @click="showDuplicateRepair = true"
+            />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="repair-row">
+            <div>
+              <div class="repair-title">
+                Redundant thread wrappers
+              </div>
+              <p class="section-help">
+                {{ redundantGroups.length }} group(s) with identical Q&amp;A membership. Repair removes
+                only redundant thread records; it never removes Q&amp;A files.
+              </p>
+            </div>
+            <Button
+              label="Review & Repair"
+              size="small"
+              :disabled="redundantGroups.length === 0"
+              @click="showThreadRepair = true"
+            />
+          </div>
         </div>
 
         <!-- 1. Orphans -->
@@ -294,7 +365,7 @@ function handleKeydown(event: KeyboardEvent) {
             @click="toggle('duplicates')"
           >
             <i :class="['pi', expanded === 'duplicates' ? 'pi-chevron-down' : 'pi-chevron-right']" />
-            <span class="section-title">Near-duplicate candidates</span>
+            <span class="section-title">Possible duplicate pairs (advisory)</span>
             <span :class="['badge', report.duplicateCandidates.length > 0 ? 'badge-warn' : 'badge-ok']">
               {{ report.duplicateCandidates.length }}
             </span>
@@ -390,7 +461,7 @@ function handleKeydown(event: KeyboardEvent) {
 
         <div class="rerun-row">
           <Button
-            label="Run Again"
+            label="Inspect Again"
             icon="pi pi-refresh"
             severity="secondary"
             outlined
@@ -410,6 +481,14 @@ function handleKeydown(event: KeyboardEvent) {
         />
       </div>
     </div>
+    <DuplicateCleanupDialog
+      v-model:visible="showDuplicateRepair"
+      @changed="refreshAfterRepair"
+    />
+    <RedundantThreadRepairDialog
+      v-model:visible="showThreadRepair"
+      @changed="refreshAfterRepair"
+    />
   </div>
 </template>
 
@@ -559,6 +638,24 @@ function handleKeydown(event: KeyboardEvent) {
 .section-body {
   padding: 12px;
   border-top: 1px solid var(--border-color);
+}
+
+.repair-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+}
+
+.repair-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.repair-row .section-help {
+  margin: 0;
 }
 
 .section-help {

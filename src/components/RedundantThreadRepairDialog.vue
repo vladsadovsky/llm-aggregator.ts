@@ -87,7 +87,7 @@ function close() {
 <template>
   <Dialog
     :visible="visible"
-    header="Find Redundant Threads"
+    header="Repair Redundant Thread Wrappers"
     :modal="true"
     :closable="!merging"
     :style="{ width: '700px', maxWidth: '94vw' }"

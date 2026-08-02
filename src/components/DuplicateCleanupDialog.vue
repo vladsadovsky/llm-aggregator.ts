@@ -117,7 +117,7 @@ function close() {
 <template>
   <Dialog
     :visible="visible"
-    header="Find Duplicate Q&amp;As"
+    header="Repair Duplicate Q&amp;A Records"
     :modal="true"
     :closable="!deleting"
     :style="{ width: '760px', maxWidth: '94vw' }"
@@ -149,7 +149,7 @@ function close() {
         :closable="false"
         class="dialog-message"
       >
-        Deleted {{ deletedCount }} duplicate {{ deletedCount === 1 ? 'pair' : 'pairs' }}.
+        Merged {{ deletedCount }} duplicate {{ deletedCount === 1 ? 'record' : 'records' }} into their selected survivors.
       </Message>
 
       <template v-if="scan">
@@ -159,14 +159,14 @@ function close() {
           :closable="false"
           class="dialog-message"
         >
-          No duplicates found across {{ scan.scanned }} Q&amp;A pairs.
+          No duplicate Q&amp;A records found across {{ scan.scanned }} pairs.
         </Message>
 
         <template v-else>
           <p class="intro">
-            Found <strong>{{ scan.groups.length }}</strong> duplicate
+            Found <strong>{{ scan.groups.length }}</strong> duplicate-record
             {{ scan.groups.length === 1 ? 'group' : 'groups' }} across
-            {{ scan.scanned }} pairs — <strong>{{ scan.removableCount }}</strong> can be removed.
+            {{ scan.scanned }} pairs — <strong>{{ scan.removableCount }}</strong> redundant records can be merged.
             Pick which copy to keep in each group.
           </p>
 
@@ -218,7 +218,7 @@ function close() {
       />
       <Button
         v-if="scan && scan.groups.length > 0"
-        :label="`Delete ${idsToDelete.length} duplicate${idsToDelete.length === 1 ? '' : 's'}`"
+        :label="`Merge ${idsToDelete.length} duplicate record${idsToDelete.length === 1 ? '' : 's'}`"
         icon="pi pi-trash"
         severity="danger"
         :disabled="idsToDelete.length === 0 || deleting"

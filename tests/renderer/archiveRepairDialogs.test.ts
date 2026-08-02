@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import DuplicateCleanupDialog from '../../src/components/DuplicateCleanupDialog.vue'
+import HealthReportDialog from '../../src/components/HealthReportDialog.vue'
 import RedundantThreadRepairDialog from '../../src/components/RedundantThreadRepairDialog.vue'
 import { useThreadStore } from '../../src/stores/threadStore'
 
@@ -60,7 +61,7 @@ describe('archive repair dialogs', () => {
     await wrapper.setProps({ visible: true })
     await flushPromises()
 
-    const apply = wrapper.findAll('button').find((button) => button.text().includes('Delete 1 duplicate'))
+    const apply = wrapper.findAll('button').find((button) => button.text().includes('Merge 1 duplicate record'))
     expect(apply).toBeDefined()
     await apply!.trigger('click')
     await flushPromises()
@@ -68,5 +69,35 @@ describe('archive repair dialogs', () => {
     expect(window.api.duplicatesDelete).toHaveBeenCalledWith([{
       key: 'hash', matchKind: 'content', keepId: 'qa_1', removeIds: ['qa_2'],
     }])
+  })
+
+  it('presents exact repairs and advisory health findings in one inspection view', async () => {
+    const store = useThreadStore()
+    store.threads = {
+      thread_1: { name: 'Imported', items: ['qa_1'] },
+      thread_2: { name: 'Imported', items: ['qa_1'] },
+    }
+    window.api.archiveHealthCheck = vi.fn(async () => ({
+      totalPairs: 1, orphanIds: [],
+      metadataGaps: { missingTopic: [], missingSummary: [], missingConfidence: [] },
+      duplicateCandidates: [], deadEndCandidates: [],
+    }))
+    window.api.duplicatesScan = vi.fn(async () => ({ scanned: 1, removableCount: 0, groups: [] }))
+
+    const wrapper = mount(HealthReportDialog, {
+      global: {
+        stubs: {
+          Button: ButtonStub,
+          DuplicateCleanupDialog: true,
+          RedundantThreadRepairDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Duplicate Q&A records')
+    expect(wrapper.text()).toContain('Redundant thread wrappers')
+    expect(wrapper.text()).toContain('Possible duplicate pairs (advisory)')
+    expect(wrapper.text()).toContain('Multiple thread memberships of one Q&A are intentionally excluded')
   })
 })

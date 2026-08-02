@@ -158,7 +158,7 @@ function buildPreview(threadIds: readonly string[], deps: ThreadDeletionDeps): {
     throw ipcError('needs-repair', 'The selected threads changed. Refresh the archive and try again.')
   }
   if (plan.blockedRedundantGroups.length > 0) {
-    throw ipcError('needs-repair', 'This selection contains every wrapper in a redundant-thread group. Use Tools → Find Redundant Threads before deleting it.')
+    throw ipcError('needs-repair', 'This selection contains every wrapper in a redundant-thread group. Use Tools → Inspect & Repair Archive before deleting it.')
   }
   const scan = deps.scan()
   const allPairs = scan.pairs

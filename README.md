@@ -362,25 +362,22 @@ Because the key is anchored on a pair's first message, it survives the conversat
 and re-exported later, and a shared link and an account export of the *same* conversation produce
 the same key.
 
-For duplicates that predate this — or arrived by copy/paste — use **Tools → Find Duplicate Q&As**,
-which sweeps the whole archive and also matches on normalized content. It only ever proposes: you
-choose which copy to keep in each group, and nothing is deleted until you confirm. Cleanup first
-rewrites every thread membership to the chosen survivor in one durable save, then removes the
-redundant QA files, so a failed save cannot strand or erase thread organization.
-
-Use **Tools → Find Redundant Threads** for the separate case where multiple thread records wrap
-the same non-empty set of Q&As. The dialog shows the automatically selected survivor and any
-metadata differences, unions tags, preserves the earliest/latest valid timestamps, and removes
-only redundant thread records — never QA files. **Merge All Safe Groups** is one atomic archive
-update. A stale scan is rejected, and a group carrying multiple distinct import identities is
-blocked for manual review because it may represent genuinely different source conversations.
+Use **Tools → Inspect & Repair Archive** for archive maintenance. It is the single entry point for
+provider-identity and normalized-content duplicate records, redundant thread wrappers, and
+read-only health findings. A Q&A intentionally added to several threads is one shared record, not a
+duplicate, and is excluded from duplicate repair. Each repair remains reviewable: duplicate-record
+repair remaps every thread membership to the chosen survivor before removing redundant files, while
+thread-wrapper repair merges metadata and removes only redundant thread records — never QA files.
+Similarity findings, metadata gaps, and unresolved entries are advisory only and are never included
+in an automatic repair. A stale scan, conflicting import identities, or duplicate QA-file IDs is
+blocked for manual review.
 
 Deleting one or more threads is a cascading archive operation. Before anything changes, the app
 shows the exact number of selected threads, Q&As used only by that selection, and shared Q&As that
 will remain in surviving threads. Confirming deletes the selected threads and their unshared Q&As;
 shared Q&As stay referenced only by their surviving threads and are never moved to **Unthreaded**.
 If the selection contains every wrapper in a redundant-thread group, deletion is blocked and the
-app directs you to **Tools → Find Redundant Threads** first. Until application trash ships, this
+app directs you to **Tools → Inspect & Repair Archive** first. Until application trash ships, this
 operation is irreversible; an interrupted operation is journaled and recovered before the archive
 is opened again.
 
@@ -435,8 +432,8 @@ a single button:
   - **Q&A** — Edit / Duplicate / Delete Selected, Save Changes, Move Up / Down in Thread.
   - **Thread** — New Thread, Rename Selected Thread, Show All Q&As, Show Unthreaded Q&As.
   - **View** — Focus Search, Toggle Dark Mode, LLM Lens when enabled, panel visibility, content
-    zoom, **Application Status**, and archive maintenance: tag dictionary, embeddings, confidence
-    annotation, and health checks; plus standard reload / zoom / full-screen / dev-tools.
+    zoom, and standard reload / zoom / full-screen / dev-tools.
+  - **Tools** — tag dictionary, embeddings, confidence annotation, and **Inspect & Repair Archive**.
   - **Help** — Open Command Palette, Keyboard Shortcuts, Usage Information, About.
 
   Menu items show their keyboard shortcut as a hint in parentheses.
@@ -454,9 +451,9 @@ Operational detail is available separately from **View → Application Status** 
 Palette. It reports archive location, tag configuration, configured provider/model, non-secret key
 provenance, model-catalog source, secure-storage availability, and active warnings.
 
-Archive maintenance commands are available from **View** and the Command Palette: manage the tag
-dictionary, generate embeddings, run the confidence annotation pass, and run the archive health
-check.
+Archive maintenance commands are available from **Tools** and the Command Palette: manage the tag
+dictionary, generate embeddings, run the confidence annotation pass, and inspect or repair the
+archive.
 
 The most common actions are **additionally** surfaced as **toolbar buttons** (Import and New Thread
 in the Threads panel; optional LLM Lens, Dark Mode, and Settings top-right; Export in the content panel) and,
