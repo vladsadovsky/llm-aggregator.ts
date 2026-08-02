@@ -98,7 +98,7 @@ Discoverability
 - Every command is available in the Command Palette (${mod}+K) and in this application menu bar.
 - The most common actions also appear as toolbar buttons.
   - Data directory, AI keys, and preferences live in Settings (${mod}+,).
-  - Application Status and archive maintenance commands live in View.
+  - Application Status lives in Help; archive inspection and repair live in Tools.
 - This guide is always available from the menu bar via Help → Usage Information.
 
 Keyboard Shortcuts
@@ -222,10 +222,8 @@ control and is reached from the menu or the Command Palette.`
         mi('Manage Tag Dictionary…', 'view.manageTags'),
         mi('Generate All Embeddings', 'view.generateEmbeddings'),
         mi('Run Confidence Annotation Pass…', 'view.annotationPass'),
-        mi('Run Archive Health Check…', 'view.healthCheck'),
         { type: 'separator' },
-        mi('Find Duplicate Q&As…', 'tools.findDuplicates'),
-        mi('Find Redundant Threads…', 'tools.findRedundantThreads'),
+        mi('Inspect & Repair Archive…', 'tools.inspectArchive'),
         { type: 'separator' },
         mi('Reset Archive (Clear Everything)…', 'tools.resetArchive'),
       ]

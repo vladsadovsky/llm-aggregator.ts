@@ -18,8 +18,6 @@ import TagManagerDialog from './components/TagManagerDialog.vue'
 import InsightsPanel from './components/InsightsPanel.vue'
 import SharedLinkImportDialog from './components/SharedLinkImportDialog.vue'
 import BulkImportDialog from './components/BulkImportDialog.vue'
-import DuplicateCleanupDialog from './components/DuplicateCleanupDialog.vue'
-import RedundantThreadRepairDialog from './components/RedundantThreadRepairDialog.vue'
 import ArchiveResetDialog from './components/ArchiveResetDialog.vue'
 import { useThreadStore } from './stores/threadStore'
 import { useQAStore } from './stores/qaStore'
@@ -46,7 +44,7 @@ const toast = useToast()
 const showSettings = ref(false)
 const showApplicationStatus = ref(false)
 const showAnnotationDialog = ref(false)
-const showHealthDialog = ref(false)
+const showArchiveInspection = ref(false)
 const showTagManager = ref(false)
 const generatingEmbeddings = ref(false)
 const insightsPanelRef = ref<InstanceType<typeof InsightsPanel> | null>(null)
@@ -68,8 +66,6 @@ const bulkImportPreview = ref<BulkImportPreviewSummary | null>(null)
 const bulkImportProgress = ref<BulkImportProgress | null>(null)
 const bulkImportResult = ref<BulkImportCommitResult | null>(null)
 const bulkImportPreparing = ref(false)
-const showDuplicates = ref(false)
-const showRedundantThreads = ref(false)
 const showArchiveReset = ref(false)
 let disposeMenuListener: (() => void) | null = null
 let disposeProgressListener: (() => void) | null = null
@@ -126,9 +122,7 @@ const appCommands: AppCommand[] = [
   cmd('view.manageTags', 'Manage Tag Dictionary', () => { showTagManager.value = true }),
   cmd('view.generateEmbeddings', 'Generate All Embeddings', () => void generateAllEmbeddings()),
   cmd('view.annotationPass', 'Run Confidence Annotation Pass', () => { showAnnotationDialog.value = true }),
-  cmd('view.healthCheck', 'Run Archive Health Check', () => { showHealthDialog.value = true }),
-  cmd('tools.findDuplicates', 'Find Duplicate Q&As', () => { showDuplicates.value = true }),
-  cmd('tools.findRedundantThreads', 'Find Redundant Threads', () => { showRedundantThreads.value = true }),
+  cmd('tools.inspectArchive', 'Inspect & Repair Archive', () => { showArchiveInspection.value = true }),
   cmd('tools.resetArchive', 'Reset Archive (Clear Everything)', () => { showArchiveReset.value = true }),
   cmd('app.settings', 'Open Settings', openSettings),
   cmd('app.commandPalette', 'Open Command Palette', openCommandPalette),
@@ -489,11 +483,6 @@ async function handleBulkImportClose() {
   bulkImportPreparing.value = false
 }
 
-async function handleDuplicatesChanged() {
-  await qaStore.loadAllPairs()
-  await threadStore.loadThreads()
-}
-
 /**
  * After a reset every id in memory is stale, so selections and filters are
  * cleared before reloading — leaving a selected pair id pointing at a deleted
@@ -826,8 +815,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     @close="showAnnotationDialog = false"
   />
   <HealthReportDialog
-    v-if="showHealthDialog"
-    @close="showHealthDialog = false"
+    v-if="showArchiveInspection"
+    @close="showArchiveInspection = false"
   />
   <TagManagerDialog
     v-if="showTagManager"
@@ -976,18 +965,6 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     :preparing="bulkImportPreparing"
     @commit="handleBulkImportCommit"
     @close="handleBulkImportClose"
-  />
-
-  <!-- Archive-wide duplicate cleanup (Tools) -->
-  <DuplicateCleanupDialog
-    v-model:visible="showDuplicates"
-    @changed="handleDuplicatesChanged"
-  />
-
-  <!-- Redundant thread wrapper repair (Tools) -->
-  <RedundantThreadRepairDialog
-    v-model:visible="showRedundantThreads"
-    @changed="() => toast.add({ severity: 'success', summary: 'Redundant threads merged', life: 3000 })"
   />
 
   <!-- Reset the archive to a clean state (Tools) -->

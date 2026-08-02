@@ -96,7 +96,7 @@ describe('threadDeletionService', () => {
     const redundant = harness({
       a: { name: 'A', items: ['qa1'] }, b: { name: 'B', items: ['qa1'] },
     }, ['qa1'])
-    expect(() => previewThreadDeletion(['a', 'b'], redundant.deps)).toThrow(/Find Redundant Threads/i)
+    expect(() => previewThreadDeletion(['a', 'b'], redundant.deps)).toThrow(/Inspect & Repair Archive/i)
 
     const duplicate = harness({ a: { name: 'A', items: ['qa1'] } }, ['qa1'])
     duplicate.deps.scan = () => ({
