@@ -268,19 +268,64 @@ function onRenameKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') cancelRename()
 }
 
+// ─── 3.1 multi-selection state (highlight-based) ─────────────────────────────
+// Independent of the viewed thread (selectedThreadId): plain click views +
+// selects one; Ctrl/Cmd and Shift extend. Pruned to the visible list.
+const selection = useSelectionModel<string>()
+
+watch(
+  () => threadStore.filteredSortedThreadIds,
+  (ids) => selection.prune(ids),
+)
+
+function selectAllThreads() {
+  selection.selectAll(threadStore.filteredSortedThreadIds)
+}
+
 function onThreadListKeydown(e: KeyboardEvent) {
   const ids = threadStore.filteredSortedThreadIds
   if (ids.length === 0) return
   const currentIdx = threadStore.selectedThreadId ? ids.indexOf(threadStore.selectedThreadId) : -1
 
-  if (e.key === 'ArrowDown') {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault()
-    const next = currentIdx < ids.length - 1 ? currentIdx + 1 : 0
-    selectThread(ids[next])
-  } else if (e.key === 'ArrowUp') {
+    selection.selectAll(ids)
+    return
+  }
+  if (e.key === 'Escape') {
+    if (selection.selectedCount.value > 0) {
+      e.preventDefault()
+      selection.clear()
+    }
+    return
+  }
+  if (e.key === ' ' || e.code === 'Space') {
+    if (threadStore.selectedThreadId) {
+      e.preventDefault()
+      selection.toggleCheckbox(threadStore.selectedThreadId)
+    }
+    return
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
-    const prev = currentIdx > 0 ? currentIdx - 1 : ids.length - 1
-    selectThread(ids[prev])
+    const down = e.key === 'ArrowDown'
+    if (e.shiftKey) {
+      const nextIdx = Math.max(0, Math.min(ids.length - 1, currentIdx + (down ? 1 : -1)))
+      const nextId = ids[nextIdx]
+      selection.handleClick(nextId, ids, { shift: true })
+      selectThread(nextId)
+    } else {
+      const nextIdx = down
+        ? currentIdx < ids.length - 1
+          ? currentIdx + 1
+          : 0
+        : currentIdx > 0
+          ? currentIdx - 1
+          : ids.length - 1
+      const nextId = ids[nextIdx]
+      selection.handleClick(nextId, ids)
+      selectThread(nextId)
+    }
   }
 }
 
@@ -292,6 +337,15 @@ const contextThreadId = ref<string | null>(null)
 const threadContextItems = computed<MenuItem[]>(() => {
   const tid = contextThreadId.value
   if (!tid) return []
+  const count = selection.selectedCount.value
+  // Bulk menu when the right-click happens inside a multi-selection.
+  if (count > 1 && selection.isSelected(tid)) {
+    return [
+      { label: `Export ${count} selected`, icon: 'pi pi-download', command: () => void bulkExportThreads() },
+      { separator: true },
+      { label: `Delete ${count} selected`, icon: 'pi pi-trash', command: () => bulkDeleteThreads() },
+    ]
+  }
   return [
     { label: 'Rename', icon: 'pi pi-pencil', command: () => startRename(tid) },
     { label: 'Export', icon: 'pi pi-download', command: () => void exportThread(tid) },
@@ -299,22 +353,20 @@ const threadContextItems = computed<MenuItem[]>(() => {
     { label: 'Delete', icon: 'pi pi-trash', command: () => confirmDelete(tid) },
   ]
 })
+// Selection-aware right-click (see QAListPanel for the same pattern).
 function onThreadContextMenu(event: MouseEvent, tid: string) {
+  const ctrl = event.ctrlKey || event.metaKey
+  const shift = event.shiftKey
+  if (ctrl || shift) {
+    selection.handleClick(tid, threadStore.filteredSortedThreadIds, { ctrl, shift })
+  } else if (!selection.isSelected(tid)) {
+    selection.handleClick(tid, threadStore.filteredSortedThreadIds)
+  }
   contextThreadId.value = tid
   threadContextMenu.value?.show(event)
 }
 
 // ─── 3.1 bulk operations (threads) ───────────────────────────────────────────
-// Multi-selection is independent of the viewed thread (selectedThreadId): plain
-// click views+selects one; Ctrl/Cmd and Shift extend without switching the view.
-// Pruned to the visible list so it never carries stale ids across filter/reload.
-const selection = useSelectionModel<string>()
-
-watch(
-  () => threadStore.filteredSortedThreadIds,
-  (ids) => selection.prune(ids),
-)
-
 function onThreadItemClick(e: MouseEvent, tid: string) {
   const ctrl = e.ctrlKey || e.metaKey
   const shift = e.shiftKey
@@ -324,10 +376,6 @@ function onThreadItemClick(e: MouseEvent, tid: string) {
   }
   selection.handleClick(tid, threadStore.filteredSortedThreadIds)
   selectThread(tid)
-}
-
-function toggleSelectThread(tid: string) {
-  selection.toggleCheckbox(tid)
 }
 
 function bulkDeleteThreads() {
@@ -429,6 +477,16 @@ onUnmounted(() => {
           data-testid="show-all-qas-button"
           title="Show all QAs"
           @click="showAllQAs"
+        />
+        <Button
+          v-if="threadStore.filteredSortedThreadIds.length > 0"
+          icon="pi pi-check-square"
+          text
+          rounded
+          size="small"
+          title="Select all (Ctrl+A)"
+          data-testid="thread-select-all"
+          @click="selectAllThreads"
         />
       </div>
     </div>
@@ -629,19 +687,11 @@ onUnmounted(() => {
       <div
         v-for="tid in threadStore.filteredSortedThreadIds"
         :key="tid"
-        class="thread-item thread-item--selectable"
+        class="thread-item"
         :class="{ active: threadStore.selectedThreadId === tid, selected: selection.isSelected(tid) }"
         @click="onThreadItemClick($event, tid)"
         @contextmenu.prevent="onThreadContextMenu($event, tid)"
       >
-        <input
-          v-if="editingThreadId !== tid"
-          type="checkbox"
-          class="thread-checkbox"
-          :checked="selection.isSelected(tid)"
-          :aria-label="`Select ${threadStore.threads[tid].name}`"
-          @click.stop="toggleSelectThread(tid)"
-        >
         <!-- Normal display -->
         <template v-if="editingThreadId !== tid">
           <div class="thread-info">
@@ -1035,33 +1085,18 @@ onUnmounted(() => {
   background: var(--surface-hover);
 }
 
+/* Multi-selection: highlight-based (no checkboxes). */
+.thread-item.selected {
+  background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+}
+
 .thread-item.active {
   background: var(--highlight-bg);
   border-left-color: var(--primary-color);
 }
 
-.thread-item.selected {
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-}
-
-.thread-item--selectable {
-  position: relative;
-  padding-left: 28px;
-}
-
-.thread-checkbox {
-  position: absolute;
-  top: 9px;
-  left: 8px;
-  margin: 0;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.thread-item--selectable:hover .thread-checkbox,
-.thread-item--selectable.selected .thread-checkbox {
-  opacity: 1;
+.thread-item.active.selected {
+  background: color-mix(in srgb, var(--primary-color) 28%, transparent);
 }
 
 .bulk-toolbar {

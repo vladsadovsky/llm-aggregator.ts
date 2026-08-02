@@ -305,6 +305,16 @@ function getQuestionSnippet(id: string): string {
 const qaContextMenu = ref<InstanceType<typeof ContextMenu> | null>(null)
 const contextTargetId = ref<string | null>(null)
 
+// ─── 3.1 multi-selection state (highlight-based; see onQAItemClick/keydown) ───
+// Independent of the active detail item (selectedPairId): plain click views +
+// selects one; Ctrl/Cmd and Shift extend without changing the viewed pair.
+// Pruned to the visible list on any reload/filter/thread change.
+const selection = useSelectionModel<string>()
+const bulkTagInput = ref('')
+const moveMenu = ref<InstanceType<typeof Menu> | null>(null)
+
+watch(displayedItems, (items) => selection.prune(items))
+
 function moveQAToThread(id: string, targetTid: string) {
   const fromTid = threadStore.selectedThreadId
   if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
@@ -323,6 +333,22 @@ function copyQAToThread(id: string, targetTid: string) {
 const qaContextItems = computed<MenuItem[]>(() => {
   const id = contextTargetId.value
   if (!id) return []
+  // Bulk menu when the right-click happens inside a multi-selection.
+  const count = selection.selectedCount.value
+  if (count > 1 && selection.isSelected(id)) {
+    const allThreads = threadStore.sortedThreadIds
+    const bulkSub = (fn: (tid: string) => void): MenuItem[] =>
+      allThreads.length
+        ? allThreads.map((tid) => ({ label: threadStore.threads[tid].name, command: () => fn(tid) }))
+        : [{ label: 'No threads', disabled: true }]
+    return [
+      { label: `Move ${count} to thread`, icon: 'pi pi-arrow-right', items: bulkSub(bulkMoveToThread) },
+      { label: `Copy ${count} to thread`, icon: 'pi pi-clone', items: bulkSub(bulkCopyToThread) },
+      { separator: true },
+      { label: `Delete ${count} selected`, icon: 'pi pi-trash', command: () => bulkDelete() },
+    ]
+  }
+  // Single-item menu.
   const targets = threadStore.threadsNotContaining(id)
   const threadSub = (fn: (id: string, tid: string) => void): MenuItem[] =>
     targets.length
@@ -360,23 +386,23 @@ const qaContextItems = computed<MenuItem[]>(() => {
   ]
 })
 
+// Selection-aware right-click: modifiers extend selection (like left-click);
+// right-clicking an unselected row selects just it; right-clicking inside an
+// existing multi-selection keeps it (so the menu can act on all selected).
 function onQAContextMenu(event: MouseEvent, id: string) {
+  const ctrl = event.ctrlKey || event.metaKey
+  const shift = event.shiftKey
+  if (ctrl || shift) {
+    selection.handleClick(id, displayedItems.value, { ctrl, shift })
+  } else if (!selection.isSelected(id)) {
+    selection.handleClick(id, displayedItems.value)
+    selectPair(id)
+  }
   contextTargetId.value = id
-  selectPair(id)
   qaContextMenu.value?.show(event)
 }
 
 // ─── 3.1 bulk operations (multi-select + toolbar) ────────────────────────────
-// Selection is independent of the active detail item (selectedPairId): plain
-// click views+selects one; Ctrl/Cmd and Shift extend the multi-selection without
-// changing the viewed pair. Selection is pruned to the visible list on any
-// reload/filter/thread change so it never carries stale ids.
-const selection = useSelectionModel<string>()
-const bulkTagInput = ref('')
-const moveMenu = ref<InstanceType<typeof Menu> | null>(null)
-
-watch(displayedItems, (items) => selection.prune(items))
-
 function onQAItemClick(e: MouseEvent, id: string) {
   const ctrl = e.ctrlKey || e.metaKey
   const shift = e.shiftKey
@@ -388,8 +414,8 @@ function onQAItemClick(e: MouseEvent, id: string) {
   selectPair(id)
 }
 
-function toggleSelect(id: string) {
-  selection.toggleCheckbox(id)
+function selectAllQAs() {
+  selection.selectAll(displayedItems.value)
 }
 
 const moveMenuItems = computed<MenuItem[]>(() =>
@@ -441,6 +467,15 @@ async function bulkMoveToThread(targetTid: string) {
   toast.add({ severity: 'success', summary: `Moved ${ids.length} to thread`, life: 2000 })
 }
 
+async function bulkCopyToThread(targetTid: string) {
+  const ids = [...selection.selectedIds.value]
+  for (const id of ids) {
+    await threadStore.addToThread(targetTid, id)
+  }
+  selection.clear()
+  toast.add({ severity: 'success', summary: `Copied ${ids.length} to thread`, life: 2000 })
+}
+
 async function bulkAddTag() {
   const tag = bulkTagInput.value.trim()
   if (!tag) return
@@ -470,14 +505,50 @@ function onQAListKeydown(e: KeyboardEvent) {
   if (items.length === 0) return
   const currentIdx = qaStore.selectedPairId ? items.indexOf(qaStore.selectedPairId) : -1
 
-  if (e.key === 'ArrowDown') {
+  // Ctrl/Cmd+A → select all visible.
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault()
-    const next = currentIdx < items.length - 1 ? currentIdx + 1 : 0
-    selectPair(items[next])
-  } else if (e.key === 'ArrowUp') {
+    selection.selectAll(items)
+    return
+  }
+  // Escape → clear a multi-selection.
+  if (e.key === 'Escape') {
+    if (selection.selectedCount.value > 0) {
+      e.preventDefault()
+      selection.clear()
+    }
+    return
+  }
+  // Space → toggle the focused row's membership.
+  if (e.key === ' ' || e.code === 'Space') {
+    if (qaStore.selectedPairId) {
+      e.preventDefault()
+      selection.toggleCheckbox(qaStore.selectedPairId)
+    }
+    return
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
-    const prev = currentIdx > 0 ? currentIdx - 1 : items.length - 1
-    selectPair(items[prev])
+    const down = e.key === 'ArrowDown'
+    if (e.shiftKey) {
+      // Extend the range from the anchor to the neighbouring row (clamped).
+      const nextIdx = Math.max(0, Math.min(items.length - 1, currentIdx + (down ? 1 : -1)))
+      const nextId = items[nextIdx]
+      selection.handleClick(nextId, items, { shift: true })
+      selectPair(nextId)
+    } else {
+      // Plain arrow: move focus and collapse the selection to that one row (wraps).
+      const nextIdx = down
+        ? currentIdx < items.length - 1
+          ? currentIdx + 1
+          : 0
+        : currentIdx > 0
+          ? currentIdx - 1
+          : items.length - 1
+      const nextId = items[nextIdx]
+      selection.handleClick(nextId, items)
+      selectPair(nextId)
+    }
   }
 }
 </script>
@@ -502,6 +573,16 @@ function onQAListKeydown(e: KeyboardEvent) {
       </div>
       <div class="header-right">
         <span class="item-count">{{ displayedItems.length }}</span>
+        <Button
+          v-if="displayedItems.length > 0"
+          icon="pi pi-check-square"
+          text
+          rounded
+          size="small"
+          title="Select all (Ctrl+A)"
+          data-testid="qa-select-all"
+          @click="selectAllQAs"
+        />
         <Button
           v-if="uiStore.showGlobalSearchResults && !showSaveAsThread"
           icon="pi pi-bookmark"
@@ -689,13 +770,6 @@ function onQAListKeydown(e: KeyboardEvent) {
         @click="onQAItemClick($event, id)"
         @contextmenu.prevent="onQAContextMenu($event, id)"
       >
-        <input
-          type="checkbox"
-          class="qa-checkbox"
-          :checked="selection.isSelected(id)"
-          :aria-label="`Select ${qaStore.pairs[id]?.title || 'QA'}`"
-          @click.stop="toggleSelect(id)"
-        >
         <div class="qa-item-title">
           <i class="pi pi-file" />
           <span>{{ qaStore.pairs[id]?.title || 'Untitled' }}</span>
@@ -934,7 +1008,7 @@ function onQAListKeydown(e: KeyboardEvent) {
 
 .qa-item {
   position: relative;
-  padding: 10px 12px 10px 30px;
+  padding: 10px 12px;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: all 0.15s ease;
@@ -944,29 +1018,20 @@ function onQAListKeydown(e: KeyboardEvent) {
   background: var(--surface-hover);
 }
 
+/* Multi-selection: highlight-based (no checkboxes). */
+.qa-item.selected {
+  background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+}
+
+/* The active/viewed row: accent left border, and a stronger tint when it is also
+   part of the selection so "focused" reads distinctly from "selected". */
 .qa-item.active {
   background: var(--highlight-bg);
   border-left-color: var(--primary-color);
 }
 
-.qa-item.selected {
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-}
-
-/* Checkbox: unobtrusive until the row is hovered or selected. */
-.qa-checkbox {
-  position: absolute;
-  top: 12px;
-  left: 9px;
-  margin: 0;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.qa-item:hover .qa-checkbox,
-.qa-item.selected .qa-checkbox {
-  opacity: 1;
+.qa-item.active.selected {
+  background: color-mix(in srgb, var(--primary-color) 28%, transparent);
 }
 
 .bulk-toolbar {
