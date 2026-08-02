@@ -386,15 +386,12 @@ const qaContextItems = computed<MenuItem[]>(() => {
   ]
 })
 
-// Selection-aware right-click: modifiers extend selection (like left-click);
-// right-clicking an unselected row selects just it; right-clicking inside an
-// existing multi-selection keeps it (so the menu can act on all selected).
+// Right-click is the context menu only — it never extends the selection
+// (modifier+click for that is left-button, per the Windows standard). Standard
+// Explorer behaviour: right-clicking an unselected row selects just it; right-
+// clicking inside an existing multi-selection keeps it so the menu acts on all.
 function onQAContextMenu(event: MouseEvent, id: string) {
-  const ctrl = event.ctrlKey || event.metaKey
-  const shift = event.shiftKey
-  if (ctrl || shift) {
-    selection.handleClick(id, displayedItems.value, { ctrl, shift })
-  } else if (!selection.isSelected(id)) {
+  if (!selection.isSelected(id)) {
     selection.handleClick(id, displayedItems.value)
     selectPair(id)
   }
