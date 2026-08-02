@@ -347,7 +347,7 @@ shapes.
 |-------|-----------|
 | UI Framework | Vue 3 (Composition API, `<script setup>`) |
 | Language | TypeScript (strict mode) |
-| Desktop Shell | Electron 33 |
+| Desktop Shell | Electron 43 |
 | Build Tool | Vite 5 + vite-plugin-electron |
 | State Management | Pinia 2 |
 | Component Library | PrimeVue 4 (Aura theme) |
@@ -356,53 +356,21 @@ shapes.
 | Native Packaging | electron-builder |
 | Testing | Vitest |
 
-## Development Workflow
+## Where things live (workflow, process, planning)
 
-```bash
-npm install          # Install dependencies
-npm run dev          # Start Electron app in dev mode (hot-reload)
-npm run typecheck    # TypeScript type check
-npm run lint         # ESLint with auto-fix
-npm run test         # Run Vitest tests
-npm run build        # Production build
-npm run electron:build  # Build native installer
-```
+This file is durable **architecture and conventions** only. Operational and
+planning material lives in dedicated docs so it doesn't drift here:
 
-For VS Code debugging: see BUILD.md. Use the **"Full Stack: Backend + Renderer"** compound launch config.
+- **Human build/test/debug workflow** (scripts, VS Code debugging, native
+  installers) → `README.md`.
+- **Agent/harness contract** (startup steps, validation expectations, "do not
+  run the persistent UI/E2E suites — the user runs those pre-push", PR
+  checklist) → `AGENTS.md`. Read it before substantial edits.
+- **Roadmap / future work** → `doc/plans/V2_Master_Roadmap.md`.
+- **Known issues & technical debt** → `doc/plans/Known_Issues_And_Tech_Debt.md`.
+- **Behavior/workflow change log** → `doc/dev_process/build-notes.md`.
 
-Default ports: `5173` (Vite), `9223` (Electron/Node debugger).
-
-## Known Issues / Technical Debt
-
-Issues noted during initial inspection (do not fix without explicit request):
-
-1. **No optimistic UI / loading states** — all IPC calls are awaited silently; no spinners or loading indicators shown during file I/O.
-
-2. **`qaListAll()` loads every file on every call** — there is no in-memory cache or incremental loading. Could be slow with large archives.
-
-3. **Search is in-process and naïve** — `searchService.ts` iterates all pairs on every search; no indexing. Will not scale.
-
-4. **No unit tests yet** — `vitest` is configured but no tests exist.
-
-5. **Data directory defaults to CWD in dev** — this can be confusing; the archive and settings files appear mixed in the project root during development.
-
-6. **`moveInThread` moves only ±1 at a time** — no drag-and-drop reordering implemented yet.
-
-7. **`version` field in QA frontmatter** is incremented on every `qaUpdate()` but is not displayed in the UI beyond the metadata bar; no version history or diffing.
-
-8. **No confirmation on destructive operations from keyboard** — only mouse-click delete has a confirmation dialog.
-
-## Planned Enhancements (Future Work)
-
-Per the project owner's stated roadmap:
-- Better LLM integration (auto-import from chats)
-- Thread hierarchies / nesting
-- Better search (vector indexing, semantic search)
-- Enhanced markdown editor
-- Import/export formats
-- Robust detection of shared chats URLs (not based on hard match of the URL prefix)
-Sequenced work in flight (see `doc/plans/`):
-1. Secrets storage V1 Step 6 — migrate legacy keys instead of only orphaning them
-2. Replace the hand-rolled Anthropic `fetch` client with `@anthropic-ai/sdk`
-   (fixes `max_tokens`/`stop_reason` handling, timeouts, and token tracking)
-3. Secrets storage V2 — key lifecycle controls, guided recovery, multi-provider namespace
+Everyday commands: `npm run check` is the full pre-push gate (typecheck, lint,
+unit tests, build, audit, line-endings); `npm test` runs the Vitest suite;
+`npm run dev` starts the app. The agent does **not** run E2E/visual/packaging
+suites — those are user-run.
