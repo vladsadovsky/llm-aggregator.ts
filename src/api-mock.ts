@@ -74,6 +74,7 @@ export const mockApi: ElectronAPI = {
             answer: 'You can use the "New Q&A" button in the sidebar.',
         },
     }),
+    onArchiveLoadProgress: () => () => undefined,
     qaGet: async (_id: string) => null,
     qaCreate: async (data) => ({
         id: 'qa-' + Math.random().toString(36).substr(2, 9),

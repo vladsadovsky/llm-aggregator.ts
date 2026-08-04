@@ -93,6 +93,7 @@ export const CH = {
 export const EVENT_CH = {
   menuAction: 'menu-action',
   archiveImportProgress: 'archive-import:progress',
+  archiveLoadProgress: 'archive-load:progress',
 } as const
 
 export type ChannelKey = keyof typeof CH
