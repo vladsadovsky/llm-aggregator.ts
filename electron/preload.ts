@@ -203,6 +203,11 @@ export interface BulkImportProgress {
   threadsTotal: number
 }
 
+export interface ArchiveLoadProgress {
+  processed: number
+  total: number
+}
+
 export interface BulkImportCommitResult {
   createdPairs: number
   skippedDuplicates: number
@@ -340,6 +345,7 @@ export interface ElectronAPI {
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>
+  onArchiveLoadProgress: (callback: (progress: ArchiveLoadProgress) => void) => () => void
   qaGet: (id: string) => Promise<QAPairData | null>
   qaCreate: (data: QACreateData) => Promise<QAPairData>
   qaUpdate: (id: string, data: QAUpdateData) => Promise<QAPairData>
@@ -509,6 +515,13 @@ function isProgress(p: unknown): p is BulkImportProgress {
   return typeof o.processed === 'number' && typeof o.total === 'number'
 }
 
+/** Structural guard for archive-load progress received from the main process. */
+function isArchiveLoadProgress(p: unknown): p is ArchiveLoadProgress {
+  if (typeof p !== 'object' || p === null) return false
+  const o = p as Record<string, unknown>
+  return typeof o.processed === 'number' && typeof o.total === 'number'
+}
+
 const api: ElectronAPI = {
   // Settings
   settingsLoad: () => call(CH.settingsLoad),
@@ -524,6 +537,13 @@ const api: ElectronAPI = {
 
   // QA Pairs
   qaListAll: () => call(CH.qaListAll),
+  onArchiveLoadProgress: (callback) => {
+    const handler = (_event: IpcRendererEvent, progress: unknown) => {
+      if (isArchiveLoadProgress(progress)) callback(progress)
+    }
+    ipcRenderer.on(EVENT_CH.archiveLoadProgress, handler)
+    return () => ipcRenderer.removeListener(EVENT_CH.archiveLoadProgress, handler)
+  },
   qaGet: (id) => call(CH.qaGet, id),
   qaCreate: (data) => call(CH.qaCreate, data),
   qaUpdate: (id, data) => call(CH.qaUpdate, id, data),

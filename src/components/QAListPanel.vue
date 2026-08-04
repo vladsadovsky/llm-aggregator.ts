@@ -158,6 +158,7 @@ function selectPair(id: string) {
 }
 
 async function doSearch() {
+  if (qaStore.isLoading) return
   if (!uiStore.searchQuery.trim()) {
     searchResults.value = null
     uiStore.globalSearchResultIds = null
@@ -607,6 +608,11 @@ function onQAListKeydown(e: KeyboardEvent) {
       </div>
       <div class="header-right">
         <span class="item-count">{{ displayedItems.length }}</span>
+        <i
+          v-if="qaStore.isLoading"
+          class="pi pi-spin pi-spinner archive-loading-spinner"
+          title="Loading archive"
+        />
         <Button
           v-if="displayedItems.length > 0"
           icon="pi pi-check-square"
@@ -681,6 +687,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           :placeholder="uiStore.searchType === 'semantic' ? 'Enter query and press ↵' : 'Search as you type...'"
           size="small"
           class="search-input"
+          :disabled="qaStore.isLoading"
           @keydown.enter="doSearch"
         />
         <i
@@ -693,6 +700,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           size="small"
           text
           rounded
+          :disabled="qaStore.isLoading"
           @click="doSearch"
         />
         <Button
@@ -717,6 +725,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           option-value="value"
           size="small"
           class="search-type-select"
+          :disabled="qaStore.isLoading"
         />
         <Select
           v-if="uiStore.searchType !== 'semantic'"
@@ -729,6 +738,7 @@ function onQAListKeydown(e: KeyboardEvent) {
           option-value="value"
           size="small"
           class="sort-select"
+          :disabled="qaStore.isLoading"
         />
         <span
           v-else
@@ -877,7 +887,14 @@ function onQAListKeydown(e: KeyboardEvent) {
         v-if="displayedItems.length === 0"
         class="empty-state"
       >
-        <template v-if="uiStore.showGlobalSearchResults">
+        <template v-if="qaStore.isLoading">
+          <i class="pi pi-spin pi-spinner" />
+          <p>
+            Loading Q&amp;As<span v-if="qaStore.loadProgress?.total">: {{ qaStore.loadProgress.processed }} / {{ qaStore.loadProgress.total }}</span>
+            <span v-else>…</span>
+          </p>
+        </template>
+        <template v-else-if="uiStore.showGlobalSearchResults">
           <i class="pi pi-search" />
           <p>No results found</p>
         </template>
@@ -924,7 +941,8 @@ function onQAListKeydown(e: KeyboardEvent) {
       <button
         class="add-button"
         data-testid="add-qa-button"
-        :disabled="!threadStore.selectedThreadId && !uiStore.showAllQAs && !uiStore.showUnthreaded"
+        :disabled="qaStore.isLoading || (!threadStore.selectedThreadId && !uiStore.showAllQAs && !uiStore.showUnthreaded)"
+        :title="qaStore.isLoading ? 'Wait for the archive to finish loading' : undefined"
         @click="showEditor = true"
       >
         <i class="pi pi-plus" />
@@ -981,6 +999,11 @@ function onQAListKeydown(e: KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.archive-loading-spinner {
+  color: var(--primary-color);
+  font-size: 12px;
 }
 
 .search-bar {

@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync } from 'fs'
+import { readFile, readdir } from 'fs/promises'
 import { join, extname, basename } from 'path'
 import matter from 'gray-matter'
 import yaml from 'js-yaml'
@@ -6,6 +7,13 @@ import { getDataDir } from './pathResolver'
 import { debugLog } from './logger'
 import { atomicWriteFileSync } from './persistence/atomicFile'
 import { aggregateScan, type ScannedFile, type ArchiveScan } from './persistence/qaIndex'
+import {
+  buildQASearchIndex,
+  removeFromQASearchIndex,
+  searchQASearchIndex,
+  updateQASearchIndex,
+  type QASearchIndex,
+} from './persistence/qaSearchIndex'
 
 /** Serialize a metadata object + answer body into a .md file string. */
 function serializeQAFile(frontmatter: Record<string, unknown>, answer: string): string {
@@ -90,6 +98,41 @@ export interface QAUpdateData {
   aiRelatedIds?: string[]
 }
 
+export interface ArchiveLoadProgress {
+  processed: number
+  total: number
+}
+
+interface ArchiveCache {
+  dir: string
+  scan: ArchiveScan
+  search: QASearchIndex
+}
+
+let archiveCache: ArchiveCache | null = null
+let archiveVersion = 0
+let activeAsyncLoad: {
+  dir: string
+  promise: Promise<Record<string, QAPairData>>
+  listeners: Set<(progress: ArchiveLoadProgress) => void>
+} | null = null
+
+function cacheScan(dir: string, scan: ArchiveScan): ArchiveCache {
+  const cache = { dir, scan, search: buildQASearchIndex(scan.pairs) }
+  archiveCache = cache
+  return cache
+}
+
+function cachedArchive(dir: string): ArchiveCache | null {
+  return archiveCache?.dir === dir ? archiveCache : null
+}
+
+/** Drop cached archive data after a non-QA-pair service changes archive files. */
+export function invalidateArchiveCache(): void {
+  archiveVersion += 1
+  archiveCache = null
+}
+
 function getArchiveDir(): string {
   const dir = join(getDataDir(), 'archive')
   if (!existsSync(dir)) {
@@ -98,9 +141,8 @@ function getArchiveDir(): string {
   return dir
 }
 
-function parseQAFile(filepath: string): QAPairData | null {
+function parseQAContent(filepath: string, content: string): QAPairData | null {
   try {
-    const content = readFileSync(filepath, 'utf-8')
     const { data: metadata, content: body } = matter(content)
 
     // New format: question stored in frontmatter, body is the answer
@@ -147,6 +189,55 @@ function parseQAFile(filepath: string): QAPairData | null {
   }
 }
 
+function parseQAFile(filepath: string): QAPairData | null {
+  try {
+    return parseQAContent(filepath, readFileSync(filepath, 'utf-8'))
+  } catch (err) {
+    console.error(`Error parsing ${filepath}:`, err)
+    return null
+  }
+}
+
+async function parseQAFileAsync(filepath: string): Promise<QAPairData | null> {
+  try {
+    return parseQAContent(filepath, await readFile(filepath, 'utf-8'))
+  } catch (err) {
+    console.error(`Error parsing ${filepath}:`, err)
+    return null
+  }
+}
+
+function scanArchiveAt(dir: string): ArchiveScan {
+  const files = readdirSync(dir).filter((f) => extname(f) === '.md')
+  const scanned: ScannedFile[] = files.map((file) => {
+    const filepath = join(dir, file)
+    return { path: filepath, pair: parseQAFile(filepath) }
+  })
+  return aggregateScan(scanned)
+}
+
+async function scanArchiveAtAsync(
+  dir: string,
+  onProgress: (progress: ArchiveLoadProgress) => void,
+): Promise<ArchiveScan> {
+  const files = (await readdir(dir)).filter((file) => extname(file) === '.md')
+  const scanned: ScannedFile[] = []
+  const total = files.length
+  onProgress({ processed: 0, total })
+
+  for (let index = 0; index < total; index += 1) {
+    const filepath = join(dir, files[index])
+    scanned.push({ path: filepath, pair: await parseQAFileAsync(filepath) })
+    const processed = index + 1
+    // Keep IPC traffic modest while still giving a responsive progress display.
+    if (processed === total || processed % 50 === 0) onProgress({ processed, total })
+    // Parsing a very large archive must not monopolize the Electron main loop.
+    if (processed % 25 === 0) await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+
+  return aggregateScan(scanned)
+}
+
 /**
  * Scan the archive once, returning the pairs map plus health diagnostics:
  * every file that failed to parse and every duplicate-id collision. Duplicate
@@ -155,12 +246,8 @@ function parseQAFile(filepath: string): QAPairData | null {
  */
 export function scanArchive(): ArchiveScan {
   const dir = getArchiveDir()
-  const files = readdirSync(dir).filter((f) => extname(f) === '.md')
-  const scanned: ScannedFile[] = files.map((file) => {
-    const filepath = join(dir, file)
-    return { path: filepath, pair: parseQAFile(filepath) }
-  })
-  const scan = aggregateScan(scanned)
+  const scan = scanArchiveAt(dir)
+  cacheScan(dir, scan)
   debugLog(
     'qaPairService',
     'scanArchive:',
@@ -175,21 +262,69 @@ export function scanArchive(): ArchiveScan {
 }
 
 export function listAllPairs(): Record<string, QAPairData> {
-  return scanArchive().pairs
+  const dir = getArchiveDir()
+  return (cachedArchive(dir) ?? cacheScan(dir, scanArchiveAt(dir))).scan.pairs
 }
 
 export function getPair(id: string): QAPairData | null {
   const dir = getArchiveDir()
-  const files = readdirSync(dir).filter((f) => extname(f) === '.md')
+  const cache = cachedArchive(dir) ?? cacheScan(dir, scanArchiveAt(dir))
+  return cache.scan.pairs[id] ?? null
+}
 
-  for (const file of files) {
-    const filepath = join(dir, file)
-    const pair = parseQAFile(filepath)
-    if (pair && pair.id === id) {
-      return pair
+/**
+ * Build the initial archive snapshot without blocking Electron's event loop.
+ * Concurrent callers share the same scan and each receives its own progress
+ * notifications. A concurrent archive write causes a fresh scan before any
+ * caller receives data, so a stale snapshot is never promoted into the cache.
+ */
+export function listAllPairsAsync(
+  onProgress?: (progress: ArchiveLoadProgress) => void,
+): Promise<Record<string, QAPairData>> {
+  const dir = getArchiveDir()
+  const cached = cachedArchive(dir)
+  if (cached) {
+    const total = Object.keys(cached.scan.pairs).length
+    onProgress?.({ processed: total, total })
+    return Promise.resolve(cached.scan.pairs)
+  }
+
+  if (activeAsyncLoad?.dir === dir) {
+    if (onProgress) activeAsyncLoad.listeners.add(onProgress)
+    return activeAsyncLoad.promise
+  }
+
+  const listeners = new Set<(progress: ArchiveLoadProgress) => void>()
+  if (onProgress) listeners.add(onProgress)
+  const notify = (progress: ArchiveLoadProgress) => {
+    for (const listener of listeners) listener(progress)
+  }
+  const load = async (): Promise<Record<string, QAPairData>> => {
+    // A mutation while scanning invalidates the in-flight snapshot; retry from
+    // the current files rather than replacing newer cached data with old data.
+    while (true) {
+      // Settings can switch the configured directory while an old archive is
+      // loading. Join the caller for the new directory instead of ever
+      // publishing the old directory's result after that switch.
+      if (dir !== getArchiveDir()) return listAllPairsAsync(onProgress)
+      const version = archiveVersion
+      const scan = await scanArchiveAtAsync(dir, notify)
+      if (dir !== getArchiveDir()) return listAllPairsAsync(onProgress)
+      if (version === archiveVersion) return cacheScan(dir, scan).scan.pairs
     }
   }
-  return null
+  const promise = load().finally(() => {
+    if (activeAsyncLoad?.promise === promise) activeAsyncLoad = null
+  })
+  activeAsyncLoad = { dir, promise, listeners }
+  return promise
+}
+
+/** Search the once-built in-memory index, never archive files. */
+export function searchPairs(query: string, type: 'full-text' | 'tags'): string[] {
+  const dir = getArchiveDir()
+  const cache = cachedArchive(dir) ?? cacheScan(dir, scanArchiveAt(dir))
+  return searchQASearchIndex(cache.search, query, type)
 }
 
 // CON, PRN, AUX, NUL, COM1-9, LPT1-9 are reserved device names on Windows.
@@ -250,7 +385,7 @@ export function createPair(data: QACreateData): QAPairData {
 
   atomicWriteFileSync(filepath, content)
 
-  return {
+  const pair: QAPairData = {
     id,
     filepath,
     title: data.title,
@@ -264,6 +399,14 @@ export function createPair(data: QACreateData): QAPairData {
     answer: data.answer,
     ...(data.originId ? { originId: data.originId } : {}),
   }
+  archiveVersion += 1
+  const cache = cachedArchive(dir)
+  if (cache) {
+    cache.scan.pairs[pair.id] = pair
+    cache.scan.index.set(pair.id, filepath)
+    updateQASearchIndex(cache.search, pair)
+  }
+  return pair
 }
 
 export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
@@ -300,13 +443,27 @@ export function updatePair(id: string, data: QAUpdateData): QAPairData | null {
   // fully written and promoted, so a crash mid-write cannot corrupt the pair.
   atomicWriteFileSync(pair.filepath, content)
 
-  return { ...updatedPair, version: newVersion }
+  const result = { ...updatedPair, version: newVersion }
+  archiveVersion += 1
+  const cache = cachedArchive(getArchiveDir())
+  if (cache) {
+    cache.scan.pairs[id] = result
+    updateQASearchIndex(cache.search, result)
+  }
+  return result
 }
 
 export function deletePair(id: string): void {
   const pair = getPair(id)
   if (pair && existsSync(pair.filepath)) {
     unlinkSync(pair.filepath)
+    archiveVersion += 1
+    const cache = cachedArchive(getArchiveDir())
+    if (cache) {
+      delete cache.scan.pairs[id]
+      cache.scan.index.delete(id)
+      removeFromQASearchIndex(cache.search, id)
+    }
   }
 }
 

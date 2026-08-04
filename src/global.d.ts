@@ -208,6 +208,11 @@ export interface BulkImportProgress {
   threadsTotal: number
 }
 
+export interface ArchiveLoadProgress {
+  processed: number
+  total: number
+}
+
 export interface BulkImportCommitResult {
   createdPairs: number
   skippedDuplicates: number
@@ -340,6 +345,7 @@ export interface ElectronAPI {
 
   // QA Pairs
   qaListAll: () => Promise<Record<string, QAPairData>>
+  onArchiveLoadProgress: (callback: (progress: ArchiveLoadProgress) => void) => () => void
   qaGet: (id: string) => Promise<QAPairData | null>
   qaCreate: (data: QACreateData) => Promise<QAPairData>
   qaUpdate: (id: string, data: QAUpdateData) => Promise<QAPairData>

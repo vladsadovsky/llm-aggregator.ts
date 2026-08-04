@@ -151,10 +151,10 @@ const filteredCommands = computed(() => {
 })
 
 onMounted(async () => {
-  // Load threads, QA pairs, and tag dictionary in parallel; don't let one failure block the others
-  const [threadResult, qaResult, settingsResult] = await Promise.allSettled([
+  // The shell only waits for its small control records. Q&A files are parsed
+  // incrementally in the background so a large archive never freezes startup.
+  const [threadResult, settingsResult] = await Promise.allSettled([
     threadStore.loadThreads(),
-    qaStore.loadAllPairs(),
     window.api.settingsLoad(),
   ])
   // Tag store loads independently — failure is non-fatal
@@ -165,18 +165,8 @@ onMounted(async () => {
     const reason = threadResult.reason instanceof Error ? threadResult.reason.message : String(threadResult.reason)
     toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load threads: ' + reason, life: 5000 })
   }
-  if (qaResult.status === 'rejected') {
-    debugError('App', 'Failed to load QA pairs:', qaResult.reason)
-    const reason = qaResult.reason instanceof Error ? qaResult.reason.message : String(qaResult.reason)
-    toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load QA pairs: ' + reason, life: 5000 })
-  }
   if (settingsResult.status === 'fulfilled') {
     lensEnabled.value = settingsResult.value.lensEnabled
-  }
-
-  // If there are no threads, default to showing all QAs so the user sees their content
-  if (Object.keys(threadStore.threads).length === 0 && Object.keys(qaStore.pairs).length > 0) {
-    uiStore.showAllQAs = true
   }
 
   uiStore.isSidebarVisible = !uiStore.threadsCollapsed
@@ -190,7 +180,23 @@ onMounted(async () => {
   window.addEventListener('llm:import-shared-link', handleImportSharedLinkEvent)
   // Native application-menu items route here
   disposeMenuListener = window.api.onMenuAction?.(handleMenuAction) ?? null
+
+  void loadInitialPairs()
 })
+
+async function loadInitialPairs() {
+  try {
+    await qaStore.loadAllPairs()
+    // If there are no threads, default to showing all QAs so the user sees their content.
+    if (Object.keys(threadStore.threads).length === 0 && Object.keys(qaStore.pairs).length > 0) {
+      uiStore.showAllQAs = true
+    }
+  } catch (err) {
+    debugError('App', 'Failed to load QA pairs:', err)
+    const reason = err instanceof Error ? err.message : String(err)
+    toast?.add({ severity: 'error', summary: 'Error', detail: 'Failed to load QA pairs: ' + reason, life: 5000 })
+  }
+}
 
 function handleImportFileEvent() {
   void importFile()
@@ -229,6 +235,10 @@ function focusSearch() {
 }
 
 function openQAEditor() {
+  if (qaStore.isLoading) {
+    toast?.add({ severity: 'info', summary: 'Archive loading', detail: 'Wait for Q&As to finish loading before creating one.', life: 3000 })
+    return
+  }
   uiStore.clearQAEditorDraft()
   uiStore.showQAEditor = true
 }

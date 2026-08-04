@@ -12,6 +12,7 @@ import Menu from 'primevue/menu'
 import ContextMenu from 'primevue/contextmenu'
 import type { MenuItem } from 'primevue/menuitem'
 import { useSelectionModel } from '../composables/useSelectionModel'
+import NewThreadForm from './NewThreadForm.vue'
 
 const threadStore = useThreadStore()
 const qaStore = useQAStore()
@@ -107,8 +108,6 @@ function toggleTagBox() {
   }
 }
 
-const newThreadName = ref('')
-const newThreadTags = ref('')
 const showNewThreadInput = ref(false)
 const editingThreadId = ref<string | null>(null)
 const editingName = ref('')
@@ -136,30 +135,22 @@ function selectThread(tid: string) {
   }
 }
 
-/** Both inline editors require a non-empty name; surfaced as a disabled action. */
-const canCreateThread = computed(() => newThreadName.value.trim().length > 0)
+/** The rename editor requires a non-empty name; surfaced as a disabled action. */
 const canFinishRename = computed(() => editingName.value.trim().length > 0)
 
 function cancelNewThread() {
   showNewThreadInput.value = false
-  newThreadName.value = ''
-  newThreadTags.value = ''
 }
 
 function cancelRename() {
   editingThreadId.value = null
 }
 
-async function createThread() {
-  const name = newThreadName.value.trim()
-  if (!name) return
-  const tags = parseTags(newThreadTags.value)
+async function createThread(name: string, tags: string[]) {
   const tid = await threadStore.createThread(name)
   if (tags.length > 0) {
     await threadStore.updateThread(tid, name, tags)
   }
-  newThreadName.value = ''
-  newThreadTags.value = ''
   showNewThreadInput.value = false
   selectThread(tid)
   toast.add({ severity: 'success', summary: 'Thread created', life: 2000 })
@@ -293,11 +284,6 @@ function showUnthreaded() {
   } else {
     qaStore.selectedPairId = null
   }
-}
-
-function onNewThreadKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter') createThread()
-  if (e.key === 'Escape') cancelNewThread()
 }
 
 function onRenameKeydown(e: KeyboardEvent) {
@@ -854,45 +840,11 @@ onUnmounted(() => {
 
     <!-- Bottom: Add thread (OneNote-style) -->
     <div class="panel-footer">
-      <div
+      <NewThreadForm
         v-if="showNewThreadInput"
-        class="new-thread-inputs"
-      >
-        <InputText
-          v-model="newThreadName"
-          data-testid="new-thread-name-input"
-          placeholder="Thread name..."
-          size="small"
-          class="w-full"
-          autofocus
-          @keydown="onNewThreadKeydown"
-        />
-        <InputText
-          v-model="newThreadTags"
-          data-testid="new-thread-tags-input"
-          placeholder="Tags (comma-separated)"
-          size="small"
-          class="w-full"
-          @keydown="onNewThreadKeydown"
-        />
-        <div class="edit-actions">
-          <Button
-            label="Cancel"
-            severity="secondary"
-            text
-            size="small"
-            data-testid="new-thread-cancel"
-            @click="cancelNewThread"
-          />
-          <Button
-            label="Create"
-            size="small"
-            data-testid="new-thread-create"
-            :disabled="!canCreateThread"
-            @click="createThread"
-          />
-        </div>
-      </div>
+        @submit="createThread"
+        @cancel="cancelNewThread"
+      />
       <!-- Hidden while the form is open: as a toggle it silently discarded typing. -->
       <button
         v-if="!showNewThreadInput"
@@ -1261,7 +1213,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* Shared by the inline "new thread" and "rename thread" forms. */
+/* Inline rename form actions. */
 .edit-actions {
   display: flex;
   justify-content: flex-end;
@@ -1288,13 +1240,6 @@ onUnmounted(() => {
 .panel-footer {
   border-top: 1px solid var(--border-color);
   padding: 4px;
-}
-
-.new-thread-inputs {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 8px 4px;
 }
 
 .clear-link {
@@ -1325,7 +1270,4 @@ onUnmounted(() => {
   color: var(--primary-color);
 }
 
-.w-full {
-  width: 100%;
-}
 </style>

@@ -119,6 +119,7 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 
 - Full-text search across QA content.
 - Tag search for controlled recall.
+- Large archives load Q&As incrementally after the app shell opens; the Q&A panel shows loading progress while thread navigation and settings remain available.
 - Sorting options for scanning by recency or title.
 - Matching terms are highlighted in QA titles and snippets; use the star and history controls in the QA list header for favorites and recently accessed entries.
 - The QA editor warns before creating a duplicate title, and the native tray icon provides quick Open and Quit actions.

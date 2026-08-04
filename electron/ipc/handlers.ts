@@ -7,6 +7,8 @@ import {
   createPair,
   updatePair,
   deletePair,
+  invalidateArchiveCache,
+  listAllPairsAsync,
 } from '../services/qaPairService'
 import { search } from '../services/searchService'
 import { loadSettings, saveSettings } from '../services/settingsService'
@@ -80,8 +82,9 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   r.handle(CH.settingsSave, (_event, settings) => {
     saveSettings(settings)
     notifySettingsChanged(settings)
-    // Data directory may have changed — drop the tag dictionary cache.
+    // Data directory may have changed — drop archive-derived caches.
     invalidateTagCache()
+    invalidateArchiveCache()
   })
 
   r.handle(CH.settingsPickDirectory, async (): Promise<string | null> => {
@@ -101,10 +104,16 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   r.handle(CH.threadsSave, (_event, threads) => saveThreads(threads))
   r.handle(CH.threadsRepairRedundant, (_event, requests) => repairRedundantThreadGroups(requests))
   r.handle(CH.threadsDeletePreview, (_event, threadIds) => previewThreadDeletion(threadIds))
-  r.handle(CH.threadsDeleteApply, (_event, threadIds, token) => deleteThreadsWithContents(threadIds, token))
+  r.handle(CH.threadsDeleteApply, (_event, threadIds, token) => {
+    const result = deleteThreadsWithContents(threadIds, token)
+    invalidateArchiveCache()
+    return result
+  })
 
   // ─── QA Pairs ──────────────────────────────────────────────
-  r.handle(CH.qaListAll, () => listAllPairs())
+  r.handle(CH.qaListAll, (event) => listAllPairsAsync((progress) => {
+    if (!event.sender.isDestroyed()) event.sender.send(EVENT_CH.archiveLoadProgress, progress)
+  }))
   r.handle(CH.qaGet, (_event, id) => getPair(id))
   r.handle(CH.qaCreate, (_event, data) => createPair(data))
   r.handle(CH.qaUpdate, (_event, id, data) => updatePair(id, data))
@@ -166,7 +175,11 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
 
   // ─── Archive reset ──────────────────────────────────────────
   r.handle(CH.archiveResetPreview, () => previewArchiveReset())
-  r.handle(CH.archiveReset, () => resetArchive())
+  r.handle(CH.archiveReset, () => {
+    const result = resetArchive()
+    invalidateArchiveCache()
+    return result
+  })
 
   // ─── Secrets ───────────────────────────────────────────────
   // Raw key values never cross to the renderer. `secrets:load` returns presence,

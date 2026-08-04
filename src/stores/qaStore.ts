@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { QAPairData, QACreateData, QAUpdateData } from '../types/QAPair'
 import { withRetry } from '../utils/retry'
+import type { ArchiveLoadProgress } from '../global'
 
 const FAVORITES_KEY = 'llm:favoritePairIds'
 const RECENT_KEY = 'llm:recentPairIds'
@@ -22,6 +23,9 @@ export const useQAStore = defineStore('qa', () => {
   const selectedPairId = ref<string | null>(null)
   const favoritePairIds = ref<string[]>(readStoredIds(FAVORITES_KEY))
   const recentPairIds = ref<string[]>(readStoredIds(RECENT_KEY))
+  const isLoading = ref(false)
+  const loadProgress = ref<ArchiveLoadProgress | null>(null)
+  let loadSequence = 0
 
   // Extract all unique tags across all QA pairs, sorted by frequency
   const allTags = computed(() => {
@@ -47,8 +51,25 @@ export const useQAStore = defineStore('qa', () => {
   }
 
   async function loadAllPairs() {
-    pairs.value = await withRetry(() => window.api.qaListAll())
-    pruneStoredIds()
+    const sequence = ++loadSequence
+    isLoading.value = true
+    loadProgress.value = null
+    const unsubscribe = window.api.onArchiveLoadProgress((progress) => {
+      if (sequence === loadSequence) loadProgress.value = progress
+    })
+    try {
+      const loaded = await withRetry(() => window.api.qaListAll())
+      if (sequence === loadSequence) {
+        pairs.value = loaded
+        pruneStoredIds()
+      }
+    } finally {
+      unsubscribe()
+      if (sequence === loadSequence) {
+        isLoading.value = false
+        loadProgress.value = null
+      }
+    }
   }
 
   function selectPair(id: string) {
@@ -115,6 +136,8 @@ export const useQAStore = defineStore('qa', () => {
     selectedPairId,
     favoritePairIds,
     recentPairIds,
+    isLoading,
+    loadProgress,
     allTags,
     selectedPair,
     loadAllPairs,

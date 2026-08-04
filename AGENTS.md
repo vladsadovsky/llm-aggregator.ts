@@ -28,6 +28,11 @@ Before substantial edits:
 - Minimize scroll and click friction in QA creation flows.
 - Keep primary create actions discoverable and fast to trigger.
 
+## Performance & Scalability
+- Follow `doc/guides/PERFORMANCE_AND_SCALABILITY.md` for archive-scale requirements.
+- The design target is 5,000 threads and 30,000 Q&As. Interactive input and local UI actions must not do archive-scale work on each event.
+- Treat scalability as a design goal, not a late optimization: do not rescan, reparse, re-sort, serialize, or rebuild a large collection once per item, keystroke, selection, or ordinary lookup. Build and invalidate explicit indexes/projections when source data changes instead.
+
 ## Build And Packaging Guardrails
 - Electron packaging uses `electron-builder.yml` via package scripts.
 - Do not remove `ffmpeg.dll` assumptions from Windows runtime behavior: Electron binary references it.
