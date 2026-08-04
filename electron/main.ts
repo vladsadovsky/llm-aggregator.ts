@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, session } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog, session } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
@@ -12,6 +12,7 @@ import { isSameAppNavigation, windowOpenAction } from './security/navigationPoli
 import type { SenderPolicy } from './ipc/senderPolicy'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 
 // ─── App origin (computed once) ──────────────────────────────────────────────
 // The renderer entry — dev server URL or packaged index.html. Both the
@@ -348,6 +349,25 @@ function createWindow() {
   })
 }
 
+function showMainWindow() {
+  if (!mainWindow) createWindow()
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function createTray() {
+  tray = new Tray(join(__dirname, '../public/icons/llm-aggregator.png'))
+  tray.setToolTip('LLM Aggregator')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open LLM Aggregator', click: showMainWindow },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]))
+  tray.on('click', showMainWindow)
+}
+
 app.setName('LLM Aggregator');
 
 /**
@@ -385,6 +405,7 @@ app.whenReady().then(() => {
   createApplicationMenu()
   addSettingsChangeListener(() => createApplicationMenu())
   registerIpcHandlers(senderPolicy)
+  createTray()
   createWindow()
 
   app.on('activate', () => {

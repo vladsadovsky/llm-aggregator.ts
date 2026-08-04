@@ -997,9 +997,6 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       :class="{ collapsed: uiStore.threadsCollapsed }"
     >
       <div class="panel-content panel-content--threads">
-        <div class="app-toolbar">
-          <span class="app-brand">LLM Aggregator</span>
-        </div>
         <ThreadsPanel />
       </div>
       <button
@@ -1190,23 +1187,6 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.app-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--surface-ground);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
-}
-
-.app-brand {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color-secondary);
-  letter-spacing: 0.02em;
 }
 
 .toolbar-buttons {

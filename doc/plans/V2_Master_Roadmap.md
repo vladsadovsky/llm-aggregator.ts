@@ -272,7 +272,7 @@ manual correction, metadata usefulness, or legacy-field cleanup without adopting
 **Goal:** Ship the remaining low-risk, high-value UX gaps with no new architecture. Can run in
 parallel with Phase 0.
 
-### 1.1 Unified list filter/search UI — Threads + QA **[UX]**
+### 1.1 Unified list filter/search UI — Threads + QA **[UX]** — Done (2026-08-04)
 Bring the threads list up to the same real-time filter/search/sort standard the QA list already
 has. Supersedes the original "real-time name filter in the threads list" ask, and absorbs the
 "date-range filter in the thread list" item originally slotted into Phase 3 — both turn out to be
@@ -303,25 +303,25 @@ two (bulk imports commonly produce hundreds of threads), so it's the one that mo
 - New thread sort options, mirroring the QA list's date/title toggle: by name (current default), by
   recency (`updatedAt`), by size (`items.length`).
 
-### 1.2 Search result highlighting **[UX 4.3]**
+### 1.2 Search result highlighting **[UX 4.3]** — Done (2026-08-04)
 Highlight matched terms in QA title/snippet so users can see why an item matched.
 
-### 1.3 Context menus **[UX 11.7]**
+### 1.3 Context menus **[UX 11.7]** — Done (2026-08-02)
 Right-click menu on list items: Edit/Delete/Move/Copy/Duplicate.
 
-### 1.4 Recent/Favorites for QAs **[UX 11.2]**
+### 1.4 Recent/Favorites for QAs **[UX 11.2]** — Done (2026-08-04)
 Starred/favorited QAs and a "recently accessed" list for quick access.
 
-### 1.5 Collapsible tag-selector box above the threads list **[UX]**
+### 1.5 Collapsible tag-selector box above the threads list **[UX]** — Done (2026-08-02)
 Avoid vertical space blowout when a thread's tag list is long — collapse/expand affordance.
 
-### 1.6 Title uniqueness check / warning **[UX 3.2]**
+### 1.6 Title uniqueness check / warning **[UX 3.2]** — Done (2026-08-04)
 Flag duplicate titles at creation time rather than allowing silent collisions.
 
-### 1.7 "Clear remembered metadata" action in Settings **[UX 2.1 residual]**
+### 1.7 "Clear remembered metadata" action in Settings **[UX 2.1 residual]** — Done (2026-08-02)
 One-click reset for the last-used source/tags/URL pre-fill values.
 
-### 1.8 Native OS tray icon **[Idea: "Native OS invocation"]**
+### 1.8 Native OS tray icon **[Idea: "Native OS invocation"]** — Done (2026-08-04)
 Standalone — no dependency on the rest of the plan.
 
 ---
@@ -363,6 +363,8 @@ infrastructure.
 ### 2.4 Smart thread compression **[LLM Ch.4]**
 Propose removing dead-end branches from a thread view. Built on the batch runner (0.2) and the
 workflow typing above (2.3) — sequence after both.
+
+Separately consider coalescing threads, dealing with the same matter of discussion, but in different bots, into one thread. 
 
 ### 2.5 Multi-provider surfacing in Settings
 Expose Ollama/Azure OpenAI (built in 0.1) as selectable providers, including embed-capability

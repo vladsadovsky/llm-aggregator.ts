@@ -464,7 +464,10 @@ onUnmounted(() => {
   <div class="threads-panel">
     <!-- Header -->
     <div class="panel-header">
-      <span class="panel-title">Threads</span>
+      <div class="header-left">
+        <span class="panel-title">Threads</span>
+        <span class="item-count">{{ threadStore.filteredSortedThreadIds.length }}</span>
+      </div>
       <div class="header-actions">
         <Button
           icon="pi pi-file-import"
@@ -919,8 +922,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 12px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border-color);
+  min-height: 37px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .header-actions {
@@ -933,6 +943,14 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 14px;
   color: var(--text-color);
+}
+
+.item-count {
+  font-size: 11px;
+  background: var(--surface-200);
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: var(--text-color-secondary);
 }
 
 .thread-filter-bar {

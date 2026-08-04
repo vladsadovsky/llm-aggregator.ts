@@ -88,6 +88,11 @@ const canCreate = computed(() => {
   return true
 })
 const canCreateBatch = computed(() => canCreate.value && pendingBatchEntries.value.length > 0 && !isCreatingBatch.value)
+const duplicateTitle = computed(() => {
+  const normalized = title.value.trim().toLocaleLowerCase()
+  if (!normalized || normalized === 'untitled') return null
+  return Object.values(qaStore.pairs).find((pair) => pair.title.trim().toLocaleLowerCase() === normalized) ?? null
+})
 
 // Watch question and update title if it's empty or matches previous auto-title
 watch(question, () => {
@@ -504,6 +509,12 @@ function handleKeydown(event: KeyboardEvent) {
         >
           Will use: "{{ autoTitle }}"
         </small>
+        <small
+          v-if="duplicateTitle"
+          class="field-warning"
+        >
+          A QA named "{{ duplicateTitle.title }}" already exists. You can still create this entry.
+        </small>
       </div>
 
       <div class="field-row">
@@ -721,6 +732,13 @@ function handleKeydown(event: KeyboardEvent) {
   margin-top: 4px;
   font-size: 11px;
   color: var(--red-500);
+}
+
+.field-warning {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--orange-500);
 }
 
 .field-row {

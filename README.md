@@ -120,6 +120,8 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 - Full-text search across QA content.
 - Tag search for controlled recall.
 - Sorting options for scanning by recency or title.
+- Matching terms are highlighted in QA titles and snippets; use the star and history controls in the QA list header for favorites and recently accessed entries.
+- The QA editor warns before creating a duplicate title, and the native tray icon provides quick Open and Quit actions.
 
 ### Display and readability
 
@@ -1050,7 +1052,7 @@ npm run test
 ## Credits
 
 - Developer, concepts and feature defintions beyond basic, maintainer: sadovskyvlad@gmail.com
-- Original idea and first demonstration of AI feature set: eveselov@hotmail.com
+- Original idea and first demonstration of AI Lens feature set: eveselov@hotmail.com
 
 ---
 

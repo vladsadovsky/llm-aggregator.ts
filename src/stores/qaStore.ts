@@ -3,9 +3,25 @@ import { ref, computed } from 'vue'
 import type { QAPairData, QACreateData, QAUpdateData } from '../types/QAPair'
 import { withRetry } from '../utils/retry'
 
+const FAVORITES_KEY = 'llm:favoritePairIds'
+const RECENT_KEY = 'llm:recentPairIds'
+const RECENT_LIMIT = 25
+
+function readStoredIds(key: string): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 export const useQAStore = defineStore('qa', () => {
   const pairs = ref<Record<string, QAPairData>>({})
   const selectedPairId = ref<string | null>(null)
+  const favoritePairIds = ref<string[]>(readStoredIds(FAVORITES_KEY))
+  const recentPairIds = ref<string[]>(readStoredIds(RECENT_KEY))
 
   // Extract all unique tags across all QA pairs, sorted by frequency
   const allTags = computed(() => {
@@ -32,10 +48,36 @@ export const useQAStore = defineStore('qa', () => {
 
   async function loadAllPairs() {
     pairs.value = await withRetry(() => window.api.qaListAll())
+    pruneStoredIds()
   }
 
   function selectPair(id: string) {
     selectedPairId.value = id
+    recentPairIds.value = [id, ...recentPairIds.value.filter((recentId) => recentId !== id)].slice(0, RECENT_LIMIT)
+    persistRecent()
+  }
+
+  function toggleFavorite(id: string) {
+    favoritePairIds.value = favoritePairIds.value.includes(id)
+      ? favoritePairIds.value.filter((favoriteId) => favoriteId !== id)
+      : [...favoritePairIds.value, id]
+    persistFavorites()
+  }
+
+  function persistFavorites() {
+    if (typeof window !== 'undefined') window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritePairIds.value))
+  }
+
+  function persistRecent() {
+    if (typeof window !== 'undefined') window.localStorage.setItem(RECENT_KEY, JSON.stringify(recentPairIds.value))
+  }
+
+  function pruneStoredIds() {
+    const known = new Set(Object.keys(pairs.value))
+    favoritePairIds.value = favoritePairIds.value.filter((id) => known.has(id))
+    recentPairIds.value = recentPairIds.value.filter((id) => known.has(id))
+    persistFavorites()
+    persistRecent()
   }
 
   async function createPair(data: QACreateData): Promise<QAPairData> {
@@ -55,6 +97,7 @@ export const useQAStore = defineStore('qa', () => {
   async function deletePair(id: string) {
     await withRetry(() => window.api.qaDelete(id))
     delete pairs.value[id]
+    pruneStoredIds()
     if (selectedPairId.value === id) {
       selectedPairId.value = null
     }
@@ -70,10 +113,13 @@ export const useQAStore = defineStore('qa', () => {
   return {
     pairs,
     selectedPairId,
+    favoritePairIds,
+    recentPairIds,
     allTags,
     selectedPair,
     loadAllPairs,
     selectPair,
+    toggleFavorite,
     createPair,
     updatePair,
     deletePair,

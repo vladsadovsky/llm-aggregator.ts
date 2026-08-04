@@ -25,6 +25,7 @@ const searchResults = ref<string[] | null>(null)
 const qaListRef = ref<HTMLElement | null>(null)
 const showSaveAsThread = ref(false)
 const saveAsThreadName = ref('')
+const quickView = ref<'all' | 'favorites' | 'recent'>('all')
 
 // Watch store trigger for opening QA editor (from global keyboard shortcut or Save-as-QA)
 watch(() => uiStore.showQAEditor, (val) => {
@@ -74,7 +75,7 @@ const displayedItems = computed(() => {
   if (uiStore.showGlobalSearchResults && uiStore.globalSearchResultIds) {
     let items = uiStore.globalSearchResultIds.filter((id) => id in qaStore.pairs)
     if (uiStore.searchType !== 'semantic') items = sortItems([...items])
-    return items
+    return applyQuickView(items)
   }
 
   // Thread narrowed by global search
@@ -82,7 +83,7 @@ const displayedItems = computed(() => {
     const thread = threadStore.threads[threadStore.selectedThreadId]
     if (!thread) return []
     const globalSet = new Set(uiStore.globalSearchResultIds!)
-    return thread.items.filter((id) => id in qaStore.pairs && globalSet.has(id))
+    return applyQuickView(thread.items.filter((id) => id in qaStore.pairs && globalSet.has(id)))
   }
 
   if (uiStore.showUnthreaded) {
@@ -95,7 +96,7 @@ const displayedItems = computed(() => {
         return tb.localeCompare(ta)
       })
     }
-    return items
+    return applyQuickView(items)
   }
 
   // All QAs mode
@@ -118,7 +119,7 @@ const displayedItems = computed(() => {
         })
       }
     }
-    return items
+    return applyQuickView(items)
   }
 
   // Thread mode
@@ -127,8 +128,20 @@ const displayedItems = computed(() => {
   if (!thread) return []
   let items = thread.items.filter((id) => id in qaStore.pairs)
   items = applySearchResults(items)
-  return items
+  return applyQuickView(items)
 })
+
+function applyQuickView(items: string[]): string[] {
+  if (quickView.value === 'favorites') {
+    const favorites = new Set(qaStore.favoritePairIds)
+    return items.filter((id) => favorites.has(id))
+  }
+  if (quickView.value === 'recent') {
+    const visible = new Set(items)
+    return qaStore.recentPairIds.filter((id) => visible.has(id))
+  }
+  return items
+}
 
 const panelTitle = computed(() => {
   if (uiStore.showGlobalSearchResults) return 'Search Results'
@@ -296,6 +309,19 @@ function getQuestionSnippet(id: string): string {
   const pair = qaStore.pairs[id]
   if (!pair) return ''
   return pair.question.length > 80 ? pair.question.substring(0, 80) + '...' : pair.question
+}
+
+type HighlightPart = { text: string; matched: boolean }
+function highlightedParts(text: string): HighlightPart[] {
+  const query = uiStore.searchType === 'semantic' ? '' : uiStore.searchQuery.trim()
+  if (!query) return [{ text, matched: false }]
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'))
+  return parts.filter(Boolean).map((part) => ({ text: part, matched: part.localeCompare(query, undefined, { sensitivity: 'accent' }) === 0 }))
+}
+
+function setQuickView(view: 'all' | 'favorites' | 'recent') {
+  quickView.value = quickView.value === view ? 'all' : view
 }
 
 // ─── 1.3 context menu (QA list items) ────────────────────────────────────────
@@ -592,6 +618,24 @@ function onQAListKeydown(e: KeyboardEvent) {
           @click="selectAllQAs"
         />
         <Button
+          icon="pi pi-star"
+          text
+          rounded
+          size="small"
+          :class="{ 'quick-view-active': quickView === 'favorites' }"
+          title="Show favorites"
+          @click="setQuickView('favorites')"
+        />
+        <Button
+          icon="pi pi-history"
+          text
+          rounded
+          size="small"
+          :class="{ 'quick-view-active': quickView === 'recent' }"
+          title="Show recently accessed"
+          @click="setQuickView('recent')"
+        />
+        <Button
           v-if="uiStore.showGlobalSearchResults && !showSaveAsThread"
           icon="pi pi-bookmark"
           text
@@ -780,10 +824,37 @@ function onQAListKeydown(e: KeyboardEvent) {
       >
         <div class="qa-item-title">
           <i class="pi pi-file" />
-          <span>{{ qaStore.pairs[id]?.title || 'Untitled' }}</span>
+          <span>
+            <template
+              v-for="(part, index) in highlightedParts(qaStore.pairs[id]?.title || 'Untitled')"
+              :key="index"
+            >
+              <mark v-if="part.matched">{{ part.text }}</mark>
+              <template v-else>
+                {{ part.text }}
+              </template>
+            </template>
+          </span>
+          <Button
+            :icon="qaStore.favoritePairIds.includes(id) ? 'pi pi-star-fill' : 'pi pi-star'"
+            text
+            rounded
+            size="small"
+            class="favorite-button"
+            :title="qaStore.favoritePairIds.includes(id) ? 'Remove favorite' : 'Add favorite'"
+            @click.stop="qaStore.toggleFavorite(id)"
+          />
         </div>
         <div class="qa-item-snippet">
-          {{ getQuestionSnippet(id) }}
+          <template
+            v-for="(part, index) in highlightedParts(getQuestionSnippet(id))"
+            :key="index"
+          >
+            <mark v-if="part.matched">{{ part.text }}</mark>
+            <template v-else>
+              {{ part.text }}
+            </template>
+          </template>
         </div>
         <div class="qa-item-meta">
           <span
@@ -1074,6 +1145,28 @@ function onQAListKeydown(e: KeyboardEvent) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.qa-item-title mark,
+.qa-item-snippet mark {
+  background: color-mix(in srgb, var(--yellow-400) 60%, transparent);
+  color: inherit;
+  padding: 0;
+}
+
+.favorite-button {
+  margin-left: auto;
+  opacity: 0;
+}
+
+.qa-item:hover .favorite-button,
+.qa-item.active .favorite-button {
+  opacity: 1;
+}
+
+.quick-view-active {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 
 .qa-item-snippet {
