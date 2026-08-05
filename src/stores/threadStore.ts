@@ -148,9 +148,14 @@ export const useThreadStore = defineStore('threads', () => {
     threads.value = await withRetry(() => window.api.threadsLoad())
   }
 
-  async function save() {
-    // Strip Vue reactivity proxy before sending through Electron IPC
-    const plain = JSON.parse(JSON.stringify(toRaw(threads.value))) as ThreadMap
+  function cloneThreadMap(source: ThreadMap = threads.value): ThreadMap {
+    // Strip Vue reactivity proxies and give each candidate mutation independent
+    // nested arrays before it is offered to main for durable persistence.
+    return JSON.parse(JSON.stringify(toRaw(source))) as ThreadMap
+  }
+
+  async function saveThreadMap(candidate: ThreadMap) {
+    const plain = cloneThreadMap(candidate)
     debugLog('threadStore', 'save called, keys:', Object.keys(plain))
     try {
       await withRetry(() => window.api.threadsSave(plain))
@@ -162,15 +167,25 @@ export const useThreadStore = defineStore('threads', () => {
   }
 
   /**
-   * Stamp a thread as edited. Every mutation below calls this before saving, so
-   * `updatedAt` means "last entry or edit" rather than only "time of import".
+   * Build and persist a candidate map before publishing it to the renderer.
+   * A failed write leaves the visible state untouched, rather than allowing a
+   * later successful edit to accidentally commit an earlier failed mutation.
    */
-  function touch(tid: string) {
-    const thread = threads.value[tid]
+  async function commitMutation(mutator: (candidate: ThreadMap) => boolean): Promise<boolean> {
+    const candidate = cloneThreadMap()
+    if (!mutator(candidate)) return false
+    await saveThreadMap(candidate)
+    threads.value = candidate
+    return true
+  }
+
+  /** Stamp a candidate thread as edited. */
+  function touch(threadMap: ThreadMap, tid: string) {
+    const thread = threadMap[tid]
     if (thread) thread.updatedAt = new Date().toISOString()
   }
 
-  function allocateThreadId(now: Date): string {
+  function allocateThreadId(now: Date, threadMap: ThreadMap = threads.value): string {
     const y = now.getFullYear()
     const mo = String(now.getMonth() + 1).padStart(2, '0')
     const d = String(now.getDate()).padStart(2, '0')
@@ -180,7 +195,7 @@ export const useThreadStore = defineStore('threads', () => {
     let tid = `thread_${y}${mo}${d}_${h}${mi}${s}`
     // Second-resolution ids collide when several source conversations start in
     // the same second; walk forward until one is free.
-    for (let i = 1; threads.value[tid] && i < 5000; i += 1) {
+    for (let i = 1; threadMap[tid] && i < 5000; i += 1) {
       const next = new Date(now.getTime() + i * 1000)
       const p = (n: number): string => String(n).padStart(2, '0')
       tid =
@@ -198,13 +213,15 @@ export const useThreadStore = defineStore('threads', () => {
   async function createThread(name: string, options: { createdAt?: string } = {}): Promise<string> {
     const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
     const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
-    const tid = allocateThreadId(now)
+    const candidate = cloneThreadMap()
+    const tid = allocateThreadId(now, candidate)
 
     debugLog('threadStore', 'createThread start', { tid, name })
     const stamp = now.toISOString()
-    threads.value[tid] = { name, items: [], createdAt: stamp, updatedAt: stamp }
-    await save()
-    debugLog('threadStore', 'createThread completed', { tid, thread: threads.value[tid] })
+    candidate[tid] = { name, items: [], createdAt: stamp, updatedAt: stamp }
+    await saveThreadMap(candidate)
+    threads.value = candidate
+    debugLog('threadStore', 'createThread completed', { tid, thread: candidate[tid] })
     return tid
   }
 
@@ -219,44 +236,50 @@ export const useThreadStore = defineStore('threads', () => {
   ): Promise<string> {
     const parsed = options.createdAt ? Date.parse(options.createdAt) : NaN
     const now = Number.isNaN(parsed) ? new Date() : new Date(parsed)
-    const tid = allocateThreadId(now)
+    const candidate = cloneThreadMap()
+    const tid = allocateThreadId(now, candidate)
     const stamp = now.toISOString()
     debugLog('threadStore', 'createThreadWithItems start', {
       tid,
       requestedItemIds: pairIds,
     })
-    threads.value[tid] = {
+    candidate[tid] = {
       name,
       items: [...new Set(pairIds)],
       ...(options.tags && options.tags.length > 0 ? { tags: [...new Set(options.tags)] } : {}),
       createdAt: stamp,
       updatedAt: stamp,
     }
-    await save()
+    await saveThreadMap(candidate)
+    threads.value = candidate
     debugLog('threadStore', 'createThreadWithItems completed', {
       tid,
-      persistedItemIds: threads.value[tid]?.items ?? [],
+      persistedItemIds: candidate[tid]?.items ?? [],
     })
     return tid
   }
 
   async function renameThread(tid: string, newName: string) {
-    if (threads.value[tid]) {
-      threads.value[tid].name = newName
-      touch(tid)
-      await save()
-    }
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      thread.name = newName
+      touch(candidate, tid)
+      return true
+    })
   }
 
   async function updateThread(tid: string, name: string, tags: string[]) {
-    if (threads.value[tid]) {
-      debugLog('threadStore', 'updateThread start', { tid, name, tags })
-      threads.value[tid].name = name
-      threads.value[tid].tags = tags.length > 0 ? tags : undefined
-      touch(tid)
-      await save()
-      debugLog('threadStore', 'updateThread completed', { tid, thread: threads.value[tid] })
-    }
+    debugLog('threadStore', 'updateThread start', { tid, name, tags })
+    const changed = await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      thread.name = name
+      thread.tags = tags.length > 0 ? tags : undefined
+      touch(candidate, tid)
+      return true
+    })
+    if (changed) debugLog('threadStore', 'updateThread completed', { tid, thread: threads.value[tid] })
   }
 
   /**
@@ -265,11 +288,13 @@ export const useThreadStore = defineStore('threads', () => {
    * otherwise overwrite the source conversation's own time.
    */
   async function setThreadTimes(tid: string, times: { createdAt?: string; updatedAt?: string }) {
-    const thread = threads.value[tid]
-    if (!thread) return
-    if (times.createdAt) thread.createdAt = times.createdAt
-    if (times.updatedAt) thread.updatedAt = times.updatedAt
-    await save()
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      if (times.createdAt) thread.createdAt = times.createdAt
+      if (times.updatedAt) thread.updatedAt = times.updatedAt
+      return Boolean(times.createdAt || times.updatedAt)
+    })
   }
 
   async function previewDeleteThreads(threadIds: string[]) {
@@ -322,39 +347,43 @@ export const useThreadStore = defineStore('threads', () => {
   }
 
   async function addToThread(tid: string, pairId: string) {
-    if (threads.value[tid]) {
-      const items = threads.value[tid].items
-      debugLog('threadStore', 'addToThread attempt', {
+    const before = threads.value[tid]
+    if (!before) {
+      debugError('threadStore', 'addToThread: thread not found', { tid, pairId })
+      return
+    }
+    debugLog('threadStore', 'addToThread attempt', {
+      tid,
+      pairId,
+      itemCountBefore: before.items.length,
+      alreadyPresent: before.items.includes(pairId),
+    })
+    const changed = await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread || thread.items.includes(pairId)) return false
+      thread.items.push(pairId)
+      touch(candidate, tid)
+      return true
+    })
+    if (changed) {
+      debugLog('threadStore', 'addToThread completed', {
         tid,
         pairId,
-        itemCountBefore: items.length,
-        alreadyPresent: items.includes(pairId),
+        itemCountAfter: threads.value[tid]?.items.length ?? 0,
       })
-      if (!items.includes(pairId)) {
-        items.push(pairId)
-        touch(tid)
-        await save()
-        debugLog('threadStore', 'addToThread completed', {
-          tid,
-          pairId,
-          itemCountAfter: items.length,
-        })
-      }
-    } else {
-      debugError('threadStore', 'addToThread: thread not found', { tid, pairId })
     }
   }
 
   async function removeFromThread(tid: string, pairId: string) {
-    if (threads.value[tid]) {
-      const items = threads.value[tid].items
-      const idx = items.indexOf(pairId)
-      if (idx !== -1) {
-        items.splice(idx, 1)
-        touch(tid)
-        await save()
-      }
-    }
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      const index = thread.items.indexOf(pairId)
+      if (index === -1) return false
+      thread.items.splice(index, 1)
+      touch(candidate, tid)
+      return true
+    })
   }
 
   function threadsContaining(pairId: string): { id: string; name: string }[] {
@@ -372,59 +401,65 @@ export const useThreadStore = defineStore('threads', () => {
   }
 
   async function moveToThread(fromTid: string, toTid: string, pairId: string) {
-    if (threads.value[toTid] && !threads.value[toTid].items.includes(pairId)) {
-      threads.value[toTid].items.push(pairId)
-      touch(toTid)
-    }
-    if (threads.value[fromTid]) {
-      const index = threads.value[fromTid].items.indexOf(pairId)
-      if (index !== -1) {
-        threads.value[fromTid].items.splice(index, 1)
-        touch(fromTid)
+    const source = threads.value[fromTid]
+    const destination = threads.value[toTid]
+    if (!source) throw new Error('Cannot move Q&A: the source thread no longer exists.')
+    if (!destination) throw new Error('Cannot move Q&A: the destination thread no longer exists.')
+    if (fromTid === toTid || !source.items.includes(pairId)) return
+
+    await commitMutation((candidate) => {
+      const candidateSource = candidate[fromTid]
+      const candidateDestination = candidate[toTid]
+      if (!candidateSource || !candidateDestination || !candidateSource.items.includes(pairId)) {
+        throw new Error('Cannot move Q&A: thread membership changed before it could be saved.')
       }
-    }
-    await save()
+      if (!candidateDestination.items.includes(pairId)) {
+        candidateDestination.items.push(pairId)
+        touch(candidate, toTid)
+      }
+      candidateSource.items.splice(candidateSource.items.indexOf(pairId), 1)
+      touch(candidate, fromTid)
+      return true
+    })
   }
 
   async function moveInThread(tid: string, pairId: string, direction: number) {
-    if (threads.value[tid]) {
-      const items = threads.value[tid].items
-      const idx = items.indexOf(pairId)
-      if (idx !== -1) {
-        const newIdx = idx + direction
-        if (newIdx >= 0 && newIdx < items.length) {
-          ;[items[idx], items[newIdx]] = [items[newIdx], items[idx]]
-          touch(tid)
-          await save()
-        }
-      }
-    }
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      const idx = thread.items.indexOf(pairId)
+      const newIdx = idx + direction
+      if (idx === -1 || newIdx < 0 || newIdx >= thread.items.length) return false
+      ;[thread.items[idx], thread.items[newIdx]] = [thread.items[newIdx], thread.items[idx]]
+      touch(candidate, tid)
+      return true
+    })
   }
 
   async function moveToStartOfThread(tid: string, pairId: string) {
-    if (threads.value[tid]) {
-      const items = threads.value[tid].items
-      const idx = items.indexOf(pairId)
-      if (idx > 0) {
-        items.splice(idx, 1)
-        items.unshift(pairId)
-        touch(tid)
-        await save()
-      }
-    }
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      const idx = thread.items.indexOf(pairId)
+      if (idx <= 0) return false
+      thread.items.splice(idx, 1)
+      thread.items.unshift(pairId)
+      touch(candidate, tid)
+      return true
+    })
   }
 
   async function moveToEndOfThread(tid: string, pairId: string) {
-    if (threads.value[tid]) {
-      const items = threads.value[tid].items
-      const idx = items.indexOf(pairId)
-      if (idx !== -1 && idx < items.length - 1) {
-        items.splice(idx, 1)
-        items.push(pairId)
-        touch(tid)
-        await save()
-      }
-    }
+    await commitMutation((candidate) => {
+      const thread = candidate[tid]
+      if (!thread) return false
+      const idx = thread.items.indexOf(pairId)
+      if (idx === -1 || idx === thread.items.length - 1) return false
+      thread.items.splice(idx, 1)
+      thread.items.push(pairId)
+      touch(candidate, tid)
+      return true
+    })
   }
 
   return {

@@ -28,6 +28,7 @@ const sourceOptions = [
   { label: 'Gemini', value: 'gemini' },
   { label: 'Copilot', value: 'copilot' },
   { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Grok', value: 'grok' },
   { label: 'Lens', value: 'lens' },
 ]
 

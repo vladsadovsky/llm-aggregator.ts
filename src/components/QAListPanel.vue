@@ -342,14 +342,23 @@ const moveMenu = ref<InstanceType<typeof Menu> | null>(null)
 
 watch(displayedItems, (items) => selection.prune(items))
 
-function moveQAToThread(id: string, targetTid: string) {
+async function moveQAToThread(id: string, targetTid: string) {
   const fromTid = threadStore.selectedThreadId
-  if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
-    void threadStore.moveToThread(fromTid, targetTid, id)
-  } else {
-    void threadStore.addToThread(targetTid, id)
+  try {
+    if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
+      await threadStore.moveToThread(fromTid, targetTid, id)
+    } else {
+      await threadStore.addToThread(targetTid, id)
+    }
+    toast.add({ severity: 'success', summary: 'Moved to thread', life: 1500 })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Move failed',
+      detail: err instanceof Error ? err.message : 'Could not move the Q&A to that thread.',
+      life: 5000,
+    })
   }
-  toast.add({ severity: 'success', summary: 'Moved to thread', life: 1500 })
 }
 
 function copyQAToThread(id: string, targetTid: string) {
@@ -491,15 +500,24 @@ function bulkDelete() {
 async function bulkMoveToThread(targetTid: string) {
   const ids = [...selection.selectedIds.value]
   const fromTid = threadStore.selectedThreadId
-  for (const id of ids) {
-    if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
-      await threadStore.moveToThread(fromTid, targetTid, id)
-    } else {
-      await threadStore.addToThread(targetTid, id)
+  try {
+    for (const id of ids) {
+      if (fromTid && threadStore.threads[fromTid]?.items.includes(id)) {
+        await threadStore.moveToThread(fromTid, targetTid, id)
+      } else {
+        await threadStore.addToThread(targetTid, id)
+      }
     }
+    selection.clear()
+    toast.add({ severity: 'success', summary: `Moved ${ids.length} to thread`, life: 2000 })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Move failed',
+      detail: err instanceof Error ? err.message : 'Could not move the selected Q&As to that thread.',
+      life: 5000,
+    })
   }
-  selection.clear()
-  toast.add({ severity: 'success', summary: `Moved ${ids.length} to thread`, life: 2000 })
 }
 
 async function bulkCopyToThread(targetTid: string) {

@@ -37,6 +37,35 @@ describe('thread import persistence', () => {
     expect(store.threads[tid]?.items).toEqual(['qa-1', 'qa-2'])
     expect(store.threads[tid]?.tags).toEqual(['claude', 'migration'])
   })
+
+  it('does not publish a new thread when its durable save fails', async () => {
+    const store = useThreadStore()
+    window.api.threadsSave = vi.fn(async () => { throw new Error('disk full') })
+
+    await expect(store.createThread('Not persisted')).rejects.toThrow('disk full')
+    expect(store.threads).toEqual({})
+  })
+})
+
+describe('ordinary thread mutation persistence', () => {
+  it('keeps the rendered map unchanged when an edit cannot be saved', async () => {
+    const store = useThreadStore()
+    store.threads = { t1: { name: 'Original', items: ['qa-1'] } }
+    window.api.threadsSave = vi.fn(async () => { throw new Error('disk full') })
+
+    await expect(store.renameThread('t1', 'Unsaved')).rejects.toThrow('disk full')
+    expect(store.threads.t1).toEqual({ name: 'Original', items: ['qa-1'] })
+  })
+
+  it('does not remove a source membership when the destination is missing', async () => {
+    const store = useThreadStore()
+    store.threads = { source: { name: 'Source', items: ['qa-1'] } }
+    window.api.threadsSave = vi.fn()
+
+    await expect(store.moveToThread('source', 'missing', 'qa-1')).rejects.toThrow('destination thread')
+    expect(store.threads.source.items).toEqual(['qa-1'])
+    expect(window.api.threadsSave).not.toHaveBeenCalled()
+  })
 })
 
 describe('redundant-thread repair projection', () => {

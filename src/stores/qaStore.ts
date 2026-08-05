@@ -62,6 +62,9 @@ export const useQAStore = defineStore('qa', () => {
       if (sequence === loadSequence) {
         pairs.value = loaded
         pruneStoredIds()
+        if (selectedPairId.value && !pairs.value[selectedPairId.value]) {
+          selectedPairId.value = null
+        }
       }
     } finally {
       unsubscribe()
@@ -101,26 +104,56 @@ export const useQAStore = defineStore('qa', () => {
     persistRecent()
   }
 
+  /**
+   * An IPC rejection does not prove that a mutating main-process operation did
+   * not commit: Electron can lose the response after a durable write. Never
+   * replay a create/update/delete blindly; replace renderer state from disk and
+   * let the caller report the original failure.
+   */
+  async function reconcileAfterMutationFailure() {
+    try {
+      await loadAllPairs()
+    } catch {
+      // Preserve the original mutation error. A later reload remains available
+      // if the archive cannot be read while handling this failure.
+    }
+  }
+
   async function createPair(data: QACreateData): Promise<QAPairData> {
-    const pair = await withRetry(() => window.api.qaCreate(data))
-    pairs.value[pair.id] = pair
-    return pair
+    try {
+      const pair = await window.api.qaCreate(data)
+      pairs.value[pair.id] = pair
+      return pair
+    } catch (error) {
+      await reconcileAfterMutationFailure()
+      throw error
+    }
   }
 
   async function updatePair(id: string, data: QAUpdateData): Promise<QAPairData | null> {
-    const pair = await withRetry(() => window.api.qaUpdate(id, data))
-    if (pair) {
-      pairs.value[pair.id] = pair
+    try {
+      const pair = await window.api.qaUpdate(id, data)
+      if (pair) {
+        pairs.value[pair.id] = pair
+      }
+      return pair
+    } catch (error) {
+      await reconcileAfterMutationFailure()
+      throw error
     }
-    return pair
   }
 
   async function deletePair(id: string) {
-    await withRetry(() => window.api.qaDelete(id))
-    delete pairs.value[id]
-    pruneStoredIds()
-    if (selectedPairId.value === id) {
-      selectedPairId.value = null
+    try {
+      await window.api.qaDelete(id)
+      delete pairs.value[id]
+      pruneStoredIds()
+      if (selectedPairId.value === id) {
+        selectedPairId.value = null
+      }
+    } catch (error) {
+      await reconcileAfterMutationFailure()
+      throw error
     }
   }
 
