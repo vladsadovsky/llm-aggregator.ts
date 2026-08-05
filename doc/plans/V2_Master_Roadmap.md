@@ -265,6 +265,26 @@ implementation program.
 **Possible future outcome:** Individually approved tactical slices may improve discoverability,
 manual correction, metadata usefulness, or legacy-field cleanup without adopting the full program.
 
+## Post-review scope boundary — LLM follow-up (2026-08-05)
+
+The LLM/code-quality follow-up is recorded in
+`doc/dev_process/DesignReview_codex_llm_followup_for_release_2.2.md`. Its
+correctness and Electron-contract slices are complete; the remaining LLM
+quality work is deliberately limited to bounded model context, safe
+review-first metadata/tag disposition, explicit approval for new tags, and
+clear provider/embed readiness in the UI. These are product-facing, bounded
+changes and remain eligible for separately approved implementation.
+
+The following are intentionally **deferred** and do not gate v2 or the LLM
+follow-up: decomposing the large renderer coordinators (`App.vue`, thread,
+Q&A, and settings surfaces), a generic OpenAI-compatible provider core, a
+generic provider-settings form, and a generic suggestion-application
+framework. Each would introduce broad abstractions or a cross-cutting
+refactor without a current product case. Revisit one only when a concrete
+feature makes its boundary and payoff clear; it must have its own approved
+scope. This is separate from the already-deferred full AI-metadata migration
+above.
+
 ---
 
 ## Phase 1 — Near-term UX refinement

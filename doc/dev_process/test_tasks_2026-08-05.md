@@ -34,6 +34,17 @@ For every subsequent design or implementation step completed today, add its prop
 3. Edit an existing Q&A and confirm Grok also appears in the edit-form Source list.
 4. If using keyboard source selection, confirm the displayed Alt+number ordering selects the expected source.
 
+### 5. Renderer-to-main bridge smoke check
+
+1. Launch the application and open Settings; load and save an unchanged setting.
+2. Create, edit, and delete a test Q&A, then create and rename a test thread.
+3. Confirm no `window.api` errors, structured-clone errors, or missing-function errors appear in the developer console.
+
+### 6. Roadmap scope boundary
+
+1. Read the **Post-review scope boundary — LLM follow-up** section in the V2 roadmap.
+2. Confirm it preserves the decision: small product-facing LLM quality work can be scoped separately, while renderer decomposition and generic provider/settings/suggestion frameworks are explicitly deferred and non-gating.
+
 ## Follow-up observations
 
 Record any unexpected toast, missing saved change after restart, incorrect Q&A membership, duplicate Q&A, or stale selection here before filing a fix.
