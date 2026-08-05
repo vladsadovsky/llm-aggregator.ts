@@ -4,7 +4,59 @@ import { join } from 'path'
 import { app } from 'electron'
 import { getEmbeddingProvider } from './llm/providerFactory'
 import { getPair, listAllPairs } from './qaPairService'
+import { loadSettings } from './settingsService'
+import {
+  getEmbedReadiness,
+  markEmbedReady,
+  markEmbedUnavailable,
+  readinessMatches,
+} from './llm/embedReadiness'
+import { assertCanCallLlm } from './llm/llmCallGuard'
 import { debugLog, debugError } from './logger'
+
+/** Fingerprint of the active embed configuration so readiness invalidates on change. */
+function embedFingerprint(): string {
+  const settings = loadSettings()
+  const connections = settings.providerConnections
+  return [
+    settings.llmProvider,
+    settings.llmModel,
+    connections?.ollama?.endpoint ?? '',
+    connections?.ollama?.embeddingModel ?? '',
+    connections?.azure?.endpoint ?? '',
+    connections?.azure?.embeddingModel ?? '',
+    connections?.azure?.apiVersion ?? '',
+    connections?.selfHostedOpenAi?.endpoint ?? '',
+    connections?.selfHostedOpenAi?.embeddingModel ?? '',
+  ].join('|')
+}
+
+function noteEmbedSuccess(): void {
+  markEmbedReady(embedFingerprint())
+}
+
+function noteEmbedFailure(err: unknown): never {
+  const reason = err instanceof Error && err.message
+    ? err.message
+    : 'Embeddings are unavailable for the selected provider/model.'
+  markEmbedUnavailable(embedFingerprint(), reason)
+  throw err instanceof Error ? err : new Error(reason)
+}
+
+/**
+ * Fail closed with a clear message when a prior probe already showed embeddings
+ * are unavailable for the current provider/model fingerprint.
+ */
+function assertEmbedReadyOrUnknown(): void {
+  const fingerprint = embedFingerprint()
+  const readiness = getEmbedReadiness()
+  if (readinessMatches(fingerprint) && readiness.state === 'unavailable') {
+    throw new Error(
+      readiness.reason
+        ?? 'Embeddings are unavailable for the selected provider/model. Semantic search cannot run.',
+    )
+  }
+}
 
 interface EmbeddingEntry {
   hash: string
@@ -68,9 +120,17 @@ export async function generateEmbedding(id: string): Promise<void> {
   }
 
   debugLog('embeddingService', 'generating embedding for:', id)
+  assertCanCallLlm({ capability: 'embed' })
+  assertEmbedReadyOrUnknown()
   const provider = getEmbeddingProvider()
   const text = `${pair.question}\n\n${pair.answer}`
-  const vector = await provider.embed(text)
+  let vector: number[]
+  try {
+    vector = await provider.embed(text)
+    noteEmbedSuccess()
+  } catch (err) {
+    noteEmbedFailure(err)
+  }
 
   store[id] = { hash, vector }
   saveStore(store)
@@ -82,6 +142,8 @@ export async function generateEmbedding(id: string): Promise<void> {
  * Returns counts: { total, generated, skipped }.
  */
 export async function generateAllEmbeddings(): Promise<{ total: number; generated: number; skipped: number }> {
+  assertCanCallLlm({ capability: 'embed' })
+  assertEmbedReadyOrUnknown()
   const pairs = listAllPairs()
   const store = loadStore()
   const provider = getEmbeddingProvider()
@@ -101,9 +163,14 @@ export async function generateAllEmbeddings(): Promise<{ total: number; generate
 
     debugLog('embeddingService', 'generating embedding for:', id)
     const text = `${pair.question}\n\n${pair.answer}`
-    const vector = await provider.embed(text)
-    store[id] = { hash, vector }
-    generated++
+    try {
+      const vector = await provider.embed(text)
+      noteEmbedSuccess()
+      store[id] = { hash, vector }
+      generated++
+    } catch (err) {
+      noteEmbedFailure(err)
+    }
   }
 
   if (generated > 0) {
@@ -117,8 +184,16 @@ export async function generateAllEmbeddings(): Promise<{ total: number; generate
  * Find the top-K most similar QA ids to the given query text.
  */
 export async function semanticSearch(query: string, topK: number): Promise<string[]> {
+  assertCanCallLlm({ capability: 'embed' })
+  assertEmbedReadyOrUnknown()
   const provider = getEmbeddingProvider()
-  const queryVector = await provider.embed(query)
+  let queryVector: number[]
+  try {
+    queryVector = await provider.embed(query)
+    noteEmbedSuccess()
+  } catch (err) {
+    noteEmbedFailure(err)
+  }
 
   const store = loadStore()
   const entries = Object.entries(store)
