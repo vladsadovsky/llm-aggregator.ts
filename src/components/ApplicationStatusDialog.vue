@@ -16,8 +16,10 @@ const providers = ref<ProviderDescriptor[]>([])
 const modelCatalog = ref<ModelCatalogResult | null>(null)
 const modelCatalogError = ref('')
 
-function keyStatus(provider: string): string {
-  const key = provider === 'anthropic' ? 'anthropicApiKey' : 'openaiApiKey'
+function keyStatus(providerId: string): string {
+  const descriptor = providers.value.find((provider) => provider.id === providerId)
+  const key = descriptor?.apiKeyField
+  if (!key) return descriptor?.capabilities?.local ? 'Local provider (no API key)' : 'Not required'
   const status = secrets.value?.keys[key]
   if (!status?.hasKey) return 'Not configured'
   return status.source === 'env' ? 'Development environment' : 'Encrypted local storage'

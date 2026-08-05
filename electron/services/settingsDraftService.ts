@@ -18,7 +18,12 @@ import type { AppSettings } from './settingsService'
 import type { AppSecrets } from './secretsService'
 import { getProviderDescriptor } from './llm/providerRegistry'
 
-const KNOWN_SECRET_FIELDS: ReadonlyArray<keyof AppSecrets> = ['openaiApiKey', 'anthropicApiKey']
+const KNOWN_SECRET_FIELDS: ReadonlyArray<keyof AppSecrets> = [
+  'openaiApiKey',
+  'anthropicApiKey',
+  'azureApiKey',
+  'selfHostedApiKey',
+]
 
 // ─── Revision (optimistic concurrency) ───────────────────────────────────────
 
@@ -48,6 +53,7 @@ export type SettingsValidationReason =
   | 'missing-model'
   | 'tag-limits'
   | 'missing-data-directory'
+  | 'missing-provider-connection'
 
 export interface SettingsValidation {
   ok: boolean
@@ -56,13 +62,28 @@ export interface SettingsValidation {
 
 /** Validate provider/capability/model ownership and bounds before any write. */
 export function validateSettings(settings: AppSettings): SettingsValidation {
-  const descriptor = getProviderDescriptor(settings.llmProvider)
+  // Honor experimental toggles so a draft cannot select a disabled experimental provider.
+  const descriptor = getProviderDescriptor(settings.llmProvider, settings.experimentalFeatures)
   if (!descriptor) return { ok: false, reason: 'unknown-provider' }
   if (!descriptor.enabled) return { ok: false, reason: 'provider-disabled' }
   if (!descriptor.capabilities.complete) return { ok: false, reason: 'provider-cannot-complete' }
   if (!settings.llmModel.trim()) return { ok: false, reason: 'missing-model' }
   if (settings.tagSoftLimit > settings.tagHardLimit) return { ok: false, reason: 'tag-limits' }
   if (!settings.dataDirectory.trim()) return { ok: false, reason: 'missing-data-directory' }
+
+  const providerId = settings.llmProvider.trim().toLowerCase()
+  if (providerId === 'azure') {
+    const azure = settings.providerConnections?.azure
+    if (!azure?.endpoint?.trim() || !azure.apiVersion?.trim()) {
+      return { ok: false, reason: 'missing-provider-connection' }
+    }
+  } else if (providerId === 'self-hosted-openai') {
+    const selfHosted = settings.providerConnections?.selfHostedOpenAi
+    if (!selfHosted?.endpoint?.trim()) {
+      return { ok: false, reason: 'missing-provider-connection' }
+    }
+  }
+
   return { ok: true }
 }
 

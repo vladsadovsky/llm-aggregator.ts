@@ -56,6 +56,35 @@ describe('validateSettings', () => {
   it('rejects an empty data directory', () => {
     expect(validateSettings(settings({ dataDirectory: '' }))).toMatchObject({ reason: 'missing-data-directory' })
   })
+  it('rejects azure without endpoint/apiVersion', () => {
+    expect(
+      validateSettings(settings({
+        llmProvider: 'azure',
+        experimentalFeatures: { azureOpenAiProvider: true },
+        providerConnections: { azure: { endpoint: '', apiVersion: '' } },
+      })),
+    ).toMatchObject({ reason: 'missing-provider-connection' })
+  })
+  it('rejects a disabled experimental provider', () => {
+    expect(
+      validateSettings(settings({
+        llmProvider: 'ollama',
+        experimentalFeatures: {},
+      })),
+    ).toMatchObject({ reason: 'provider-disabled' })
+  })
+  it('accepts azure secret fields on apply path ownership list', () => {
+    // Ownership is enforced in applyDraft; validateSettings only checks shape.
+    expect(
+      validateSettings(settings({
+        llmProvider: 'azure',
+        experimentalFeatures: { azureOpenAiProvider: true },
+        providerConnections: {
+          azure: { endpoint: 'https://my.openai.azure.com', apiVersion: '2024-10-01' },
+        },
+      })),
+    ).toEqual({ ok: true })
+  })
 })
 
 describe('validateDataDirectory (probe only)', () => {
@@ -111,6 +140,21 @@ describe('applyDraft', () => {
       ...over,
     }
   }
+
+  it('accepts azure and self-hosted secret fields', () => {
+    const current = settings()
+    const d = deps(current)
+    const res = applyDraft(
+      {
+        settings: current,
+        secretUpdates: { azureApiKey: 'az', selfHostedApiKey: 'sh' },
+        expectedRevision: settingsRevision(current),
+      },
+      d,
+    )
+    expect(res.status).toBe('applied')
+    expect(d.savedSecrets).toEqual([{ azureApiKey: 'az', selfHostedApiKey: 'sh' }])
+  })
 
   it('applies settings + secrets when the revision matches', () => {
     const current = settings()
