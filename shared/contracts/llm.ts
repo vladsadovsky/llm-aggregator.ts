@@ -14,6 +14,15 @@ export const ListModelsArgs = z.tuple([
   boundedString(1024).optional(),
 ])
 
+/** Job id for cancellable suggestion work (UUID). */
+export const SuggestionJobIdSchema = boundedString(64, 1)
+
+/** Suggest QA / thread title with an optional cancel job id. */
+export const SuggestWithJobArgs = z.tuple([
+  EntityId,
+  SuggestionJobIdSchema.optional(),
+])
+
 /** Optional explicit id set for an annotation pass. */
 export const AnnotationIdsSchema = z.array(EntityId).max(200_000).optional()
 

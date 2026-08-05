@@ -38,6 +38,8 @@ import {
   InsightTextSchema,
   AnnotationIdsSchema,
   ApplyAnnotationsSchema,
+  SuggestWithJobArgs,
+  SuggestionJobIdSchema,
 } from './llm'
 import { TagDictionarySchema, AliasesSchema } from './tags'
 
@@ -98,8 +100,10 @@ export const channelArgs = {
   [CH.aiResetTokenStats]: noArgs,
   [CH.aiGenerateAnnotations]: z.tuple([AnnotationIdsSchema]),
   [CH.aiApplyAnnotations]: z.tuple([ApplyAnnotationsSchema]),
-  [CH.aiSuggestQa]: z.tuple([EntityId]),
-  [CH.aiSuggestThreadTitle]: z.tuple([EntityId]),
+  [CH.aiSuggestQa]: SuggestWithJobArgs,
+  [CH.aiSuggestThreadTitle]: SuggestWithJobArgs,
+  [CH.aiBeginSuggestionJob]: noArgs,
+  [CH.aiCancelSuggestionJob]: z.tuple([SuggestionJobIdSchema]),
 
   // Archive health / maintenance
   [CH.archiveHealthCheck]: noArgs,

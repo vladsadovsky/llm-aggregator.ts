@@ -391,8 +391,10 @@ export interface ElectronAPI {
   aiConceptSummary: (concept: string) => Promise<string>
   aiGenerateAnnotations: (ids?: string[]) => Promise<AnnotationProposal[]>
   aiApplyAnnotations: (approved: Array<{ id: string; confidence: ConfidenceLevel }>) => Promise<void>
-  aiSuggestQa: (id: string) => Promise<QaSuggestion>
-  aiSuggestThreadTitle: (threadId: string) => Promise<string>
+  aiSuggestQa: (id: string, jobId?: string) => Promise<QaSuggestion>
+  aiSuggestThreadTitle: (threadId: string, jobId?: string) => Promise<string>
+  aiBeginSuggestionJob: () => Promise<{ jobId: string }>
+  aiCancelSuggestionJob: (jobId: string) => Promise<void>
 
   // Archive Health
   archiveHealthCheck: () => Promise<HealthReport>
@@ -592,8 +594,10 @@ const api: ElectronAPI = {
   aiConceptSummary: (concept) => call(CH.aiConceptSummary, concept),
   aiGenerateAnnotations: (ids) => call(CH.aiGenerateAnnotations, ids),
   aiApplyAnnotations: (approved) => call(CH.aiApplyAnnotations, approved),
-  aiSuggestQa: (id) => call(CH.aiSuggestQa, id),
-  aiSuggestThreadTitle: (threadId) => call(CH.aiSuggestThreadTitle, threadId),
+  aiSuggestQa: (id, jobId) => call(CH.aiSuggestQa, id, jobId),
+  aiSuggestThreadTitle: (threadId, jobId) => call(CH.aiSuggestThreadTitle, threadId, jobId),
+  aiBeginSuggestionJob: () => call(CH.aiBeginSuggestionJob),
+  aiCancelSuggestionJob: (jobId) => call(CH.aiCancelSuggestionJob, jobId),
 
   // Archive Health
   archiveHealthCheck: () => call(CH.archiveHealthCheck),

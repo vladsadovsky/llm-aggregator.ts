@@ -58,6 +58,8 @@ export const CH = {
   aiApplyAnnotations: 'ai:applyAnnotations',
   aiSuggestQa: 'ai:suggestQa',
   aiSuggestThreadTitle: 'ai:suggestThreadTitle',
+  aiBeginSuggestionJob: 'ai:beginSuggestionJob',
+  aiCancelSuggestionJob: 'ai:cancelSuggestionJob',
 
   // Archive health / maintenance
   archiveHealthCheck: 'archive:healthCheck',

@@ -42,6 +42,7 @@ const tagsAutoCompleteRef = ref<InstanceType<typeof AutoComplete> | null>(null)
 const urlError = ref('')
 const suggesting = ref(false)
 const suggestionMessage = ref('')
+const activeSuggestionJobId = ref<string | null>(null)
 
 watch(url, (newUrl: string) => {
   if (!newUrl.trim()) {
@@ -102,11 +103,25 @@ function commitPendingTags() {
   }
 }
 
+async function cancelActiveSuggestionJob() {
+  const jobId = activeSuggestionJobId.value
+  if (!jobId) return
+  activeSuggestionJobId.value = null
+  try {
+    await window.api.aiCancelSuggestionJob(jobId)
+  } catch {
+    // Best-effort cancel; the job TTL also expires abandoned controllers.
+  }
+}
+
 async function suggestTitleAndTags() {
   suggesting.value = true
   suggestionMessage.value = ''
   try {
-    const suggestion = await window.api.aiSuggestQa(props.pair.id)
+    const { jobId } = await window.api.aiBeginSuggestionJob()
+    activeSuggestionJobId.value = jobId
+    const suggestion = await window.api.aiSuggestQa(props.pair.id, jobId)
+    if (activeSuggestionJobId.value !== jobId) return
     title.value = suggestion.title
     // Suggestions are deliberately draft-only. Merge rather than discard a
     // user's in-progress edits; Save remains the explicit approval action.
@@ -123,8 +138,11 @@ async function suggestTitleAndTags() {
     }
     suggestionMessage.value = 'AI suggestions were added to this draft. Review and Save to apply them.'
   } catch (err) {
-    suggestionMessage.value = err instanceof Error ? err.message : 'Could not generate suggestions.'
+    if (activeSuggestionJobId.value) {
+      suggestionMessage.value = err instanceof Error ? err.message : 'Could not generate suggestions.'
+    }
   } finally {
+    activeSuggestionJobId.value = null
     suggesting.value = false
   }
 }
@@ -195,6 +213,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('llm:save-current-edit', onGlobalSaveRequest)
   window.removeEventListener('llm:cancel-current-edit', onGlobalCancelRequest)
+  void cancelActiveSuggestionJob()
 })
 </script>
 

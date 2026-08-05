@@ -40,7 +40,12 @@ import { getTokenStats, resetTokenStats } from '../services/llm/tokenTracker'
 import { listLlmProviders, listProviderModels } from '../services/llm/modelCatalogService'
 import { sessionBriefing, priorArtCheck, steelmanRetrieval, questionSeeding, conceptStateSummary } from '../services/insightsService'
 import { generateAnnotations, applyAnnotations } from '../services/annotationService'
-import { suggestQa, suggestThreadTitle } from '../services/llm/suggestionService'
+import {
+  abortSuggestionJob,
+  startSuggestionJob,
+  suggestQa,
+  suggestThreadTitle,
+} from '../services/llm/suggestionService'
 import { runHealthCheck } from '../services/healthService'
 import {
   loadDictionary,
@@ -227,8 +232,12 @@ export function registerIpcHandlers(policy: SenderPolicy): void {
   r.handle(CH.aiResetTokenStats, () => resetTokenStats())
   r.handle(CH.aiGenerateAnnotations, (_event, ids) => generateAnnotations(ids))
   r.handle(CH.aiApplyAnnotations, (_event, approved) => applyAnnotations(approved))
-  r.handle(CH.aiSuggestQa, (_event, id) => suggestQa(id))
-  r.handle(CH.aiSuggestThreadTitle, (_event, id) => suggestThreadTitle(id))
+  r.handle(CH.aiBeginSuggestionJob, () => startSuggestionJob())
+  r.handle(CH.aiCancelSuggestionJob, (_event, jobId) => {
+    abortSuggestionJob(jobId)
+  })
+  r.handle(CH.aiSuggestQa, (_event, id, jobId) => suggestQa(id, jobId))
+  r.handle(CH.aiSuggestThreadTitle, (_event, id, jobId) => suggestThreadTitle(id, jobId))
 
   // ─── Archive Health ─────────────────────────────────────────
   r.handle(CH.archiveHealthCheck, () => runHealthCheck())

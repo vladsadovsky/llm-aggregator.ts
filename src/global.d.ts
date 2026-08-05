@@ -30,6 +30,13 @@ export interface ProviderConnectionSettings {
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
 export type LatencyTier = 'fast' | 'medium' | 'slow' | 'unknown'
 
+export interface ProviderCapabilities {
+  complete: boolean
+  embed: boolean
+  streaming: boolean
+  local: boolean
+}
+
 export interface ProviderDescriptor {
   id: string
   label: string
@@ -38,6 +45,8 @@ export interface ProviderDescriptor {
   comingSoon?: boolean
   apiKeyField?: 'openaiApiKey' | 'anthropicApiKey' | 'azureApiKey' | 'selfHostedApiKey'
   supportsModelDiscovery: boolean
+  /** Declared capabilities — the UI selects features by these, not provider name. */
+  capabilities?: ProviderCapabilities
   notes?: string
 }
 
@@ -395,8 +404,10 @@ export interface ElectronAPI {
   aiConceptSummary: (concept: string) => Promise<string>
   aiGenerateAnnotations: (ids?: string[]) => Promise<AnnotationProposal[]>
   aiApplyAnnotations: (approved: Array<{ id: string; confidence: ConfidenceLevel }>) => Promise<void>
-  aiSuggestQa: (id: string) => Promise<QaSuggestion>
-  aiSuggestThreadTitle: (threadId: string) => Promise<string>
+  aiSuggestQa: (id: string, jobId?: string) => Promise<QaSuggestion>
+  aiSuggestThreadTitle: (threadId: string, jobId?: string) => Promise<string>
+  aiBeginSuggestionJob: () => Promise<{ jobId: string }>
+  aiCancelSuggestionJob: (jobId: string) => Promise<void>
 
   // Archive Health
   archiveHealthCheck: () => Promise<HealthReport>

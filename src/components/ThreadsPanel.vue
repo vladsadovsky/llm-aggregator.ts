@@ -196,6 +196,19 @@ async function finishRename() {
   editingThreadId.value = null
 }
 
+const activeThreadTitleJobId = ref<string | null>(null)
+
+async function cancelActiveThreadTitleJob() {
+  const jobId = activeThreadTitleJobId.value
+  if (!jobId) return
+  activeThreadTitleJobId.value = null
+  try {
+    await window.api.aiCancelSuggestionJob(jobId)
+  } catch {
+    // Best-effort cancel; the job TTL also expires abandoned controllers.
+  }
+}
+
 async function suggestThreadTitle() {
   if (!editingThreadId.value) return
   generatingThreadTitle.value = true
@@ -203,10 +216,17 @@ async function suggestThreadTitle() {
   try {
     // This only changes the visible rename draft. The user must still choose
     // Save before the thread record is written.
-    editingName.value = await window.api.aiSuggestThreadTitle(editingThreadId.value)
+    const { jobId } = await window.api.aiBeginSuggestionJob()
+    activeThreadTitleJobId.value = jobId
+    const title = await window.api.aiSuggestThreadTitle(editingThreadId.value, jobId)
+    if (activeThreadTitleJobId.value !== jobId) return
+    editingName.value = title
   } catch (err) {
-    threadTitleSuggestionError.value = err instanceof Error ? err.message : 'Could not generate a thread title.'
+    if (activeThreadTitleJobId.value) {
+      threadTitleSuggestionError.value = err instanceof Error ? err.message : 'Could not generate a thread title.'
+    }
   } finally {
+    activeThreadTitleJobId.value = null
     generatingThreadTitle.value = false
   }
 }
@@ -462,6 +482,7 @@ onUnmounted(() => {
   window.removeEventListener('llm:show-all-qas', showAllQAs)
   window.removeEventListener('llm:show-unthreaded', showUnthreaded)
   if (filterDebounce) clearTimeout(filterDebounce)
+  void cancelActiveThreadTitleJob()
 })
 </script>
 
