@@ -1,12 +1,15 @@
 /**
- * Azure OpenAI adapter (Phase 0.1). Strict endpoint policy; declares complete +
- * embed. Not wired into the live factory/UI yet — exposure is gated behind the
- * `azureOpenAiProvider` flag and lands in Phase 2.5.
+ * Azure OpenAI adapter. Strict endpoint policy; declares complete + embed.
+ * Exposure is gated behind the `azureOpenAiProvider` experimental flag.
  */
 import type { LLMProvider } from './types'
 import { validateAzureEndpoint } from './azureEndpointPolicy'
 import { recordUsage } from './usageLedger'
-import type { HttpFetch } from './ollamaProvider'
+import {
+  fetchJsonBounded,
+  LlmTransportError,
+  type HttpFetch,
+} from './httpJson'
 
 export interface AzureConfig {
   endpoint: string
@@ -45,36 +48,52 @@ export class AzureOpenAIProvider implements LLMProvider {
     return `${this.origin}/openai/deployments/${encodeURIComponent(deployment)}/${op}?api-version=${encodeURIComponent(this.apiVersion)}`
   }
 
-  private async post(url: string, body: unknown): Promise<unknown> {
-    let res
-    try {
-      res = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'api-key': this.apiKey },
-        body: JSON.stringify(body),
-      })
-    } catch {
-      throw new Error('Cannot reach the Azure OpenAI endpoint. Check the endpoint and your network.')
+  private mapError(err: unknown): never {
+    if (err instanceof LlmTransportError) {
+      if (err.code === 'network') {
+        throw new Error('Cannot reach the Azure OpenAI endpoint. Check the endpoint and your network.')
+      }
+      if (err.code === 'http-error') {
+        if (err.status === 401 || err.status === 403) throw new Error('Azure OpenAI rejected the API key.')
+        if (err.status === 429) throw new Error('Azure OpenAI rate limit reached. Try again shortly.')
+        throw new Error(`Azure OpenAI request failed (HTTP ${err.status}).`)
+      }
+      if (err.code === 'malformed-json') {
+        throw new Error('Azure OpenAI returned malformed JSON.')
+      }
+      throw new Error(err.message)
     }
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) throw new Error('Azure OpenAI rejected the API key.')
-      if (res.status === 429) throw new Error('Azure OpenAI rate limit reached. Try again shortly.')
-      throw new Error(`Azure OpenAI request failed (HTTP ${res.status}).`)
-    }
+    throw err
+  }
+
+  private async post(url: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
     try {
-      return await res.json()
-    } catch {
-      throw new Error('Azure OpenAI returned malformed JSON.')
+      return await fetchJsonBounded(
+        url,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'api-key': this.apiKey },
+          body: JSON.stringify(body),
+          signal,
+        },
+        this.fetchImpl,
+      )
+    } catch (err) {
+      this.mapError(err)
     }
   }
 
-  async complete(userPrompt: string, systemPrompt: string): Promise<string> {
+  async complete(
+    userPrompt: string,
+    systemPrompt: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<string> {
     const data = (await this.post(this.url(this.deployment, 'chat/completions'), {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-    })) as {
+    }, options?.signal)) as {
       choices?: Array<{ message?: { content?: string } }>
       usage?: { prompt_tokens?: number; completion_tokens?: number }
     }
@@ -88,8 +107,8 @@ export class AzureOpenAIProvider implements LLMProvider {
     return data.choices?.[0]?.message?.content ?? ''
   }
 
-  async embed(text: string): Promise<number[]> {
-    const data = (await this.post(this.url(this.embedDeployment, 'embeddings'), { input: text })) as {
+  async embed(text: string, options?: { signal?: AbortSignal }): Promise<number[]> {
+    const data = (await this.post(this.url(this.embedDeployment, 'embeddings'), { input: text }, options?.signal)) as {
       data?: Array<{ embedding?: number[] }>
       usage?: { prompt_tokens?: number }
     }
@@ -107,7 +126,23 @@ export class AzureOpenAIProvider implements LLMProvider {
   }
 
   async testConnection(): Promise<void> {
-    // A minimal completion is the most reliable deployment-level check.
-    await this.complete('ping', 'Reply with OK.')
+    // Prefer a cheap deployments list when the account allows it; fall back to a
+    // tiny completion so a locked-down key still gets a conclusive probe.
+    try {
+      await fetchJsonBounded(
+        `${this.origin}/openai/deployments?api-version=${encodeURIComponent(this.apiVersion)}`,
+        {
+          method: 'GET',
+          headers: { 'api-key': this.apiKey },
+        },
+        this.fetchImpl,
+      )
+    } catch (err) {
+      if (err instanceof LlmTransportError && err.code === 'http-error' && (err.status === 404 || err.status === 405)) {
+        await this.complete('ping', 'Reply with OK.')
+        return
+      }
+      this.mapError(err)
+    }
   }
 }

@@ -16,14 +16,19 @@ export interface TestableProvider {
   testConnection(): Promise<void>
 }
 
+export interface LlmCallOptions {
+  /** Optional abort signal from a suggestion/job controller. */
+  signal?: AbortSignal
+}
+
 export interface CompletionProvider extends TestableProvider {
   /** Send a prompt and return the text response. */
-  complete(userPrompt: string, systemPrompt: string): Promise<string>
+  complete(userPrompt: string, systemPrompt: string, options?: LlmCallOptions): Promise<string>
 }
 
 export interface EmbeddingProvider extends TestableProvider {
   /** Generate an embedding vector for the given text. */
-  embed(text: string): Promise<number[]>
+  embed(text: string, options?: LlmCallOptions): Promise<number[]>
 }
 
 /**

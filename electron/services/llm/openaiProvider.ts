@@ -45,15 +45,22 @@ export class OpenAIProvider implements LLMProvider {
     this.model = model
   }
 
-  async complete(userPrompt: string, systemPrompt: string): Promise<string> {
+  async complete(
+    userPrompt: string,
+    systemPrompt: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<string> {
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      })
+      const response = await this.client.chat.completions.create(
+        {
+          model: this.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        },
+        options?.signal ? { signal: options.signal } : undefined,
+      )
       if (response.usage) {
         recordUsage({
           capability: 'complete',
@@ -65,16 +72,22 @@ export class OpenAIProvider implements LLMProvider {
       }
       return response.choices[0]?.message?.content ?? ''
     } catch (err) {
+      if (options?.signal?.aborted) {
+        throw new Error('The request was cancelled.')
+      }
       wrapNetworkError(err)
     }
   }
 
-  async embed(text: string): Promise<number[]> {
+  async embed(text: string, options?: { signal?: AbortSignal }): Promise<number[]> {
     try {
-      const response = await this.client.embeddings.create({
-        model: EMBEDDING_MODEL,
-        input: text,
-      })
+      const response = await this.client.embeddings.create(
+        {
+          model: EMBEDDING_MODEL,
+          input: text,
+        },
+        options?.signal ? { signal: options.signal } : undefined,
+      )
       if (response.usage) {
         recordUsage({
           capability: 'embed',
@@ -87,6 +100,9 @@ export class OpenAIProvider implements LLMProvider {
       if (!embedding) throw new Error('Embedding API returned an empty response.')
       return embedding
     } catch (err) {
+      if (options?.signal?.aborted) {
+        throw new Error('The request was cancelled.')
+      }
       wrapNetworkError(err)
     }
   }

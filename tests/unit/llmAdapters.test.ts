@@ -12,11 +12,20 @@ import { getSessionUsage, resetUsage } from '../../electron/services/llm/usageLe
 beforeEach(() => resetUsage())
 
 type Resp = { ok: boolean; status: number; body: unknown }
+function asArrayBuffer(body: unknown): ArrayBuffer {
+  return new TextEncoder().encode(JSON.stringify(body)).buffer
+}
 function fetchReturning(...responses: Resp[]): HttpFetch {
   let i = 0
   return async () => {
     const r = responses[Math.min(i++, responses.length - 1)]
-    return { ok: r.ok, status: r.status, json: async () => r.body, text: async () => JSON.stringify(r.body) }
+    return {
+      ok: r.ok,
+      status: r.status,
+      json: async () => r.body,
+      text: async () => JSON.stringify(r.body),
+      arrayBuffer: async () => asArrayBuffer(r.body),
+    }
   }
 }
 const throwingFetch: HttpFetch = async () => {
@@ -110,11 +119,13 @@ describe('SelfHostedOpenAiProvider', () => {
     const fetchImpl: HttpFetch = async (url, options) => {
       requestedUrl = url
       requestHeaders = options?.headers ?? {}
+      const body = { choices: [{ message: { content: 'done' } }] }
       return {
         ok: true,
         status: 200,
-        json: async () => ({ choices: [{ message: { content: 'done' } }] }),
-        text: async () => '',
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        arrayBuffer: async () => asArrayBuffer(body),
       }
     }
 
