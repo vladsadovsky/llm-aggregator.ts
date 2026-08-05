@@ -56,6 +56,8 @@ export const CH = {
   aiResetTokenStats: 'ai:resetTokenStats',
   aiGenerateAnnotations: 'ai:generateAnnotations',
   aiApplyAnnotations: 'ai:applyAnnotations',
+  aiSuggestQa: 'ai:suggestQa',
+  aiSuggestThreadTitle: 'ai:suggestThreadTitle',
 
   // Archive health / maintenance
   archiveHealthCheck: 'archive:healthCheck',

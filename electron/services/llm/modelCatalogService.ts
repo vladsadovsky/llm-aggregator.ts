@@ -404,8 +404,8 @@ async function fetchAnthropicModels(apiKey: string): Promise<ModelCatalogResult>
   }
 }
 
-export function listLlmProviders() {
-  return listProviderDescriptors()
+export function listLlmProviders(experimentalFeatures?: Record<string, boolean>) {
+  return listProviderDescriptors(experimentalFeatures)
 }
 
 export async function listProviderModels(

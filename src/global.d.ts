@@ -11,6 +11,20 @@ export interface AppSettings {
   tagSoftLimit: number
   tagHardLimit: number
   allowDevEnvSecrets: boolean
+  experimentalFeatures?: Record<string, boolean>
+  providerConnections?: {
+    ollama?: ProviderConnectionSettings
+    azure?: ProviderConnectionSettings
+    selfHostedOpenAi?: ProviderConnectionSettings
+  }
+}
+
+export interface ProviderConnectionSettings {
+  endpoint?: string
+  embeddingModel?: string
+  trustedHosts?: string[]
+  allowInsecureLanHttp?: boolean
+  apiVersion?: string
 }
 
 export type ModelTier = 'budget' | 'balanced' | 'premium' | 'unknown'
@@ -22,7 +36,7 @@ export interface ProviderDescriptor {
   kind: 'openai' | 'anthropic' | 'openai-compatible'
   enabled: boolean
   comingSoon?: boolean
-  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey' | 'azureApiKey' | 'selfHostedApiKey'
   supportsModelDiscovery: boolean
   notes?: string
 }
@@ -60,6 +74,8 @@ export interface TagDictionary {
 export interface AppSecrets {
   openaiApiKey: string
   anthropicApiKey: string
+  azureApiKey: string
+  selfHostedApiKey: string
 }
 
 export type SecretKey = keyof AppSecrets
@@ -104,6 +120,11 @@ export interface AnnotationProposal {
   currentConfidence: ConfidenceLevel | undefined
   proposedConfidence: ConfidenceLevel
   rationale: string
+}
+
+export interface QaSuggestion {
+  title: string
+  tags: string[]
 }
 
 export interface DuplicateCandidate {
@@ -374,6 +395,8 @@ export interface ElectronAPI {
   aiConceptSummary: (concept: string) => Promise<string>
   aiGenerateAnnotations: (ids?: string[]) => Promise<AnnotationProposal[]>
   aiApplyAnnotations: (approved: Array<{ id: string; confidence: ConfidenceLevel }>) => Promise<void>
+  aiSuggestQa: (id: string) => Promise<QaSuggestion>
+  aiSuggestThreadTitle: (threadId: string) => Promise<string>
 
   // Archive Health
   archiveHealthCheck: () => Promise<HealthReport>

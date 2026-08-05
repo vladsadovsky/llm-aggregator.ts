@@ -121,7 +121,9 @@ export function migrateLegacyPlaintextSecrets(options: MigrateOptions): LegacyMi
   // Merge base = the backend's own stored values; never overwrite a valid stored
   // value with a legacy one.
   const stored = backend.load().secrets
-  const merged: AppSecrets = { openaiApiKey: '', anthropicApiKey: '', ...stored }
+  const merged: AppSecrets = {
+    openaiApiKey: '', anthropicApiKey: '', azureApiKey: '', selfHostedApiKey: '', ...stored,
+  }
   const intended: Partial<Record<SecretKey, string>> = {}
   for (const key of SECRET_KEYS) {
     if (merged[key]) {

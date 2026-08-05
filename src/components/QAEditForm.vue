@@ -11,6 +11,7 @@ import AutoComplete from 'primevue/autocomplete'
 
 const props = defineProps<{
   pair: QAPairData
+  autoSuggest?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -39,6 +40,8 @@ const question = ref(props.pair.question)
 const answer = ref(props.pair.answer)
 const tagsAutoCompleteRef = ref<InstanceType<typeof AutoComplete> | null>(null)
 const urlError = ref('')
+const suggesting = ref(false)
+const suggestionMessage = ref('')
 
 watch(url, (newUrl: string) => {
   if (!newUrl.trim()) {
@@ -96,6 +99,33 @@ function commitPendingTags() {
   if (input) {
     input.value = ''
     input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+}
+
+async function suggestTitleAndTags() {
+  suggesting.value = true
+  suggestionMessage.value = ''
+  try {
+    const suggestion = await window.api.aiSuggestQa(props.pair.id)
+    title.value = suggestion.title
+    // Suggestions are deliberately draft-only. Merge rather than discard a
+    // user's in-progress edits; Save remains the explicit approval action.
+    const known = new Set(tags.value.map(tag => tag.toLowerCase()))
+    for (const suggestedTag of suggestion.tags) {
+      if (tagStore.effectiveEnforcement === 'strict' && !tagStore.isKnownTag(suggestedTag)) {
+        continue
+      }
+      const tag = tagStore.resolveTag(suggestedTag) ?? suggestedTag.toLowerCase()
+      if (!known.has(tag.toLowerCase())) {
+        tags.value.push(tag)
+        known.add(tag.toLowerCase())
+      }
+    }
+    suggestionMessage.value = 'AI suggestions were added to this draft. Review and Save to apply them.'
+  } catch (err) {
+    suggestionMessage.value = err instanceof Error ? err.message : 'Could not generate suggestions.'
+  } finally {
+    suggesting.value = false
   }
 }
 
@@ -159,6 +189,7 @@ onMounted(() => {
   if (!tagStore.loaded) tagStore.load() // fire-and-forget
   window.addEventListener('llm:save-current-edit', onGlobalSaveRequest)
   window.addEventListener('llm:cancel-current-edit', onGlobalCancelRequest)
+  if (props.autoSuggest) void suggestTitleAndTags()
 })
 
 onUnmounted(() => {
@@ -178,11 +209,25 @@ onUnmounted(() => {
 
     <div class="field">
       <label>Title</label>
-      <InputText
-        v-model="title"
-        class="w-full"
-        autofocus
-      />
+      <div class="title-suggestion-row">
+        <InputText
+          v-model="title"
+          class="w-full"
+          autofocus
+        />
+        <Button
+          icon="pi pi-sparkles"
+          label="Suggest title & tags"
+          size="small"
+          outlined
+          :loading="suggesting"
+          @click="suggestTitleAndTags"
+        />
+      </div>
+      <small
+        v-if="suggestionMessage"
+        class="field-hint"
+      >{{ suggestionMessage }}</small>
     </div>
 
     <div class="field-row">
@@ -326,6 +371,12 @@ onUnmounted(() => {
 .field-row {
   display: flex;
   gap: 12px;
+}
+
+.title-suggestion-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .field-error {

@@ -31,6 +31,7 @@ const availableThreads = computed(() =>
 )
 
 const addThreadSelection = ref<string | null>(null)
+const autoSuggestOnEdit = ref(false)
 
 async function onAddToThread(event: { value: string }) {
   if (!qaStore.selectedPairId || !event.value) return
@@ -52,15 +53,23 @@ async function removeFromMemberThread(tid: string) {
 }
 
 function startEdit() {
+  autoSuggestOnEdit.value = false
+  uiStore.isEditing = true
+}
+
+function startSuggestedEdit() {
+  autoSuggestOnEdit.value = true
   uiStore.isEditing = true
 }
 
 function cancelEdit() {
+  autoSuggestOnEdit.value = false
   uiStore.isEditing = false
   window.dispatchEvent(new Event('llm:focus-qa-list'))
 }
 
 async function onSaved() {
+  autoSuggestOnEdit.value = false
   uiStore.isEditing = false
   window.dispatchEvent(new Event('llm:focus-qa-list'))
   toast.add({ severity: 'success', summary: 'QA saved', life: 2000 })
@@ -256,6 +265,7 @@ async function generateAIMetadata() {
       <template v-if="uiStore.isEditing">
         <QAEditForm
           :pair="pair"
+          :auto-suggest="autoSuggestOnEdit"
           @saved="onSaved"
           @cancel="cancelEdit"
         />
@@ -300,6 +310,14 @@ async function generateAIMetadata() {
             data-testid="export-qa-button"
             outlined
             @click="exportSelectedQA"
+          />
+          <Button
+            icon="pi pi-sparkles"
+            label="Suggest title & tags"
+            size="small"
+            outlined
+            title="Generate a reviewable title and tag draft for this Q&A"
+            @click="startSuggestedEdit"
           />
           <Button
             icon="pi pi-sparkles"

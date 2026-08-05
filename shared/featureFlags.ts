@@ -39,6 +39,20 @@ export const FEATURE_FLAGS: readonly FeatureFlagDescriptor[] = Object.freeze([
     restartRequired: false,
   },
   {
+    id: 'selfHostedOpenAiProvider',
+    label: 'Self-hosted OpenAI-compatible provider',
+    description: 'Use a trusted local or LAN OpenAI-compatible API endpoint for completions and embeddings.',
+    risk: 'unstable',
+    restartRequired: false,
+  },
+  {
+    id: 'insecureLanHttpTesting',
+    label: 'Temporary LAN HTTP testing',
+    description: 'Development-only exception for a trusted LAN endpoint without TLS. Packaged builds always reject it.',
+    risk: 'unstable',
+    restartRequired: false,
+  },
+  {
     id: 'batchLlmJobs',
     label: 'Batch LLM jobs',
     description:

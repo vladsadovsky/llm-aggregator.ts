@@ -113,6 +113,7 @@ This keeps file I/O centralized and keeps renderer logic testable and mostly pur
 
 - Create new entries from manual input or parsed paste.
 - Edit question, answer, title, source, tags, and URL.
+- Select **Suggest title & tags** to generate a reviewable draft; nothing changes in the archive until you save the edit.
 - Delete with confirmation.
 
 ### Search and retrieval
@@ -449,6 +450,13 @@ full shortcut list) is always available from **Help → Usage Information** in t
 **Settings** is a tabbed dialog with **General**, **AI**, and **Metadata & Tags** sections. Its
 content scrolls within the dialog while Cancel and Save remain visible. Settings contains only
 preferences and key entry; concise control hints appear next to the relevant preference.
+
+The **AI** tab lists the stable cloud providers and opt-in experimental providers. Experimental
+Ollama, Azure OpenAI, and self-hosted OpenAI-compatible settings take effect only after Save. A
+self-hosted endpoint must be a complete base URL (for example,
+`https://dgx.example.internal/apps/aggregator/v1`) and its non-loopback host must be listed as
+trusted. HTTPS is required for LAN endpoints. The temporary HTTP exception appears only in a
+development build and is rejected by packaged releases.
 
 Operational detail is available separately from **View → Application Status** or the Command
 Palette. It reports archive location, tag configuration, configured provider/model, non-secret key

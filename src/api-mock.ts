@@ -4,7 +4,10 @@ import type { ElectronAPI, AppSettings, TagDictionary, SecretsStatus } from '../
 function mockSecretsStatus(): SecretsStatus {
     const emptyKey = { hasKey: false, maskedPreview: '', source: 'none' as const, readOnly: false }
     return {
-        keys: { openaiApiKey: { ...emptyKey }, anthropicApiKey: { ...emptyKey } },
+        keys: {
+            openaiApiKey: { ...emptyKey }, anthropicApiKey: { ...emptyKey },
+            azureApiKey: { ...emptyKey }, selfHostedApiKey: { ...emptyKey },
+        },
         warnings: [],
         backends: [
             { id: 'env', available: false, writable: false },
@@ -242,6 +245,8 @@ export const mockApi: ElectronAPI = {
     aiConceptSummary: async () => '',
     aiGenerateAnnotations: async () => [],
     aiApplyAnnotations: async () => {},
+    aiSuggestQa: async () => ({ title: 'Suggested title', tags: ['suggested'] }),
+    aiSuggestThreadTitle: async () => 'Suggested thread title',
     tagsLoad: async (): Promise<TagDictionary> => ({ version: 1, tags: {} }),
     tagsSave: async () => {},
     tagsAdd: async () => {},

@@ -13,11 +13,13 @@
 export interface AppSecrets {
   openaiApiKey: string
   anthropicApiKey: string
+  azureApiKey: string
+  selfHostedApiKey: string
 }
 
 export type SecretKey = keyof AppSecrets
 
-export const SECRET_KEYS: SecretKey[] = ['openaiApiKey', 'anthropicApiKey']
+export const SECRET_KEYS: SecretKey[] = ['openaiApiKey', 'anthropicApiKey', 'azureApiKey', 'selfHostedApiKey']
 
 /** Which backend a resolved value came from. `none` means no source had a value. */
 export type SecretSource = 'env' | 'safe-storage' | 'none'

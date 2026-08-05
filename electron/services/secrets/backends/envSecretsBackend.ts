@@ -16,6 +16,8 @@ export const DEV_ENV_SECRET_PREFIX = 'LLM_AGG_'
 const ENV_VAR_BY_KEY: Record<keyof AppSecrets, string> = {
   openaiApiKey: `${DEV_ENV_SECRET_PREFIX}OPENAI_API_KEY`,
   anthropicApiKey: `${DEV_ENV_SECRET_PREFIX}ANTHROPIC_API_KEY`,
+  azureApiKey: `${DEV_ENV_SECRET_PREFIX}AZURE_OPENAI_API_KEY`,
+  selfHostedApiKey: `${DEV_ENV_SECRET_PREFIX}SELF_HOSTED_API_KEY`,
 }
 
 /** The environment variable names this backend reads, for display in Settings. */

@@ -17,7 +17,7 @@ export interface ProviderDescriptor {
   kind: ProviderKind
   enabled: boolean
   comingSoon?: boolean
-  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey' | 'azureApiKey' | 'selfHostedApiKey'
   supportsModelDiscovery: boolean
   capabilities: ProviderCapabilities
   notes?: string
@@ -43,19 +43,66 @@ const PROVIDERS: ProviderDescriptor[] = [
     capabilities: { complete: true, embed: false, streaming: false, local: false },
     notes: 'Claude model support enabled. Embeddings are not available via Anthropic API.',
   },
+  {
+    id: 'ollama',
+    label: 'Ollama (local)',
+    kind: 'openai-compatible',
+    enabled: true,
+    supportsModelDiscovery: false,
+    capabilities: { complete: true, embed: true, streaming: false, local: true },
+    notes: 'Experimental. Connects only to a local Ollama server.',
+  },
+  {
+    id: 'azure',
+    label: 'Azure OpenAI',
+    kind: 'openai-compatible',
+    enabled: true,
+    apiKeyField: 'azureApiKey',
+    supportsModelDiscovery: false,
+    capabilities: { complete: true, embed: true, streaming: false, local: false },
+    notes: 'Experimental. Configure an Azure endpoint and deployment in Settings.',
+  },
+  {
+    id: 'self-hosted-openai',
+    label: 'Self-hosted OpenAI-compatible',
+    kind: 'openai-compatible',
+    enabled: true,
+    apiKeyField: 'selfHostedApiKey',
+    supportsModelDiscovery: true,
+    capabilities: { complete: true, embed: true, streaming: false, local: true },
+    notes: 'Experimental. Uses a fully-qualified trusted local or LAN API base URL.',
+  },
 ]
 
-export function listProviderDescriptors(): ProviderDescriptor[] {
-  return PROVIDERS.map(provider => ({ ...provider }))
+const EXPERIMENTAL_PROVIDER_FLAGS: Partial<Record<string, string>> = {
+  ollama: 'localOllamaProvider',
+  azure: 'azureOpenAiProvider',
+  'self-hosted-openai': 'selfHostedOpenAiProvider',
 }
 
-export function getProviderDescriptor(providerId: string): ProviderDescriptor | null {
-  const match = PROVIDERS.find(provider => provider.id === providerId)
-  return match ? { ...match } : null
+export function listProviderDescriptors(experimentalFeatures?: Record<string, boolean>): ProviderDescriptor[] {
+  return PROVIDERS.map((provider) => ({
+    ...provider,
+    enabled: provider.enabled && (
+      !EXPERIMENTAL_PROVIDER_FLAGS[provider.id] ||
+      experimentalFeatures?.[EXPERIMENTAL_PROVIDER_FLAGS[provider.id]!] === true
+    ),
+  }))
+}
+
+export function getProviderDescriptor(
+  providerId: string,
+  experimentalFeatures?: Record<string, boolean>,
+): ProviderDescriptor | null {
+  return listProviderDescriptors(experimentalFeatures).find(provider => provider.id === providerId) ?? null
 }
 
 /** True when the named provider declares the given capability. Unknown → false. */
-export function providerSupports(providerId: string, capability: ProviderCapability): boolean {
-  const match = PROVIDERS.find(provider => provider.id === providerId)
+export function providerSupports(
+  providerId: string,
+  capability: ProviderCapability,
+  experimentalFeatures?: Record<string, boolean>,
+): boolean {
+  const match = getProviderDescriptor(providerId, experimentalFeatures)
   return match ? match.capabilities[capability] === true : false
 }

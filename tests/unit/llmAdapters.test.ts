@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { OllamaProvider, type HttpFetch } from '../../electron/services/llm/ollamaProvider'
 import { AzureOpenAIProvider } from '../../electron/services/llm/azureOpenAiProvider'
+import { SelfHostedOpenAiProvider } from '../../electron/services/llm/selfHostedOpenAiProvider'
 import { getSessionUsage, resetUsage } from '../../electron/services/llm/usageLedger'
 
 beforeEach(() => resetUsage())
@@ -92,5 +93,42 @@ describe('AzureOpenAIProvider', () => {
     await expect(
       new AzureOpenAIProvider(cfg, fetchReturning({ ok: false, status: 429, body: {} })).complete('q', 's'),
     ).rejects.toThrow(/rate limit/)
+  })
+})
+
+describe('SelfHostedOpenAiProvider', () => {
+  const cfg = {
+    endpoint: 'https://dgx.internal.example/apps/aggregator/v1',
+    model: 'local-qwen',
+    trustedHosts: ['dgx.internal.example'],
+    allowInsecureLanHttp: false,
+  }
+
+  it('preserves the fully-qualified server route and uses its optional key', async () => {
+    let requestedUrl = ''
+    let requestHeaders: Record<string, string> = {}
+    const fetchImpl: HttpFetch = async (url, options) => {
+      requestedUrl = url
+      requestHeaders = options?.headers ?? {}
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'done' } }] }),
+        text: async () => '',
+      }
+    }
+
+    const provider = new SelfHostedOpenAiProvider({ ...cfg, apiKey: 'secret' }, fetchImpl)
+    await expect(provider.complete('question', 'system')).resolves.toBe('done')
+    expect(requestedUrl).toBe('https://dgx.internal.example/apps/aggregator/v1/chat/completions')
+    expect(requestHeaders.authorization).toBe('Bearer secret')
+  })
+
+  it('rejects LAN HTTP unless the factory explicitly grants the development exception', () => {
+    expect(() => new SelfHostedOpenAiProvider({
+      ...cfg,
+      endpoint: 'http://10.0.0.5/apps/aggregator/v1',
+      trustedHosts: ['10.0.0.5'],
+    })).toThrow(/insecure-lan-http/)
   })
 })

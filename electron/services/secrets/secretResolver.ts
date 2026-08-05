@@ -10,7 +10,12 @@ import {
   type SecretsStatus,
 } from './secretBackendTypes'
 
-const EMPTY_SECRETS: AppSecrets = { openaiApiKey: '', anthropicApiKey: '' }
+const EMPTY_SECRETS: AppSecrets = {
+  openaiApiKey: '',
+  anthropicApiKey: '',
+  azureApiKey: '',
+  selfHostedApiKey: '',
+}
 
 /** De-duplicates warnings by code+message so a repeated probe does not spam the UI. */
 function dedupeWarnings(warnings: SecretWarning[]): SecretWarning[] {
@@ -40,6 +45,8 @@ export function resolveSecrets(
   const sourceByKey: Record<SecretKey, SecretSource> = {
     openaiApiKey: 'none',
     anthropicApiKey: 'none',
+    azureApiKey: 'none',
+    selfHostedApiKey: 'none',
   }
   const warnings: SecretWarning[] = [...extraWarnings]
 

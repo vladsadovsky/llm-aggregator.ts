@@ -6,6 +6,17 @@ import { getDefaultDataDirectory } from './defaultDataDirectory'
 import { atomicWriteJsonSync } from './persistence/atomicFile'
 import type { ExperimentalFeatures } from '../../shared/featureFlags'
 
+export interface ProviderConnectionSettings {
+  /** Fully-qualified API base URL, preserving a server-specific route prefix. */
+  endpoint?: string
+  embeddingModel?: string
+  trustedHosts?: string[]
+  /** Development-only temporary exception; main rejects it in packaged builds. */
+  allowInsecureLanHttp?: boolean
+  /** Azure-specific API version. */
+  apiVersion?: string
+}
+
 const isDev = process.env.NODE_ENV !== 'production'
 const TEST_DATA_DIR_ENV = 'LLM_AGGREGATOR_DATA_DIR'
 
@@ -36,6 +47,12 @@ export interface AppSettings {
    * `shared/featureFlags.ts`.
    */
   experimentalFeatures?: ExperimentalFeatures
+  /** Per-provider connection metadata. Credentials remain in secure storage. */
+  providerConnections?: {
+    ollama?: ProviderConnectionSettings
+    azure?: ProviderConnectionSettings
+    selfHostedOpenAi?: ProviderConnectionSettings
+  }
 }
 
 const SETTINGS_FILENAME = 'settings.json'
@@ -65,6 +82,7 @@ export function loadSettings(): AppSettings {
     tagHardLimit: 100,
     allowDevEnvSecrets: false,
     experimentalFeatures: {},
+    providerConnections: {},
   }
 
   if (!existsSync(filepath)) {

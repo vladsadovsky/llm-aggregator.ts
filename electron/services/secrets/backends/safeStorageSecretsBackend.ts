@@ -160,6 +160,12 @@ export function createSafeStorageSecretsBackend(options: SafeStorageBackendOptio
         if (typeof source.anthropicApiKey === 'string' && source.anthropicApiKey.trim()) {
           secrets.anthropicApiKey = source.anthropicApiKey.trim()
         }
+        if (typeof source.azureApiKey === 'string' && source.azureApiKey.trim()) {
+          secrets.azureApiKey = source.azureApiKey.trim()
+        }
+        if (typeof source.selfHostedApiKey === 'string' && source.selfHostedApiKey.trim()) {
+          secrets.selfHostedApiKey = source.selfHostedApiKey.trim()
+        }
         return { secrets, warnings }
       } catch (err) {
         // Do not log `raw` — it is ciphertext, but the failure mode is unknown.

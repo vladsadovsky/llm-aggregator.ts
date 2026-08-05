@@ -332,14 +332,23 @@ Standalone — no dependency on the rest of the plan.
 abstraction) and 0.2 (batch runner) — do not start before those land, or this becomes three
 redundant provider integrations.
 
-### 2.1 LLM auto-title generation **[LLM Ch.1]**
+### 2.1 LLM auto-title generation **[LLM Ch.1]** — Done (2026-08-04)
 Auto-generate titles for QAs and threads, including the UX plan's framing of smarter titles for
 imported/constructed threads (e.g. Gemini Takeout day-buckets) **[UX]**.
 
-### 2.2 Unified AI-tagging **[LLM Ch.2]**
+Delivered as a review-first per-QA and selected-thread action: candidates populate an editable draft
+and are persisted only when the user saves. Multi-selected-thread batch generation is deferred to
+2.2.1.
+
+### 2.2 Unified AI-tagging **[LLM Ch.2]** — Initial QA scope done (2026-08-04)
 Replaces both "AI Metadata" and the separately-proposed "LLM auto-tag suggestion" — see
 Observation 4. One LLM call, existing-vocabulary-aware with soft/hard limits, surfaced via the
 approve-new-tags chip flow, writing into `tags[]` for both QAs and threads **[UX]**.
+
+The current release delivers one review-first QA title-and-tag proposal action. It observes the
+existing tag vocabulary and strict-mode policy, then writes only through the normal explicit Save
+flow. Thread tags and AI-metadata convergence, including workflow-state/confidence work, remain
+deferred.
 
 **Implementation notes:**
 - Retires `aiTopic`/`aiConcepts` as separate fields only if a separately approved, narrowly scoped
@@ -366,9 +375,14 @@ workflow typing above (2.3) — sequence after both.
 
 Separately consider coalescing threads, dealing with the same matter of discussion, but in different bots, into one thread. 
 
-### 2.5 Multi-provider surfacing in Settings
+### 2.5 Multi-provider surfacing in Settings — Done (experimental, 2026-08-04)
 Expose Ollama/Azure OpenAI (built in 0.1) as selectable providers, including embed-capability
 detection so semantic search degrades gracefully on embed-incapable providers.
+
+Ollama, Azure OpenAI, and an OpenAI-compatible self-hosted endpoint are opt-in experimental
+providers. The self-hosted configuration keeps a fully qualified base URL and restricts remote hosts
+to an explicit trusted-host allowlist; HTTPS is the release policy, with a development-only HTTP
+testing exception that packaged builds reject.
 
 ### 2.6 Local/offline model — spike only **[LLM Ch.4]**
 "Ships with the product optionally" is a large commitment (bundling, packaging size, license

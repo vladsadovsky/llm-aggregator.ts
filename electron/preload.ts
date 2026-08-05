@@ -34,11 +34,26 @@ export interface AppSettings {
   tagHardLimit: number
   allowDevEnvSecrets: boolean
   experimentalFeatures?: Record<string, boolean>
+  providerConnections?: {
+    ollama?: ProviderConnectionSettings
+    azure?: ProviderConnectionSettings
+    selfHostedOpenAi?: ProviderConnectionSettings
+  }
+}
+
+export interface ProviderConnectionSettings {
+  endpoint?: string
+  embeddingModel?: string
+  trustedHosts?: string[]
+  allowInsecureLanHttp?: boolean
+  apiVersion?: string
 }
 
 export interface AppSecrets {
   openaiApiKey: string
   anthropicApiKey: string
+  azureApiKey: string
+  selfHostedApiKey: string
 }
 
 export type SecretKey = keyof AppSecrets
@@ -91,7 +106,7 @@ export interface ProviderDescriptor {
   kind: 'openai' | 'anthropic' | 'openai-compatible'
   enabled: boolean
   comingSoon?: boolean
-  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey' | 'azureApiKey' | 'selfHostedApiKey'
   supportsModelDiscovery: boolean
   /** Declared capabilities — the UI selects features by these, not provider name. */
   capabilities?: ProviderCapabilities
@@ -376,6 +391,8 @@ export interface ElectronAPI {
   aiConceptSummary: (concept: string) => Promise<string>
   aiGenerateAnnotations: (ids?: string[]) => Promise<AnnotationProposal[]>
   aiApplyAnnotations: (approved: Array<{ id: string; confidence: ConfidenceLevel }>) => Promise<void>
+  aiSuggestQa: (id: string) => Promise<QaSuggestion>
+  aiSuggestThreadTitle: (threadId: string) => Promise<string>
 
   // Archive Health
   archiveHealthCheck: () => Promise<HealthReport>
@@ -480,6 +497,11 @@ export interface AnnotationProposal {
   rationale: string
 }
 
+export interface QaSuggestion {
+  title: string
+  tags: string[]
+}
+
 export interface DuplicateCandidate {
   idA: string
   titleA: string
@@ -570,6 +592,8 @@ const api: ElectronAPI = {
   aiConceptSummary: (concept) => call(CH.aiConceptSummary, concept),
   aiGenerateAnnotations: (ids) => call(CH.aiGenerateAnnotations, ids),
   aiApplyAnnotations: (approved) => call(CH.aiApplyAnnotations, approved),
+  aiSuggestQa: (id) => call(CH.aiSuggestQa, id),
+  aiSuggestThreadTitle: (threadId) => call(CH.aiSuggestThreadTitle, threadId),
 
   // Archive Health
   archiveHealthCheck: () => call(CH.archiveHealthCheck),

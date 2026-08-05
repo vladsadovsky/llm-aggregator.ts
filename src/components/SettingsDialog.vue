@@ -11,7 +11,8 @@ import Checkbox from 'primevue/checkbox'
 import Password from 'primevue/password'
 import Select from 'primevue/select'
 import { useTagStore } from '../stores/tagStore'
-import type { AppSecrets, SecretKey, SecretsStatus, SecretSource } from '../global'
+import type { AppSecrets, ProviderConnectionSettings, SecretKey, SecretsStatus, SecretSource } from '../global'
+import { FEATURE_FLAGS } from '../../shared/featureFlags'
 
 interface ProviderDescriptor {
   id: string
@@ -19,7 +20,7 @@ interface ProviderDescriptor {
   kind: 'openai' | 'anthropic' | 'openai-compatible'
   enabled: boolean
   comingSoon?: boolean
-  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey'
+  apiKeyField?: 'openaiApiKey' | 'anthropicApiKey' | 'azureApiKey' | 'selfHostedApiKey'
   supportsModelDiscovery: boolean
   notes?: string
 }
@@ -56,12 +57,15 @@ const llmModel = ref('gpt-4o')
  * only what the user types. An empty draft means "untouched" — that key is
  * omitted from the save so the stored value survives.
  */
-const keyDrafts = ref<Record<SecretKey, string>>({ openaiApiKey: '', anthropicApiKey: '' })
+const keyDrafts = ref<Record<SecretKey, string>>({
+  openaiApiKey: '', anthropicApiKey: '', azureApiKey: '', selfHostedApiKey: '',
+})
 const secretsStatus = ref<SecretsStatus | null>(null)
 const devEnvVarNames = ref<string[]>([])
 const recheckingStorage = ref(false)
 
 const testingConnection = ref(false)
+const savedConnectionFingerprint = ref('')
 const loadingModelCatalog = ref(false)
 const modelCatalogWarning = ref('')
 const isDevMode = import.meta.env.DEV
@@ -72,6 +76,11 @@ const tagSoftLimit = ref(50)
 const tagHardLimit = ref(100)
 const allowDevEnvSecrets = ref(false)
 const lensEnabled = ref(false)
+const experimentalFeatures = ref<Record<string, boolean>>({})
+const ollamaConnection = ref<ProviderConnectionSettings>({})
+const azureConnection = ref<ProviderConnectionSettings>({})
+const selfHostedConnection = ref<ProviderConnectionSettings>({ trustedHosts: [] })
+const selfHostedTrustedHosts = ref('')
 
 const enforcementOptions = [
   { label: 'Off — free-form tags', value: 'off' },
@@ -82,11 +91,22 @@ const enforcementOptions = [
 const providers = ref<ProviderDescriptor[]>([])
 const modelsByProvider = ref<Record<string, ModelDescriptor[]>>({})
 
+const providerFlags: Record<string, string | undefined> = {
+  ollama: 'localOllamaProvider',
+  azure: 'azureOpenAiProvider',
+  'self-hosted-openai': 'selfHostedOpenAiProvider',
+}
 const providerOptions = computed(() => providers.value.map(provider => ({
   label: provider.comingSoon ? `${provider.label} (coming soon)` : provider.label,
   value: provider.id,
-  disabled: !provider.enabled,
+  // A just-enabled experimental provider can be selected before Save; main
+  // still re-checks the saved flag before constructing it.
+  disabled: !provider.enabled && experimentalFeatures.value[providerFlags[provider.id] ?? ''] !== true,
 })))
+
+const usesManualModelEntry = computed(() =>
+  ['ollama', 'azure', 'self-hosted-openai'].includes(llmProvider.value),
+)
 
 const modelOptions = computed(() => {
   const models = modelsByProvider.value[llmProvider.value] ?? []
@@ -99,6 +119,25 @@ const selectedModel = computed(() => {
   return models.find(model => model.id === llmModel.value) ?? null
 })
 
+/** Settings used by the main process to construct and test the active provider. */
+function connectionFingerprint(): string {
+  return JSON.stringify({
+    provider: llmProvider.value,
+    model: llmModel.value,
+    providerFlags: Object.fromEntries(
+      Object.entries(providerFlags)
+        .map(([provider, flag]): [string, boolean] => [provider, flag ? experimentalFeatures.value[flag] === true : false])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ),
+    ollama: ollamaConnection.value,
+    azure: azureConnection.value,
+    selfHosted: {
+      ...selfHostedConnection.value,
+      trustedHosts: selfHostedTrustedHosts.value.split(',').map(host => host.trim()).filter(Boolean),
+    },
+  })
+}
+
 const providerKeyLabel = computed(() => {
   if (llmProvider.value === 'openai') {
     return 'OpenAI API key'
@@ -106,6 +145,8 @@ const providerKeyLabel = computed(() => {
   if (llmProvider.value === 'anthropic') {
     return 'Anthropic API key'
   }
+  if (llmProvider.value === 'azure') return 'Azure API key'
+  if (llmProvider.value === 'self-hosted-openai') return 'Self-hosted API key (optional)'
   return 'API key'
 })
 
@@ -186,7 +227,7 @@ async function flushSecretUpdates(): Promise<boolean> {
   try {
     secretsStatus.value = await window.api.secretsSave(updates)
     // Clear drafts once stored: the field falls back to showing the masked value.
-    keyDrafts.value = { openaiApiKey: '', anthropicApiKey: '' }
+    keyDrafts.value = { openaiApiKey: '', anthropicApiKey: '', azureApiKey: '', selfHostedApiKey: '' }
     return true
   } catch (err) {
     toast.add({
@@ -310,7 +351,13 @@ onMounted(async () => {
   tagSoftLimit.value = settings.tagSoftLimit ?? 50
   tagHardLimit.value = settings.tagHardLimit ?? 100
   allowDevEnvSecrets.value = settings.allowDevEnvSecrets ?? false
+  experimentalFeatures.value = { ...(settings.experimentalFeatures ?? {}) }
+  ollamaConnection.value = { ...(settings.providerConnections?.ollama ?? {}) }
+  azureConnection.value = { ...(settings.providerConnections?.azure ?? {}) }
+  selfHostedConnection.value = { ...(settings.providerConnections?.selfHostedOpenAi ?? {}) }
+  selfHostedTrustedHosts.value = (selfHostedConnection.value.trustedHosts ?? []).join(', ')
   lensEnabled.value = settings.lensEnabled === true
+  savedConnectionFingerprint.value = connectionFingerprint()
   await loadModelCatalog(false)
 })
 
@@ -337,7 +384,17 @@ async function save() {
     tagSoftLimit: tagSoftLimit.value,
     tagHardLimit: tagHardLimit.value,
     allowDevEnvSecrets: allowDevEnvSecrets.value,
+    experimentalFeatures: experimentalFeatures.value,
+    providerConnections: {
+      ollama: ollamaConnection.value,
+      azure: azureConnection.value,
+      selfHostedOpenAi: {
+        ...selfHostedConnection.value,
+        trustedHosts: selfHostedTrustedHosts.value.split(',').map(host => host.trim()).filter(Boolean),
+      },
+    },
   })
+  savedConnectionFingerprint.value = connectionFingerprint()
 
   // Settings are now persisted and the main process has rebuilt its menu, so
   // sync the renderer's Lens state immediately — before the independent secrets
@@ -367,6 +424,15 @@ function clearRememberedMetadata() {
 }
 
 async function testConnection() {
+  if (connectionFingerprint() !== savedConnectionFingerprint.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Save settings before testing',
+      detail: 'The connection test uses the saved provider, model, and server settings.',
+      life: 5000,
+    })
+    return
+  }
   testingConnection.value = true
   // Persist any typed key first so the main process tests the key the user sees.
   if (!await flushSecretUpdates()) {
@@ -533,6 +599,25 @@ function handleKeydown(event: KeyboardEvent) {
         >
           Secure storage is unavailable; API keys cannot be saved.
         </div>
+        <div class="field experimental-features">
+          <label>Experimental providers</label>
+          <div
+            v-for="feature in FEATURE_FLAGS.filter(feature => feature.id !== 'batchLlmJobs')"
+            :key="feature.id"
+            class="checkbox-field"
+          >
+            <Checkbox
+              v-model="experimentalFeatures[feature.id]"
+              :input-id="`feature-${feature.id}`"
+              binary
+            />
+            <label
+              :for="`feature-${feature.id}`"
+              class="checkbox-label"
+            >{{ feature.label }}</label>
+          </div>
+          <span class="field-help">Experimental providers remain disabled in the main process until Settings is saved.</span>
+        </div>
         <div class="field">
           <label>Provider and model</label>
           <div class="ai-row">
@@ -545,12 +630,19 @@ function handleKeydown(event: KeyboardEvent) {
               class="provider-select"
             />
             <Select
+              v-if="!usesManualModelEntry"
               v-model="llmModel"
               :options="modelOptions"
               option-label="label"
               option-value="value"
               class="model-select"
               :loading="loadingModelCatalog"
+            />
+            <InputText
+              v-else
+              v-model="llmModel"
+              class="model-select"
+              placeholder="Deployment or model id"
             />
             <Button
               icon="pi pi-refresh"
@@ -570,6 +662,50 @@ function handleKeydown(event: KeyboardEvent) {
             v-if="selectedProvider?.notes"
             class="field-help"
           >{{ selectedProvider.notes }}</span>
+        </div>
+        <div
+          v-if="llmProvider === 'ollama'"
+          class="field"
+        >
+          <label for="ollamaEndpoint">Ollama API endpoint</label>
+          <InputText
+            id="ollamaEndpoint"
+            v-model="ollamaConnection.endpoint"
+            class="w-full"
+            placeholder="http://127.0.0.1:11434"
+          />
+          <InputText
+            v-model="ollamaConnection.embeddingModel"
+            class="w-full provider-detail-input"
+            placeholder="Embedding model (optional; defaults to completion model)"
+          />
+        </div>
+        <div
+          v-else-if="llmProvider === 'azure'"
+          class="field"
+        >
+          <label for="azureEndpoint">Azure endpoint</label>
+          <InputText id="azureEndpoint" v-model="azureConnection.endpoint" class="w-full" placeholder="https://resource.openai.azure.com" />
+          <InputText v-model="azureConnection.apiVersion" class="w-full provider-detail-input" placeholder="API version" />
+          <InputText v-model="azureConnection.embeddingModel" class="w-full provider-detail-input" placeholder="Embedding deployment (optional)" />
+        </div>
+        <div
+          v-else-if="llmProvider === 'self-hosted-openai'"
+          class="field"
+        >
+          <label for="selfHostedEndpoint">Fully-qualified API base URL</label>
+          <InputText id="selfHostedEndpoint" v-model="selfHostedConnection.endpoint" class="w-full" placeholder="https://dgx.example.internal/apps/archive-llm/v1" />
+          <span class="field-help">The complete server URL is preserved, including its path, so multiple DGX API servers can coexist.</span>
+          <InputText v-model="selfHostedTrustedHosts" class="w-full provider-detail-input" placeholder="Trusted LAN hosts (comma-separated)" />
+          <InputText v-model="selfHostedConnection.embeddingModel" class="w-full provider-detail-input" placeholder="Embedding model (optional; defaults to completion model)" />
+          <div
+            v-if="isDevMode && experimentalFeatures.insecureLanHttpTesting"
+            class="checkbox-field"
+          >
+            <Checkbox v-model="selfHostedConnection.allowInsecureLanHttp" input-id="insecureLanHttp" binary />
+            <label for="insecureLanHttp" class="checkbox-label">Temporarily allow HTTP for this trusted LAN endpoint</label>
+          </div>
+          <span class="field-help">This HTTP exception is development-only and is always rejected in packaged builds.</span>
         </div>
         <div class="field">
           <label>{{ providerKeyLabel }}</label>

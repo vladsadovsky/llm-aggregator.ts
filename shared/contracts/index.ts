@@ -98,6 +98,8 @@ export const channelArgs = {
   [CH.aiResetTokenStats]: noArgs,
   [CH.aiGenerateAnnotations]: z.tuple([AnnotationIdsSchema]),
   [CH.aiApplyAnnotations]: z.tuple([ApplyAnnotationsSchema]),
+  [CH.aiSuggestQa]: z.tuple([EntityId]),
+  [CH.aiSuggestThreadTitle]: z.tuple([EntityId]),
 
   // Archive health / maintenance
   [CH.archiveHealthCheck]: noArgs,

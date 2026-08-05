@@ -112,6 +112,8 @@ const showNewThreadInput = ref(false)
 const editingThreadId = ref<string | null>(null)
 const editingName = ref('')
 const editingTags = ref('')
+const generatingThreadTitle = ref(false)
+const threadTitleSuggestionError = ref('')
 
 function parseTags(raw: string): string[] {
   return raw
@@ -144,6 +146,7 @@ function cancelNewThread() {
 
 function cancelRename() {
   editingThreadId.value = null
+  threadTitleSuggestionError.value = ''
 }
 
 async function createThread(name: string, tags: string[]) {
@@ -179,6 +182,7 @@ function startRename(tid: string) {
   editingThreadId.value = tid
   editingName.value = threadStore.threads[tid].name
   editingTags.value = (threadStore.threads[tid].tags ?? []).join(', ')
+  threadTitleSuggestionError.value = ''
 }
 
 async function finishRename() {
@@ -190,6 +194,21 @@ async function finishRename() {
     )
   }
   editingThreadId.value = null
+}
+
+async function suggestThreadTitle() {
+  if (!editingThreadId.value) return
+  generatingThreadTitle.value = true
+  threadTitleSuggestionError.value = ''
+  try {
+    // This only changes the visible rename draft. The user must still choose
+    // Save before the thread record is written.
+    editingName.value = await window.api.aiSuggestThreadTitle(editingThreadId.value)
+  } catch (err) {
+    threadTitleSuggestionError.value = err instanceof Error ? err.message : 'Could not generate a thread title.'
+  } finally {
+    generatingThreadTitle.value = false
+  }
 }
 
 function deletionMessage(threadCount: number, qaCount: number, sharedQaCount: number, sharedThreadCount: number): string {
@@ -790,6 +809,15 @@ onUnmounted(() => {
             -->
             <div class="edit-actions">
               <Button
+                label="Suggest title"
+                icon="pi pi-sparkles"
+                severity="secondary"
+                text
+                size="small"
+                :loading="generatingThreadTitle"
+                @click="suggestThreadTitle"
+              />
+              <Button
                 label="Cancel"
                 severity="secondary"
                 text
@@ -805,6 +833,10 @@ onUnmounted(() => {
                 @click="finishRename"
               />
             </div>
+            <small
+              v-if="threadTitleSuggestionError"
+              class="rename-suggestion-error"
+            >{{ threadTitleSuggestionError }}</small>
           </div>
         </template>
       </div>
@@ -1219,6 +1251,13 @@ onUnmounted(() => {
   justify-content: flex-end;
   gap: 4px;
   margin-top: 2px;
+}
+
+.rename-suggestion-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--red-500);
 }
 
 .empty-state {
