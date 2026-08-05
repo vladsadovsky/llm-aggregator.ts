@@ -45,6 +45,17 @@ For every subsequent design or implementation step completed today, add its prop
 1. Read the **Post-review scope boundary — LLM follow-up** section in the V2 roadmap.
 2. Confirm it preserves the decision: small product-facing LLM quality work can be scoped separately, while renderer decomposition and generic provider/settings/suggestion frameworks are explicitly deferred and non-gating.
 
+### 7. Test-improvement roadmap scope
+
+1. Read the **Test improvements — workflow regression, stability, and performance** section in the V2 roadmap.
+2. Confirm it plans all three non-VM investments: reusable archive profiles/restart support, expanded real Electron workflow E2E, and an opt-in generated-archive stress/performance suite.
+3. Confirm failure injection remains in unit/service tests and the target-scale suite does not use a committed personal or large archive fixture.
+
+### 8. Planning-document lifecycle metadata
+
+1. Confirm the V2 roadmap header identifies it as an active roadmap, shows version 2.2.0, and has today's last-updated date.
+2. Confirm build notes record the rule to advance planning-document status, version, date, and item disposition whenever planned work changes state.
+
 ## Follow-up observations
 
 Record any unexpected toast, missing saved change after restart, incorrect Q&A membership, duplicate Q&A, or stale selection here before filing a fix.

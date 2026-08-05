@@ -1,5 +1,9 @@
 # Build Notes
 
+- Planning-document lifecycle rule (2026-08-05): when planned work is implemented, deferred, made out of scope, superseded, or materially re-sequenced, update the affected planning document in the same change. Its header must show the current status, current release/version, and last-updated date; do not leave an actively executed roadmap labeled as a proposal. Record the disposition in this file when it affects workflow or scope. Manual documentation check added to `doc/dev_process/test_tasks_2026-08-05.md`.
+
+- V2 test-improvement scope (2026-08-05): the roadmap now plans three non-VM investments: reusable small archive profiles plus restart support, expanded real Electron workflow E2E for ordinary regression assurance, and a separately invoked archive-scale stability/performance suite against deterministic generated data. The existing disposable Electron filesystem/user-data sandbox remains the starting point; VM machinery is deliberately deferred. Manual documentation check added to `doc/dev_process/test_tasks_2026-08-05.md`. Documentation-only; no E2E run.
+
 - V2 LLM follow-up scope boundary (2026-08-05): `doc/plans/V2_Master_Roadmap.md` now records the design-review decision separately from the deferred full AI-metadata migration. Product-facing, narrowly scoped LLM quality work may be proposed independently; renderer decomposition and generic provider/settings/suggestion frameworks are deliberately non-gating until a concrete feature justifies each refactor. Manual documentation check added to `doc/dev_process/test_tasks_2026-08-05.md`. Documentation-only; no E2E run.
 
 - Grok Q&A source (2026-08-05): added Grok as a selectable source for both new-Q&A and edit workflows. Manual check: open Add Q&A and Edit Q&A, select Grok (including its Alt+number shortcut in the relevant form), save, and confirm the source remains Grok after reopening. No E2E run.

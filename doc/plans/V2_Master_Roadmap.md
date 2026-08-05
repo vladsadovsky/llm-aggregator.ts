@@ -1,9 +1,9 @@
 # LLM Aggregator — v2 Master Roadmap
 
-**Status:** Proposal
-**Drafted:** July 27, 2026
-**Updated:** August 2, 2026
-**Current version:** 1.4.1
+**Status:** Active roadmap — execution in progress
+**Established:** July 27, 2026
+**Last updated:** August 5, 2026
+**Current version:** 2.2.0
 
 ## Sources
 
@@ -503,6 +503,68 @@ existing.
 
 **Sequencing:** independent of Phases 0–4. It gates *external distribution*, not development, so it
 can land at any point before the first release intended for an audience beyond the author.
+
+---
+
+## Test improvements — workflow regression, stability, and performance
+
+**Goal:** Make the real Electron application—not mocked renderer APIs—the primary automated guard
+against user-workflow regressions, and validate the archive-scale requirements in
+`doc/guides/PERFORMANCE_AND_SCALABILITY.md` without making the normal test loop slow or flaky.
+
+### 6.1 Reusable E2E archive profiles and restart support
+
+Extend the existing isolated Electron fixture with small, named archive profiles and a controlled
+restart helper. Profiles make multi-record test scenarios readable and repeatable without testing
+against a developer's archive; the helper relaunches the application against the same disposable
+data directory and isolated Electron user profile.
+
+- Provide an empty baseline plus compact, hand-reviewable profiles for ordinary multi-Q&A/thread
+  data and shared membership. Copy a profile into each test's temporary data directory before
+  launch; never mutate checked-in fixture data or share a directory between tests.
+- Expose a restart operation that closes and relaunches Electron without replacing that test's
+  sandbox. Use it to verify durable archive and settings behavior through the real startup path.
+- Keep profile data minimal and declarative. Target-scale data belongs to 6.3's deterministic
+  generator, not a large committed fixture.
+
+### 6.2 Expand real-workflow Electron E2E coverage
+
+Build on the existing isolated Electron fixture. Each test already launches the production renderer
+with the real preload bridge, IPC handlers, persistence services, and a disposable filesystem/user
+profile; external LLM calls remain disabled or deterministic.
+
+- Cover complete Q&A lifecycle scenarios: create, edit, source/tag changes, delete confirmation and
+  cancellation, selection cleanup, and durable state after an app restart.
+- Cover complete thread/membership scenarios: create, rename, tags, add/copy/move/remove/reorder a
+  Q&A, shared membership, single and bulk actions, and restart persistence.
+- Exercise the real user controls first and assert both visible state and the resulting archive where
+  that is the durable contract. Retain unit/service tests for deliberately injected failure paths
+  (for example, an ambiguous IPC response or filesystem-save failure), which E2E cannot reproduce
+  deterministically.
+- Keep the usual suite small and deterministic. At first it remains an explicit user-run/pre-push
+  suite; promote only a proven fast/stable smoke subset to any automatic gate.
+
+### 6.3 Archive-scale stability and performance suite
+
+Add a separately invoked suite that deterministically generates its archive in a disposable test
+directory. It must cover the design target of 5,000 threads and 30,000 Q&As, without committing a
+large fixture or relying on personal archive data.
+
+- Run the real Electron app against generated small, reference-scale, and target-scale archives;
+  verify startup shell availability, eventual archive readiness, filter/search, visible-row
+  selection, local-form typing, ordinary single-record mutations, and clean shutdown/restart.
+- Treat stability as a first-class result: no crash, unhandled renderer/main error, lost record,
+  incorrect membership, or corrupted archive after the workload.
+- Capture reproducible timing and memory observations for cold startup, ready state, literal/tag
+  search, selection, and local draft input. Start as a report-only benchmark with median and tail
+  measurements on the same runner; establish budgets only after baseline runs show stable variance.
+- Keep it opt-in and separate from ordinary E2E/CI until its runtime and repeatability are known.
+  Its purpose is to expose both functional stability regressions and deviations from the documented
+  archive-scale expectations, not to create a timing-sensitive default gate.
+
+**Sequencing:** establish 6.1 first, then migrate/expand workflow scenarios in 6.2. Scope the
+archive generator and measurement contract before implementing 6.3; do not introduce a VM harness
+unless the existing disposable Electron sandbox proves unable to isolate a concrete failure.
 
 ---
 
