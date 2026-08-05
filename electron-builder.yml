@@ -7,6 +7,10 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - "!node_modules/**/*"
+  # Turndown's HTML converter resolves @mixmark-io/domino at runtime from the
+  # main-process bundle, so the portable package must carry that production
+  # dependency even though the rest of node_modules stays excluded.
+  - node_modules/@mixmark-io/domino/**/*
 mac:
   icon: public/icons/llm-aggregator.icns
   category: public.app-category.productivity
