@@ -13,6 +13,7 @@ import Select from 'primevue/select'
 import { useTagStore } from '../stores/tagStore'
 import type { AppSecrets, ProviderConnectionSettings, SecretKey, SecretsStatus, SecretSource } from '../global'
 import { FEATURE_FLAGS } from '../../shared/featureFlags'
+import { toIpcPayload } from '../utils/ipcPayload'
 
 interface ProviderDescriptor {
   id: string
@@ -375,25 +376,37 @@ async function save() {
     return
   }
 
-  await window.api.settingsSave({
-    dataDirectory: dataDirectory.value,
-    llmProvider: llmProvider.value,
-    llmModel: llmModel.value,
-    lensEnabled: lensEnabled.value,
-    tagEnforcement: tagEnforcement.value,
-    tagSoftLimit: tagSoftLimit.value,
-    tagHardLimit: tagHardLimit.value,
-    allowDevEnvSecrets: allowDevEnvSecrets.value,
-    experimentalFeatures: experimentalFeatures.value,
-    providerConnections: {
-      ollama: ollamaConnection.value,
-      azure: azureConnection.value,
-      selfHostedOpenAi: {
-        ...selfHostedConnection.value,
-        trustedHosts: selfHostedTrustedHosts.value.split(',').map(host => host.trim()).filter(Boolean),
+  try {
+    // Nested ref objects (experimentalFeatures, providerConnections) are Vue
+    // Proxies. Electron IPC structured-clone rejects Proxies, so strip them.
+    await window.api.settingsSave(toIpcPayload({
+      dataDirectory: dataDirectory.value,
+      llmProvider: llmProvider.value,
+      llmModel: llmModel.value,
+      lensEnabled: lensEnabled.value,
+      tagEnforcement: tagEnforcement.value,
+      tagSoftLimit: tagSoftLimit.value,
+      tagHardLimit: tagHardLimit.value,
+      allowDevEnvSecrets: allowDevEnvSecrets.value,
+      experimentalFeatures: experimentalFeatures.value,
+      providerConnections: {
+        ollama: ollamaConnection.value,
+        azure: azureConnection.value,
+        selfHostedOpenAi: {
+          ...selfHostedConnection.value,
+          trustedHosts: selfHostedTrustedHosts.value.split(',').map(host => host.trim()).filter(Boolean),
+        },
       },
-    },
-  })
+    }))
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Settings not saved',
+      detail: (err as Error).message,
+      life: 8000,
+    })
+    return
+  }
   savedConnectionFingerprint.value = connectionFingerprint()
 
   // Settings are now persisted and the main process has rebuilt its menu, so
