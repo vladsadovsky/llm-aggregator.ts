@@ -2,6 +2,7 @@
 
 Status: Draft requirement document  
 Date: 2026-08-04  
+Last updated: 2026-08-05  
 Owner: Vlad Sadovsky  
 Scope: LLM Aggregator v2 roadmap, Phase 2 enablement without mandatory subscription APIs
 
@@ -312,3 +313,128 @@ Before locking a default recommended model profile, verify all of the following:
 - Median suggestion latency is acceptable for review workflow.
 - Model artifact/update size is acceptable for the chosen distribution strategy.
 - Operational guidance for local and DGX setup is documented in one user-facing place.
+
+### 17.7 Practical First-Pass Local Recommendation
+
+For the first local-on-host release, prefer **Ollama** as the runtime substrate and a single pinned balanced-tier default model rather than a broad model matrix in the UI.
+
+- **Recommended first-pass completion model:** `qwen2.5:7b`
+- **Recommended low-end fallback:** `phi4-mini`
+- **Recommended optional embedding model:** `nomic-embed-text`
+
+Rationale:
+
+- `qwen2.5:7b` best matches the Phase 2 task profile: short structured outputs for title, tag, workflow-state, and confidence suggestions.
+- It fits the intended balanced local tier at about **4.7 GB** in Ollama.
+- It is a stronger first default than 3B-class models because structured-output reliability matters more here than raw small-model speed.
+- `phi4-mini` is the practical fallback for lower-end laptops because it is smaller at about **2.5 GB** while still remaining instruction-friendly.
+- `nomic-embed-text` is suitable as a separate embedding model because it is small at about **274 MB** and keeps embedding concerns decoupled from completion-model choice.
+
+### 17.8 Packaging and Runtime Recommendation
+
+Do **not** bundle model weights into the base installer.
+
+Preferred first-pass flow:
+
+1. Detect a local Ollama install.
+2. If missing, guide the user to install Ollama for their OS.
+3. Offer a one-click pull of the recommended model profile.
+4. Save provider/model settings behind the existing experimental feature gate.
+
+Why this is the preferred path:
+
+- It avoids installer bloat and update friction.
+- It works across macOS, Windows, and Linux through one local API shape.
+- It matches the existing loopback-only security model already planned for local inference.
+- It keeps DGX/LAN support as a later extension via the self-hosted OpenAI-compatible path rather than coupling Phase 2 to a heavier server setup.
+
+### 17.9 Implementation Notes for This Codebase
+
+- The existing architecture is already close to the required first pass: local Ollama provider wiring, self-hosted OpenAI-compatible wiring, separate embedding-model configuration, and zero-cost local usage tracking are already present in the codebase.
+- For first pass, embeddings should remain **optional** unless long QA content is truncated or chunked before embedding, because small local embedding models have tighter context limits than the completion path.
+- The UI should expose a **small number of recommended profiles** rather than expecting users to choose from many local model families.
+- Review-first workflow remains mandatory; local models should generate suggestions only, never write directly to archive state.
+
+### 17.10 Shortlist Summary
+
+#### Primary default
+
+- `qwen2.5:7b`
+- Best overall quality/size tradeoff for first release
+- Best match for strict JSON-like structured suggestion output
+
+#### Lower-end fallback
+
+- `phi4-mini`
+- Smaller footprint and more laptop-friendly
+- Accept some quality loss versus the default
+
+#### Optional higher-quality local profile
+
+- 12B to 14B-class model
+- Better reserved for advanced users or stronger hardware, not the default laptop path
+
+#### Not recommended as first default
+
+- Multimodal-oriented models where image support adds no value to this Phase 2 scope
+- Very small classifier-only models as the sole model path, because they are too weak for title generation quality
+
+### 17.11 What Cannot Be Trimmed From a Dense Base Model
+
+For a dense general model such as `Qwen2.5`, there is no practical supported way to remove one capability area such as mathematics, coding, or multilingual behavior by deleting a subset of weights while preserving the rest of the model's quality.
+
+Implications:
+
+- The standard `Qwen2.5` base/instruct models are dense networks, so capabilities are distributed across the model rather than isolated in a removable module.
+- Separate releases such as `Qwen2.5-Math` and `Qwen2.5-Coder` are specialized sibling models, not detachable sub-parts of the ordinary `Qwen2.5` weights.
+- Attempting manual pruning of internal weights to remove "non-essential" skills is likely to damage instruction following, structured output quality, and overall language reliability.
+
+Conclusion:
+
+- For this product, size reduction should be treated as a deployment and specialization problem, not as a manual weight-stripping exercise.
+
+### 17.12 Practical Size-Reduction Options Without Large Fidelity Loss
+
+The realistic levers, in recommended order, are:
+
+1. **Quantize the chosen model**
+2. **Do not bundle the model in the base installer**
+3. **Offer a smaller fallback model profile**
+4. **Later, train or fine-tune a smaller specialist model for this exact task set**
+
+Details:
+
+- **Quantization** is the primary practical lever. It reduces storage and memory footprint by storing weights at lower precision while keeping the same base model behavior as much as possible.
+- For this app, a good **4-bit quantized** balanced model is the most realistic first target.
+- More aggressive quantization can shrink further, but the risk of harming structured-output reliability rises as precision falls.
+- **Optional post-install download** gives the largest shipping-size benefit without changing model fidelity at all.
+- A **smaller fallback model** can help lower-end laptops, but that is a model substitution tradeoff, not a free compression win.
+- A **specialized smaller student model** is the long-term path if archive-specific benchmarks later show it can match acceptance thresholds.
+
+### 17.13 What Helps Size Versus What Only Helps Runtime
+
+Reduces shipped model size:
+
+- Lower-bit quantization
+- Choosing a smaller model family or smaller parameter count
+- Shipping only a small fine-tuned adapter when the base model is assumed to be user-provided
+- Not bundling weights and downloading them on demand
+
+Does **not** materially reduce shipped model size, though it may improve runtime cost or latency:
+
+- Lower `max_tokens`
+- Shorter prompts
+- Smaller active inference context at runtime
+- Truncating input before generation
+
+### 17.14 Recommendation For This Product
+
+For the first local release, prefer the following strategy:
+
+- Keep `qwen2.5:7b` as the default quality profile.
+- Use a well-supported quantized build rather than full-precision weights.
+- Do not bundle the model inside the main installer.
+- Offer `phi4-mini` as a lower-end fallback profile.
+- Treat task-specific distillation or PEFT specialization as a later optimization step after benchmark data is collected.
+
+This preserves the best chance of meeting Phase 2 quality targets while minimizing shipping size in the only ways that are operationally realistic.
